@@ -100,7 +100,7 @@ Bu soruların hepsi tek arama kutusundan, saniyeden kısa sürede yanıtlanır. 
 **1. Projeyi indirin**
 
 ```bash
-git clone <repo-adresi> vm-inventory
+git clone https://github.com/fatihdagdelenn/vm-inventory.git
 cd vm-inventory
 ```
 
@@ -213,6 +213,8 @@ pveum user token add svc-envanter@pve envanter --privsep 0
 ```
 
 > ⚠️ Son komutun çıktısındaki **`value`** satırını hemen kaydedin — bir daha gösterilmez!
+
+
 > ⚠️ `--privsep 0` zorunludur; verilmezse token VM'leri göremez (sadece node adları gelir).
 
 Arayüzde **Platformlar → Platform Ekle**:
