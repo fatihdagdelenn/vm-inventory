@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex mb-3">
+  <div class="search-box flex-grow-1" style="max-width:480px">
+    <i class="bi bi-search"></i>
+    <input type="text" id="netSearch" class="form-control" placeholder="Network adı, VLAN, vSwitch veya subnet ara…">
+  </div>
+</div>
+<div class="card panel">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead><tr>
+        <th>Network Adı</th><th>VLAN</th><th>vSwitch / Bridge</th>
+        <th>Port Group</th><th>IP Subnet</th><th>Host</th>
+      </tr></thead>
+      <tbody id="netBody"><tr><td colspan="6" class="text-center text-muted p-4">Yükleniyor…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/js/networks.js?v={{ asset_version }}"></script>{% endblock %}

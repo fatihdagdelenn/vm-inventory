@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="card panel">
+      <div class="card-header"><i class="bi bi-download"></i> Anlık Dışa Aktarma</div>
+      <div class="card-body">
+        <p class="text-muted small">Arama söz dizimi ile filtrelenmiş sonuçları dışa aktarabilirsiniz
+          (örn: <code>cluster:production status:running</code>). Boş bırakılırsa tüm envanter aktarılır.</p>
+        <div class="mb-3">
+          <label class="form-label">Filtre (opsiyonel)</label>
+          <input type="text" id="repQuery" class="form-control" placeholder="örn: os:windows vlan:100">
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+          <button class="btn btn-success" onclick="Reports.export('vms','xlsx')"><i class="bi bi-file-earmark-excel"></i> VM Excel</button>
+          <button class="btn btn-secondary" onclick="Reports.export('vms','csv')">VM CSV</button>
+          <button class="btn btn-danger" onclick="Reports.export('vms','pdf')">VM PDF</button>
+          <button class="btn btn-outline-success" onclick="Reports.export('hosts','xlsx')">Host Excel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card panel">
+      <div class="card-header"><i class="bi bi-calendar-event"></i> Zamanlanmış Raporlar</div>
+      <div class="card-body">
+        {% if user.role != 'viewer' %}
+        <div class="row g-2 align-items-end mb-3">
+          <div class="col-3"><label class="form-label small">Saat</label>
+            <input type="number" id="schHour" class="form-control" min="0" max="23" value="7"></div>
+          <div class="col-3"><label class="form-label small">Dakika</label>
+            <input type="number" id="schMin" class="form-control" min="0" max="59" value="0"></div>
+          <div class="col-3"><label class="form-label small">Format</label>
+            <select id="schFmt" class="form-select"><option>xlsx</option><option>csv</option><option>pdf</option></select></div>
+          <div class="col-3"><button class="btn btn-primary w-100" onclick="Reports.schedule()">Oluştur</button></div>
+          <div class="col-12"><label class="form-label small">Filtre (opsiyonel)</label>
+            <input type="text" id="schQuery" class="form-control" placeholder="örn: env:production"></div>
+        </div>
+        {% endif %}
+        <p class="text-muted small mb-2">Raporlar her gün belirtilen saatte sunucudaki <code>data/reports/</code> klasörüne yazılır.</p>
+        <ul class="list-group list-group-flush" id="schList"></ul>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/js/reports.js?v={{ asset_version }}"></script>{% endblock %}

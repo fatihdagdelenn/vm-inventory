@@ -1,0 +1,45 @@
+# ==========================================================
+# VM Envanter Yönetim Sistemi - Docker Compose
+# Kullanım:
+#   1) cp .env.example .env  → değerleri düzenleyin (özellikle ENCRYPTION_KEY)
+#   2) docker compose up -d --build
+#   3) http://sunucu:8000  (varsayılan giriş: admin / admin123)
+# ==========================================================
+services:
+
+  # ---------- PostgreSQL veritabanı ----------
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vminv
+      POSTGRES_PASSWORD: vminv_parola          # üretimde mutlaka değiştirin
+      POSTGRES_DB: vminventory
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vminv -d vminventory"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------- Web uygulaması ----------
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env                              # SECRET_KEY, ENCRYPTION_KEY vb.
+    environment:
+      # Compose içindeki "db" servisine bağlanır; .env'deki değeri ezer
+      DATABASE_URL: postgresql+psycopg2://vminv:vminv_parola@db:5432/vminventory
+      REPORT_DIR: /app/data/reports
+    ports:
+      - "8000:8000"
+    volumes:
+      - appdata:/app/data                       # zamanlanmış raporlar + SQLite (kullanılırsa)
+
+volumes:
+  pgdata:
+  appdata:

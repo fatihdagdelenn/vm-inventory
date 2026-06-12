@@ -1,0 +1,20 @@
+# Ortam ve gizli bilgiler — ASLA commit edilmemeli
+.env
+
+# Çalışma verileri
+data/
+*.db
+*.sqlite
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+*.egg-info/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

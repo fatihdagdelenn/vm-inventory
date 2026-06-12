@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VM Envanter Yönetim Sistemi — Kurulum ve Kullanım Dokümantasyonu</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0f1d2e; --ink2:#16283c; --accent:#2f81f7; --accent-soft:rgba(47,129,247,.09);
+  --teal:#0aa881; --amber:#b97c1f; --red:#d04842;
+  --bg:#f4f6fa; --panel:#fff; --border:#e4e9f0; --text:#1c2b3a; --muted:#64748b;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;scroll-padding-top:24px}
+body{font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--text);
+     font-size:15px;line-height:1.65;-webkit-font-smoothing:antialiased}
+::selection{background:var(--accent);color:#fff}
+
+/* ---- Yerleşim: ürünün kendi kenar çubuğu gibi sabit içindekiler ---- */
+.layout{display:flex;min-height:100vh}
+nav{width:262px;flex-shrink:0;background:linear-gradient(180deg,var(--ink) 0%,var(--ink2) 60%,#14253a 100%);
+    color:#aebccb;position:sticky;top:0;height:100vh;overflow-y:auto;padding:0 0 2rem}
+nav::-webkit-scrollbar{width:6px}
+nav::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:6px}
+.brand{display:flex;align-items:center;gap:.7rem;padding:1.4rem 1.4rem 1.2rem;color:#fff;
+       font-weight:700;font-size:1.02rem;border-bottom:1px solid rgba(255,255,255,.07)}
+.brand .logo{width:36px;height:36px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;
+  justify-content:center;background:linear-gradient(135deg,var(--accent),#6db1ff);
+  box-shadow:0 4px 14px rgba(47,129,247,.45);font-size:1.1rem}
+.brand small{display:block;font-weight:500;color:#8fa3b8;font-size:.72rem}
+nav .group{font-size:.68rem;text-transform:uppercase;letter-spacing:.12em;color:#5f7186;
+           padding:1.2rem 1.4rem .4rem;font-weight:600}
+nav a{display:block;color:#aebccb;text-decoration:none;font-size:.86rem;font-weight:500;
+      padding:.42rem 1rem;margin:1px .6rem;border-radius:8px;transition:.16s}
+nav a:hover{background:rgba(255,255,255,.06);color:#fff}
+nav a.step{display:flex;align-items:center;gap:.6rem}
+nav a.step b{width:20px;height:20px;flex-shrink:0;border-radius:6px;background:rgba(47,129,247,.25);
+  color:#9cc4ff;font-size:.7rem;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
+
+main{flex:1;min-width:0;max-width:880px;padding:3rem 3.4rem 5rem}
+
+/* ---- Kapak ---- */
+.hero{margin-bottom:3rem}
+.hero .eyebrow{font-size:.74rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--accent);margin-bottom:.7rem}
+.hero h1{font-size:2.15rem;font-weight:800;letter-spacing:-.025em;color:var(--ink);line-height:1.2}
+.hero p.lead{font-size:1.05rem;color:var(--muted);margin-top:.8rem;max-width:640px}
+.badges{display:flex;flex-wrap:wrap;gap:.45rem;margin-top:1.1rem}
+.badge{font-size:.74rem;font-weight:600;padding:.3rem .75rem;border-radius:999px;
+  background:var(--accent-soft);color:var(--accent);border:1px solid rgba(47,129,247,.25)}
+
+/* ---- Bölümler ---- */
+section{margin-bottom:3.2rem}
+h2{font-size:1.4rem;font-weight:800;letter-spacing:-.02em;color:var(--ink);
+   padding-bottom:.5rem;border-bottom:2px solid var(--border);margin-bottom:1.2rem;
+   display:flex;align-items:baseline;gap:.6rem}
+h2 .no{font-family:'JetBrains Mono',monospace;font-size:.85rem;color:var(--accent);font-weight:600}
+h3{font-size:1.04rem;font-weight:700;color:var(--ink);margin:1.6rem 0 .6rem}
+p{margin-bottom:.85rem}
+ul,ol{margin:0 0 .9rem 1.3rem}
+li{margin-bottom:.35rem}
+strong{color:var(--ink);font-weight:600}
+a{color:var(--accent)}
+
+/* ---- Kod blokları: terminal görünümü ---- */
+pre{background:linear-gradient(180deg,#13243a,#0f1d2e);color:#d8e4f0;border-radius:12px;
+    padding:1rem 1.2rem;font-family:'JetBrains Mono',monospace;font-size:.82rem;line-height:1.6;
+    overflow-x:auto;margin:.9rem 0 1.1rem;border:1px solid #1e3450;position:relative;
+    box-shadow:0 4px 14px rgba(15,29,46,.18)}
+pre::before{content:attr(data-label);position:absolute;top:.55rem;right:.9rem;font-size:.66rem;
+    color:#5f7186;letter-spacing:.08em;text-transform:uppercase;font-weight:600}
+pre .c{color:#6b8aaa}      /* yorum */
+pre .k{color:#7ec3ff}      /* komut */
+pre .v{color:#7ee2c0}      /* değer */
+code{font-family:'JetBrains Mono',monospace;font-size:.83em;background:var(--accent-soft);
+     color:#1d5fc4;padding:.12em .42em;border-radius:6px;font-weight:600}
+pre code{background:none;color:inherit;padding:0;font-weight:400}
+
+/* ---- Tablolar ---- */
+table{width:100%;border-collapse:collapse;margin:.8rem 0 1.2rem;background:var(--panel);
+      border:1px solid var(--border);border-radius:12px;overflow:hidden;font-size:.875rem;
+      box-shadow:0 1px 3px rgba(15,29,46,.05)}
+th{background:#fafbfd;text-align:left;font-size:.7rem;text-transform:uppercase;letter-spacing:.07em;
+   color:var(--muted);font-weight:600;padding:.6rem .9rem;border-bottom:2px solid var(--border)}
+td{padding:.55rem .9rem;border-bottom:1px solid #eef1f6;vertical-align:top}
+tr:last-child td{border-bottom:0}
+tr:hover td{background:#f7fafd}
+
+/* ---- Uyarı kutuları ---- */
+.note,.warn,.tip{border-radius:12px;padding:.85rem 1.1rem .85rem 1rem;margin:.9rem 0 1.1rem;
+  font-size:.89rem;border:1px solid;border-left-width:4px;display:flex;gap:.65rem}
+.note{background:var(--accent-soft);border-color:rgba(47,129,247,.35);border-left-color:var(--accent)}
+.warn{background:rgba(232,161,60,.09);border-color:rgba(232,161,60,.35);border-left-color:var(--amber)}
+.tip{background:rgba(10,168,129,.08);border-color:rgba(10,168,129,.3);border-left-color:var(--teal)}
+.note b,.warn b,.tip b{flex-shrink:0}
+
+/* ---- Kurulum adım rayı ---- */
+.steps{counter-reset:step;list-style:none;margin:1.4rem 0;padding:0}
+.steps>li{counter-increment:step;position:relative;padding:0 0 1.8rem 3.2rem;margin:0}
+.steps>li::before{content:counter(step);position:absolute;left:0;top:0;width:34px;height:34px;
+  border-radius:10px;background:linear-gradient(135deg,var(--accent),#5a9cf8);color:#fff;
+  font-weight:800;font-size:.95rem;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 4px 12px rgba(47,129,247,.35)}
+.steps>li::after{content:"";position:absolute;left:16px;top:40px;bottom:6px;width:2px;
+  background:linear-gradient(180deg,#cfdcef,transparent)}
+.steps>li:last-child::after{display:none}
+.steps>li:last-child{padding-bottom:0}
+.steps h4{font-size:1rem;font-weight:700;color:var(--ink);margin-bottom:.4rem;padding-top:.3rem}
+
+/* ---- Mimari şeması ---- */
+.arch{font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.5;color:#3a4d63;
+  background:#fff;border:1px solid var(--border);border-radius:12px;padding:1.2rem 1.4rem;
+  overflow-x:auto;white-space:pre;margin:.9rem 0 1.1rem;box-shadow:0 1px 3px rgba(15,29,46,.05)}
+.arch b{color:var(--accent)}
+
+footer{margin-top:4rem;padding-top:1.2rem;border-top:1px solid var(--border);
+  font-size:.82rem;color:var(--muted)}
+
+@media(max-width:920px){
+  nav{display:none}
+  main{padding:1.6rem 1.2rem 4rem}
+  .hero h1{font-size:1.6rem}
+}
+@media print{nav{display:none}main{max-width:100%;padding:0}pre{box-shadow:none}}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<nav>
+  <div class="brand">
+    <span class="logo">🖥</span>
+    <span>VM Envanter<small>Dokümantasyon</small></span>
+  </div>
+  <div class="group">Tanıtım</div>
+  <a href="#nedir">Ne işe yarar?</a>
+  <a href="#ozellikler">Özellikler</a>
+  <a href="#mimari">Mimari: nasıl çalışır?</a>
+  <a href="#gereksinimler">Gereksinimler</a>
+  <div class="group">Sıfırdan Kurulum</div>
+  <a href="#kurulum" class="step"><b>1</b> Docker ile kurulum</a>
+  <a href="#manuel" class="step"><b>2</b> Manuel kurulum (alternatif)</a>
+  <a href="#ilk-ayar" class="step"><b>3</b> İlk yapılandırma</a>
+  <a href="#vcenter" class="step"><b>4</b> vCenter bağlama</a>
+  <a href="#proxmox" class="step"><b>5</b> Proxmox bağlama</a>
+  <a href="#senkron" class="step"><b>6</b> İlk senkronizasyon</a>
+  <div class="group">Kullanım</div>
+  <a href="#ekranlar">Ekranlar</a>
+  <a href="#arama">Arama söz dizimi</a>
+  <a href="#cluster-yonetimi">Cluster &amp; anlık kullanım</a>
+  <a href="#roller">Roller &amp; LDAP</a>
+  <a href="#raporlar">Raporlama</a>
+  <div class="group">İşletme</div>
+  <a href="#uretim">Üretim notları (HTTPS, yedek)</a>
+  <a href="#sorun">Sorun giderme</a>
+  <a href="#yapi">Proje yapısı</a>
+  <a href="#sss">SSS</a>
+</nav>
+
+<main>
+
+<div class="hero">
+  <div class="eyebrow">Kurulum ve Kullanım Dokümantasyonu</div>
+  <h1>VM Envanter Yönetim Sistemi</h1>
+  <p class="lead">VMware vCenter ve Proxmox VE ortamlarındaki tüm sanal makineleri, hostları ve ağları
+  tek web arayüzünden izleyen merkezi envanter. Bu doküman, sistemi sıfırdan kuracak biri için
+  tüm adımları sırasıyla anlatır.</p>
+  <div class="badges">
+    <span class="badge">Python 3.11+ · FastAPI</span>
+    <span class="badge">PostgreSQL 16</span>
+    <span class="badge">Docker Compose</span>
+    <span class="badge">vCenter 6.7 – 8.x</span>
+    <span class="badge">Proxmox 7.x / 8.x</span>
+    <span class="badge">Türkçe arayüz</span>
+  </div>
+</div>
+
+<section id="nedir">
+<h2>Ne işe yarar?</h2>
+<p>Birden fazla sanallaştırma ortamı işleten ekiplerin günlük sorularını tek arama kutusunda yanıtlar:
+<em>"10.10.10.15 hangi host'ta?"</em>, <em>"VLAN 100'de kaç Windows sunucu var?"</em>,
+<em>"geçen hafta hangi VM'lerin RAM'i değişti?"</em>, <em>"agent kurulu olmayan VM'ler hangileri?"</em></p>
+<p>SSH erişimi veya misafire ajan dağıtımı <strong>gerekmez</strong> — yalnızca platformların resmî API'leri
+kullanılır ve salt-okunur hesaplar yeterlidir. Sistem hiçbir VM'e müdahale edemez; bilinçli olarak
+salt-okunur tasarlanmıştır.</p>
+</section>
+
+<section id="ozellikler">
+<h2>Özellikler</h2>
+<table>
+<tr><th style="width:230px">Özellik</th><th>Açıklama</th></tr>
+<tr><td><strong>Google benzeri arama</strong></td><td><code>ip:</code> <code>os:</code> <code>vlan:</code> <code>ram:&gt;=16</code> <code>-tag:test</code> <code>ip:yok</code> — kriterler birleştirilebilir, sonuç milisaniyede gelir</td></tr>
+<tr><td><strong>Gelişmiş filtre paneli</strong></td><td>Mevcut değerlerden (sayılarıyla) seçim; X'le kaldırılabilir filtre rozetleri; tıklanabilir tablo hücreleri; paylaşılabilir filtre linkleri</td></tr>
+<tr><td><strong>Detaylı dashboard</strong></td><td>Kaynak toplamları, OS/ortam/cluster dağılımları, host CPU-RAM, depolama, "dikkat gerektirenler" listesi — grafik dilimleri tıklanabilir</td></tr>
+<tr><td><strong>Çoklu platform</strong></td><td>Sınırsız vCenter + Proxmox aynı envanterde birleşir</td></tr>
+<tr><td><strong>Raporlama</strong></td><td>Filtrelenmiş Excel / CSV / PDF + her gün otomatik üretilen zamanlanmış raporlar</td></tr>
+<tr><td><strong>Değişiklik takibi</strong></td><td>Her senkronizasyonda fark analizi: ne, ne zaman, neyden neye değişti + audit log</td></tr>
+<tr><td><strong>Cluster göster/gizle</strong></td><td>Eski/test cluster'ları — standalone host'lardaki "(Cluster'sız)" VM'ler dahil — dashboard sayılarından tek anahtarla çıkarın; veri silinmez</td></tr>
+<tr><td><strong>Anlık kullanım oranları</strong></td><td>VM ve host CPU/RAM kullanımı + gerçek disk doluluğu; hafif görevle ~3 dk'da bir ve her açılışta tazelenir</td></tr>
+<tr><td><strong>Rol bazlı yetki</strong></td><td>Admin / Operatör / Görüntüleyici; opsiyonel LDAP/AD girişi</td></tr>
+<tr><td><strong>Güvenlik</strong></td><td>Fernet ile şifreli kimlik bilgisi saklama, bcrypt parola, CSRF koruması, oturum zaman aşımı</td></tr>
+</table>
+</section>
+
+<section id="mimari">
+<h2>Mimari: nasıl çalışır?</h2>
+<div class="arch">┌─────────────┐   zamanlanmış görevler     ┌──────────────────┐
+│  <b>vCenter(s)</b> │◄──────(APScheduler)────────┤                  │
+└─────────────┘     15 dk'da bir,          │     <b>FastAPI</b>      │
+┌─────────────┐     pyVmomi/proxmoxer      │   + SQLAlchemy   │──► <b>PostgreSQL</b>
+│ <b>Proxmox(es)</b> │◄───────────────────────────┤                  │    (lokal cache)
+└─────────────┘                            └────────┬─────────┘
+                                                    │ tüm aramalar lokal DB'den
+                                             ┌──────▼─────────┐
+                                             │  <b>Web Arayüzü</b>   │
+                                             └────────────────┘</div>
+<p><strong>Temel ilke: kullanıcı aramaları asla canlı API'ye gitmez.</strong></p>
+<ol>
+<li><strong>Toplayıcı</strong> — Arka plan zamanlayıcısı her 15 dakikada (ayarlanabilir) platformlara bağlanır.
+vCenter'da <code>ContainerView</code> ile tek seferde toplu okuma, Proxmox'ta tek <code>cluster/resources</code>
+çağrısı yapılır — host/VM başına ayrı istek atılmaz, canlı ortama yük binmez.</li>
+<li><strong>Cache</strong> — VM adı, IP, MAC, OS, CPU/RAM/disk, VLAN, cluster, güç durumu, Tools/Agent durumu
+indeksli tablolara yazılır; farklar Değişiklik Geçmişi'ne işlenir.</li>
+<li><strong>Arayüz</strong> — Aramalar, raporlar, grafikler lokal veritabanından sunulur; 500+ VM'de dahi anlıktır.
+"Tümünü Yenile" butonu acil durumda anında senkronizasyon tetikler.</li>
+</ol>
+</section>
+
+<section id="gereksinimler">
+<h2>Gereksinimler</h2>
+<table>
+<tr><th style="width:160px">Bileşen</th><th>Gereksinim</th></tr>
+<tr><td>Sunucu</td><td>Linux (Ubuntu 22.04+ önerilir), 2 vCPU / 2 GB RAM yeterli</td></tr>
+<tr><td>Yazılım</td><td>Docker + Docker Compose <em>veya</em> Python 3.11+</td></tr>
+<tr><td>Ağ erişimi</td><td>Sunucudan vCenter'a <code>443/tcp</code>, Proxmox'a <code>8006/tcp</code></td></tr>
+<tr><td>vCenter</td><td>6.7+ (8.x test edildi) — salt-okunur hesap yeterli</td></tr>
+<tr><td>Proxmox</td><td>7.x / 8.x — <code>PVEAuditor</code> rollü API token yeterli</td></tr>
+<tr><td>Misafirler</td><td>IP/OS detayı için VMware Tools veya QEMU Guest Agent <em>(opsiyonel)</em></td></tr>
+</table>
+</section>
+
+<section id="kurulum">
+<h2><span class="no">ADIM 1</span> Docker ile Kurulum (önerilen)</h2>
+<ol class="steps">
+<li><h4>Projeyi indirin</h4>
+<pre data-label="terminal"><code><span class="k">git clone</span> &lt;repo-adresi&gt; vm-inventory
+<span class="k">cd</span> vm-inventory</code></pre></li>
+
+<li><h4>Ortam dosyasını oluşturun</h4>
+<pre data-label="terminal"><code><span class="k">cp</span> .env.example .env</code></pre></li>
+
+<li><h4>Güvenlik anahtarlarını üretin</h4>
+<p>İki anahtar gerekir; komutların çıktısını <code>.env</code> içine yapıştırın:</p>
+<pre data-label="terminal"><code><span class="c"># ENCRYPTION_KEY — platform parolalarını/token'larını şifreler:</span>
+<span class="k">python3 -c</span> <span class="v">"import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())"</span>
+
+<span class="c"># SECRET_KEY — oturum çerezlerini imzalar:</span>
+<span class="k">python3 -c</span> <span class="v">"import secrets; print(secrets.token_urlsafe(48))"</span></code></pre>
+<pre data-label=".env"><code>SECRET_KEY=<span class="v">ürettiğiniz-secret-key</span>
+ENCRYPTION_KEY=<span class="v">ürettiğiniz-fernet-anahtarı</span>
+SYNC_INTERVAL_MINUTES=<span class="v">15</span>
+USAGE_SYNC_INTERVAL_MINUTES=<span class="v">3</span>
+SESSION_TIMEOUT_MINUTES=<span class="v">480</span></code></pre>
+<div class="warn"><b>⚠️</b><div><strong>ENCRYPTION_KEY'i yedekleyin.</strong> Kaybedilirse kayıtlı platform
+kimlik bilgileri çözülemez ve yeniden girilmesi gerekir.</div></div></li>
+
+<li><h4>(İsteğe bağlı) Portu değiştirin</h4>
+<p><code>docker-compose.yml</code> içindeki <code>app</code> servisinde yalnızca soldaki sayıyı değiştirin:</p>
+<pre data-label="docker-compose.yml"><code>ports:
+  - <span class="v">"18443:8000"</span>   <span class="c"># dış port : konteyner portu</span></code></pre>
+<p>Portun boş olduğunu kontrol etmek için: <code>ss -tlnp | grep 18443</code></p></li>
+
+<li><h4>Başlatın</h4>
+<pre data-label="terminal"><code><span class="k">docker compose up -d --build</span></code></pre>
+<p>İlk build 2-3 dakika sürer. İzlemek için: <code>docker compose logs -f app</code></p></li>
+
+<li><h4>Giriş yapın</h4>
+<p>Tarayıcıda <code>http://sunucu-adresi:8000</code> (veya seçtiğiniz port) açın.</p>
+<div class="note"><b>🔑</b><div>Varsayılan giriş: <strong>admin / admin123</strong> — ilk iş olarak değiştirin (Adım 3).</div></div></li>
+</ol>
+</section>
+
+<section id="manuel">
+<h2><span class="no">ADIM 2</span> Manuel Kurulum (Docker'sız alternatif)</h2>
+<p>Docker kullanamıyorsanız:</p>
+<pre data-label="terminal"><code><span class="c"># Python 3.11+ ve venv gerekir (sistem paketleriyle çakışmayı önler)</span>
+<span class="k">python3 -m venv</span> venv <span class="k">&amp;&amp; source</span> venv/bin/activate
+<span class="k">pip install</span> -r requirements.txt
+
+<span class="k">cp</span> .env.example .env        <span class="c"># anahtarları Adım 1.3'teki gibi üretin</span>
+<span class="k">mkdir -p</span> data/reports
+
+<span class="k">uvicorn</span> app.main:app --host 0.0.0.0 --port 8000</code></pre>
+<p>Küçük kurulumlar için SQLite yeterlidir — <code>.env</code> içinde:
+<code>DATABASE_URL=sqlite:///./data/vminventory.db</code></p>
+<p>PostgreSQL tercih ederseniz önce veritabanını hazırlayın:</p>
+<pre data-label="psql"><code><span class="k">CREATE USER</span> vminv <span class="k">WITH PASSWORD</span> <span class="v">'guclu_parola'</span>;
+<span class="k">CREATE DATABASE</span> vminventory <span class="k">OWNER</span> vminv;</code></pre>
+<p>ve <code>.env</code>'de: <code>DATABASE_URL=postgresql+psycopg2://vminv:guclu_parola@localhost:5432/vminventory</code></p>
+<div class="tip"><b>💡</b><div>Tablolar uygulamanın ilk açılışında otomatik oluşturulur; migration komutu gerekmez.</div></div>
+</section>
+
+<section id="ilk-ayar">
+<h2><span class="no">ADIM 3</span> İlk Yapılandırma</h2>
+<p>Giriş yaptıktan sonra <strong>Yönetim → Kullanıcılar</strong> sekmesinden <code>admin</code> kullanıcısını
+düzenleyip parolasını değiştirin. Ekip arkadaşlarınız için de buradan kullanıcı açabilir,
+rollerini (Görüntüleyici / Operatör / Admin) belirleyebilirsiniz.</p>
+</section>
+
+<section id="vcenter">
+<h2><span class="no">ADIM 4</span> vCenter Bağlama</h2>
+<h3>4.1 — vCenter'da salt-okunur servis hesabı açın</h3>
+<div class="tip"><b>💡</b><div>Kişisel hesap kullanmayın: parolası değişir veya hesap pasifleşirse senkronizasyon durur.</div></div>
+<ol>
+<li>vSphere Client → <strong>Administration → Users and Groups</strong> → yeni kullanıcı:
+<code>svc-envanter@vsphere.local</code></li>
+<li><strong>Administration → Global Permissions</strong> → kullanıcıya <strong>Read-only</strong> rolü verin,
+<em>"Propagate to children"</em> işaretli olsun</li>
+</ol>
+<h3>4.2 — Arayüzde platformu ekleyin</h3>
+<p><strong>Platformlar → Platform Ekle</strong>:</p>
+<table>
+<tr><th style="width:180px">Alan</th><th>Değer</th></tr>
+<tr><td>Tip</td><td>VMware vCenter</td></tr>
+<tr><td>API Adresi</td><td><code>vcenter.sirket.local</code> veya IP — <strong>https:// öneki ve port olmadan</strong></td></tr>
+<tr><td>Port</td><td><code>443</code></td></tr>
+<tr><td>Kullanıcı / Parola</td><td>servis hesabı bilgileri</td></tr>
+<tr><td>SSL doğrula</td><td>self-signed sertifika kullanılıyorsa <strong>kapalı</strong></td></tr>
+</table>
+<p><strong>Bağlantıyı Test Et</strong> butonuna basın; <em>"Bağlantı başarılı: VMware vCenter Server 8.0.x"</em>
+benzeri yanıt gelince <strong>Kaydet</strong> deyin.</p>
+</section>
+
+<section id="proxmox">
+<h2><span class="no">ADIM 5</span> Proxmox Bağlama</h2>
+<h3>5.1 — API token üretin</h3>
+<p>Proxmox node'unda (SSH veya web arayüzündeki Shell) üç komut:</p>
+<pre data-label="proxmox shell"><code><span class="k">pveum user add</span> svc-envanter@pve --comment <span class="v">"Envanter servis hesabı"</span>
+<span class="k">pveum acl modify</span> / --users svc-envanter@pve --roles <span class="v">PVEAuditor</span>
+<span class="k">pveum user token add</span> svc-envanter@pve envanter <span class="v">--privsep 0</span></code></pre>
+<div class="warn"><b>⚠️</b><div>Son komutun çıktısındaki <strong><code>value</code></strong> satırını hemen kaydedin —
+<strong>bir daha asla gösterilmez.</strong></div></div>
+<div class="warn"><b>⚠️</b><div><strong><code>--privsep 0</code> zorunludur.</strong> Verilmezse token VM'leri
+göremez (sadece node adları gelir). Yanlışlıkla atlandıysa düzeltme:
+<code>pveum acl modify / --tokens 'svc-envanter@pve!envanter' --roles PVEAuditor</code>
+(tırnaklar önemli — <code>!</code> kabukta özel karakterdir).</div></div>
+<h3>5.2 — Arayüzde platformu ekleyin</h3>
+<table>
+<tr><th style="width:180px">Alan</th><th>Değer</th></tr>
+<tr><td>Tip</td><td>Proxmox VE</td></tr>
+<tr><td>API Adresi</td><td>herhangi bir node'un adresi (cluster verisi tek node'dan gelir)</td></tr>
+<tr><td>Port</td><td><code>8006</code></td></tr>
+<tr><td>Kimlik doğrulama</td><td><strong>API Token</strong></td></tr>
+<tr><td>Token adı</td><td><code>svc-envanter@pve!envanter</code></td></tr>
+<tr><td>Token değeri</td><td>kaydettiğiniz <code>value</code></td></tr>
+<tr><td>SSL doğrula</td><td>self-signed sertifikada <strong>kapalı</strong></td></tr>
+</table>
+</section>
+
+<section id="senkron">
+<h2><span class="no">ADIM 6</span> İlk Senkronizasyon</h2>
+<ol>
+<li>Platform kartındaki <strong>"Senkronize Et"</strong> butonuna basın. Arka planda çalışır,
+arayüz kilitlenmez; ortam büyüklüğüne göre 1-5 dakika sürer.</li>
+<li>Karttaki durum <strong>"Bağlantı OK"</strong> olunca Dashboard ve Sanal Makineler ekranı dolmuş demektir.
+Hata olursa karttaki <strong>Loglar</strong> butonu API hatasının tam mesajını gösterir.</li>
+<li>Sonrası otomatiktir: her 15 dakikada bir tazelenir, farklar Değişiklik Geçmişi'ne işlenir.</li>
+</ol>
+<div class="tip"><b>💡</b><div><strong>Önerilen son adım:</strong> Dashboard'daki "Dikkat Gerektirenler"
+kartından <em>Agent/Tools kurulu olmayan</em> listesine bakın. Bu VM'lerin IP'si ve gerçek OS adı alınamaz.
+vCenter VM'lerine VMware Tools, Proxmox VM'lerine <code>apt install qemu-guest-agent</code>
+(+ VM Options'ta agent'ı etkinleştirip yeniden başlatma) kurulduğunda bir sonraki senkronizasyonda
+"Ubuntu 22.04.3 LTS" gibi tam OS adları ve IP'ler gelir.</div></div>
+</section>
+
+<section id="ekranlar">
+<h2>Ekranlar</h2>
+<table>
+<tr><th style="width:170px">Ekran</th><th>Ne yapılır?</th></tr>
+<tr><td><strong>Dashboard</strong></td><td>Sayılar, kaynak toplamları, OS/ortam/cluster grafikleri (dilime tıklayınca filtreli liste açılır), host CPU-RAM, son değişiklikler, platform sağlığı</td></tr>
+<tr><td><strong>Sanal Makineler</strong></td><td>Arama + gelişmiş filtre + gruplama. Satıra tıklayınca detay paneli (IP/MAC, diskler, oluşturulma tarihi…). Not/sahip/etiket burada düzenlenir. Host/cluster/VLAN hücreleri tıklanabilir filtredir</td></tr>
+<tr><td><strong>Host'lar</strong></td><td>ESXi/PVE node'ları: CPU modeli, RAM kullanım çubuğu, VM sayısı, durum</td></tr>
+<tr><td><strong>Ağlar</strong></td><td>Port group / bridge / SDN vnet envanteri, VLAN ve subnet bilgileri</td></tr>
+<tr><td><strong>Raporlar</strong></td><td>Anlık Excel/CSV/PDF (filtre destekler) + zamanlanmış günlük raporlar</td></tr>
+<tr><td><strong>Geçmiş</strong></td><td>Envanter değişiklikleri: eklenen/silinen VM'ler, alan bazında eski→yeni</td></tr>
+<tr><td><strong>Platformlar</strong></td><td>Bağlantı yönetimi, manuel senkronizasyon, API hata logları</td></tr>
+<tr><td><strong>Yönetim</strong> <em>(admin)</em></td><td>Kullanıcı CRUD + audit log (kim, ne zaman, ne yaptı)</td></tr>
+</table>
+</section>
+
+<section id="arama">
+<h2>Arama Söz Dizimi</h2>
+<table>
+<tr><th style="width:240px">Sözdizimi</th><th>Açıklama</th></tr>
+<tr><td><code>web01</code></td><td>Serbest metin: ad, IP, MAC, OS, cluster, sahip ve notlarda arar</td></tr>
+<tr><td><code>ip:10.10.10.</code></td><td>IP'ye göre (kısmi eşleşir)</td></tr>
+<tr><td><code>os:linux</code></td><td>OS ailesi — Ubuntu/CentOS/RHEL/Debian… hepsini bulur</td></tr>
+<tr><td><code>os:windows,linux</code></td><td>Virgül = VEYA</td></tr>
+<tr><td><code>-os:windows</code></td><td>Dışlama: Windows <em>olmayanlar</em></td></tr>
+<tr><td><code>ram:&gt;=16</code> · <code>cpu:&gt;4</code> · <code>disk:&lt;100</code></td><td>Sayısal karşılaştırma (RAM/disk GB cinsinden)</td></tr>
+<tr><td><code>status:running</code></td><td>running / stopped / suspended (TR: <code>çalışan</code>, <code>kapalı</code>)</td></tr>
+<tr><td><code>ip:yok</code> · <code>tag:yok</code> · <code>cluster:yok</code></td><td>Boş alan araması — IP'si alınamayanlar, cluster'sız VM'ler…</td></tr>
+<tr><td><code>tools:yok</code></td><td>Agent / VMware Tools kurulu olmayanlar</td></tr>
+<tr><td><code>host:esxi01</code> · <code>cluster:prod</code> · <code>vlan:100</code></td><td>Altyapı konumuna göre</td></tr>
+<tr><td><code>platform:"Ankara vCenter"</code> · <code>type:proxmox</code> · <code>location:ankara</code></td><td>Platforma göre (boşluklu değerler tırnaklanır)</td></tr>
+<tr><td><code>tag:kritik</code> · <code>env:production</code> · <code>datastore:ssd</code></td><td>Etiket, ortam, datastore</td></tr>
+</table>
+<p>Birleştirme örneği (VE mantığı):
+<code>cluster:production os:linux status:running ram:&gt;=16 -tag:test</code></p>
+<div class="tip"><b>💡</b><div>Arama kutusundaki <strong>?</strong> butonu bu tabloyu arayüzde gösterir.
+<strong>Gelişmiş</strong> paneli ise mevcut değerlerden seçim yaparak sorguyu otomatik kurar.
+Sorgu adres çubuğuna yansır — linki kopyalayıp ekibinizle paylaşabilirsiniz.</div></div>
+</section>
+
+<section id="cluster-yonetimi">
+<h2>Cluster Yönetimi &amp; Anlık Kullanım</h2>
+<h3>Cluster göster/gizle</h3>
+<p>Dashboard'da "Cluster Bazında VM Dağılımı" grafiğinin başlığındaki <strong>Yönet</strong> butonu,
+tüm cluster'ları VM/host sayılarıyla listeleyen bir pencere açar. Anahtarı kapattığınız cluster:</p>
+<ul>
+<li>Dashboard'daki tüm sayılara ve grafiklere <strong>dahil edilmez</strong></li>
+<li>VM listesinde varsayılan olarak görünmez</li>
+<li>Veri <strong>silinmez</strong> — gelişmiş paneldeki "gizli cluster'ları dahil et" kutusu
+veya doğrudan <code>cluster:</code> araması yine erişir; anahtarı açınca her şey geri gelir</li>
+</ul>
+<div class="note"><b>ℹ️</b><div>Listenin başındaki <strong>(Cluster'sız)</strong> sanal grubu,
+herhangi bir cluster'a bağlı olmayan (standalone host'lardaki) VM ve host'ları temsil eder —
+grafiklerde "—" olarak görünen kayıtlar bunlardır. Bu grup da aynı anahtarla gizlenebilir;
+<code>cluster:yok</code> aramasıyla her zaman listelenebilir.</div></div>
+<h3>Anlık CPU / RAM / disk kullanımı</h3>
+<p>Envanter senkronizasyonundan bağımsız, çok hafif bir görev her
+<code>USAGE_SYNC_INTERVAL_MINUTES</code> dakikada bir (varsayılan 3) ve her uygulama açılışından
+~20 saniye sonra çalışır; Proxmox'ta tek <code>cluster/resources</code> çağrısı, vCenter'da
+quickStats okumasıyla biter — canlı ortama yük bindirmez.</p>
+<ul>
+<li><strong>VM tablosunda</strong> CPU/RAM/disk kolonlarının altında mini kullanım çubukları
+(sarı %75+, kırmızı %90+); üzerine gelince tam değer görünür</li>
+<li><strong>Disk</strong> için vCenter'da gerçek doluluk gösterilir (thin-provisioned diskte
+tahsis edilen değil, datastore'da fiilen yazılı alan); Proxmox'ta agent'lı VM'lerde gelir</li>
+<li><strong>Kapalı VM'lerde</strong> çubuk çizilmez — anlık kullanım yoktur</li>
+<li>Dashboard'daki host grafikleri aynı tazeliktedir; başlıkta son tazeleme zamanı görünür</li>
+</ul>
+</section>
+
+<section id="roller">
+<h2>Roller &amp; LDAP</h2>
+<table>
+<tr><th style="width:160px">Rol</th><th>Yetkiler</th></tr>
+<tr><td><strong>Görüntüleyici</strong></td><td>Tüm ekranları ve raporları görüntüleme</td></tr>
+<tr><td><strong>Operatör</strong></td><td>+ Not/sahip/etiket düzenleme, manuel senkronizasyon, zamanlanmış rapor</td></tr>
+<tr><td><strong>Admin</strong></td><td>+ Platform yönetimi, kullanıcı yönetimi, audit log</td></tr>
+</table>
+<h3>LDAP / Active Directory (opsiyonel)</h3>
+<pre data-label=".env"><code>LDAP_ENABLED=<span class="v">true</span>
+LDAP_SERVER=<span class="v">ldap://dc01.sirket.local</span>
+LDAP_USER_DN_TEMPLATE=<span class="v">{username}@sirket.local</span>
+LDAP_DEFAULT_ROLE=<span class="v">viewer</span></code></pre>
+<p>LDAP kullanıcıları ilk girişte otomatik oluşturulur; rolleri Yönetim ekranından yükseltilir.
+Lokal <code>admin</code> hesabı LDAP'tan bağımsız çalışmaya devam eder.</p>
+</section>
+
+<section id="raporlar">
+<h2>Raporlama</h2>
+<p><strong>Anlık dışa aktarma:</strong> VM listesinde mevcut filtre neyse, Excel/CSV/PDF butonları o
+filtrelenmiş sonucu indirir. Raporlar ekranından da filtre yazıp export alabilirsiniz.</p>
+<p><strong>Zamanlanmış raporlar:</strong> Raporlar ekranında saat, format ve filtre belirleyin;
+sistem her gün o saatte raporu üretip sunucudaki <code>data/reports/</code> klasörüne
+(Docker'da <code>appdata</code> volume'ü) yazar. Örnek: <code>env:production</code> filtresiyle
+yalnızca production VM'leri içeren günlük Excel raporu.</p>
+</section>
+
+<section id="uretim">
+<h2>Üretim Ortamı Notları</h2>
+<h3>HTTPS</h3>
+<p>Uygulamanın önüne reverse proxy koyun (nginx örneği):</p>
+<pre data-label="nginx"><code>server {
+    listen 443 ssl;
+    server_name envanter.sirket.local;
+    ssl_certificate     /etc/ssl/certs/envanter.crt;
+    ssl_certificate_key /etc/ssl/private/envanter.key;
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+}</code></pre>
+<h3>Yedekleme</h3>
+<p>İki şey yeterli: veritabanı ve <code>.env</code> dosyası (özellikle <code>ENCRYPTION_KEY</code>):</p>
+<pre data-label="terminal"><code><span class="k">docker compose exec</span> db pg_dump -U vminv vminventory <span class="k">&gt;</span> yedek_$(date +%F).sql</code></pre>
+<h3>Güncelleme</h3>
+<pre data-label="terminal"><code><span class="c"># yeni sürüm dosyalarını proje dizinine açtıktan sonra:</span>
+<span class="k">docker compose up -d --build</span>
+<span class="c"># tarayıcıda Ctrl+F5 (eski CSS/JS önbelleğini atmak için)</span></code></pre>
+<p>Veriler volume'lerde korunur, tablolar gerekirse otomatik genişletilir.</p>
+</section>
+
+<section id="sorun">
+<h2>Sorun Giderme</h2>
+<table>
+<tr><th style="width:280px">Belirti</th><th>Çözüm</th></tr>
+<tr><td><code>Name or service not known</code></td><td>API adresini <code>https://</code> ve port <strong>olmadan</strong> yazın. Hostname konteynerden çözülemiyorsa IP kullanın veya compose'a <code>extra_hosts</code> ekleyin</td></tr>
+<tr><td><code>CERTIFICATE_VERIFY_FAILED</code></td><td>Self-signed sertifika: platformda "SSL doğrula" anahtarını kapatın</td></tr>
+<tr><td>Proxmox'tan sadece host adları geliyor, VM'ler boş</td><td>Token <code>--privsep 0</code> ile üretilmemiş. Çözüm: <code>pveum acl modify / --tokens 'kullanici@realm!tokenadi' --roles PVEAuditor</code></td></tr>
+<tr><td><code>pveum user token list</code> çalışmıyor</td><td>Komuta yalnızca kullanıcıyı verin: <code>pveum user token list kullanici@realm</code> — <code>!tokenadi</code> kısmı yazılmaz</td></tr>
+<tr><td>VM IP'leri boş</td><td>Misafirde QEMU Guest Agent / VMware Tools kurulu ve çalışır olmalı. <code>ip:yok</code> aramasıyla eksikleri listeleyin. Cloud-init statik IP'leri agent'sız da okunur</td></tr>
+<tr><td>OS "Linux (2.6+ çekirdek)" görünüyor</td><td>O VM'de agent yok — Proxmox API'si yalnızca kaba OS tipini bilir. Agent kurulunca tam ad gelir</td></tr>
+<tr><td>VLAN kolonu boş (Proxmox)</td><td>Güncel sürüm VLAN'ı üç katmandan çözer: NIC <code>tag=</code>, köprünün VLAN arayüzü (vmbr1 → bond0.205), SDN vnet. Senkronize edin; hâlâ boşsa VLAN switch tarafında untagged taşınıyordur (API'de mevcut değildir)</td></tr>
+<tr><td>Cluster grafiğinde "—" görünüyor</td><td>Cluster'a bağlı olmayan (standalone host) VM'lerdir. Yönet modalındaki <strong>(Cluster'sız)</strong> anahtarıyla gizlenebilir; <code>cluster:yok</code> ile listelenir</td></tr>
+<tr><td>Kullanım çubukları boş</td><td>Veri açılıştan ~30 sn sonra dolar ve her <code>USAGE_SYNC_INTERVAL_MINUTES</code> aralığında tazelenir. Kapalı VM'lerde çubuk çizilmez</td></tr>
+<tr><td>Güncelleme sonrası arayüz eski</td><td>Statik dosyalar otomatik sürümlenir; sorun sürerse bir kez Ctrl+F5</td></tr>
+<tr><td>Platform kartında "Hata"</td><td><strong>Loglar</strong> butonu API hatasının tam mesajını gösterir</td></tr>
+<tr><td><code>ENCRYPTION_KEY</code> hatası</td><td><code>.env</code>'de geçerli bir Fernet anahtarı olmalı (üretme komutu Adım 1.3'te)</td></tr>
+<tr><td>Host'ta cryptography ImportError</td><td>Sistem Python paketi bozuk; anahtar üretiminde <code>base64+os.urandom</code> komutunu kullanın veya venv açın. Konteyner bundan etkilenmez</td></tr>
+</table>
+</section>
+
+<section id="yapi">
+<h2>Proje Yapısı</h2>
+<pre data-label="dizin"><code>vm-inventory/
+├── app/
+│   ├── main.py              <span class="c"># FastAPI uygulaması, sayfa rotaları, başlangıç</span>
+│   ├── config.py            <span class="c"># Ortam değişkenleri (pydantic-settings)</span>
+│   ├── database.py          <span class="c"># SQLAlchemy engine/session</span>
+│   ├── models/              <span class="c"># ORM: User, Platform, Host, VM, Network, Tag, ChangeHistory…</span>
+│   ├── core/                <span class="c"># security (Fernet/bcrypt/CSRF), search (sorgu motoru), scheduler</span>
+│   ├── collectors/          <span class="c"># vmware_collector (pyVmomi), proxmox_collector (proxmoxer)</span>
+│   ├── services/            <span class="c"># sync (fark analizi), report (xlsx/csv/pdf), ldap</span>
+│   ├── api/                 <span class="c"># REST endpoint'leri</span>
+│   ├── templates/           <span class="c"># Jinja2 HTML şablonları (Türkçe)</span>
+│   └── static/              <span class="c"># custom.css + sayfa başına JS</span>
+├── Dockerfile
+├── docker-compose.yml       <span class="c"># app + PostgreSQL 16</span>
+├── requirements.txt
+├── .env.example
+└── docs/dokumantasyon.html  <span class="c"># bu doküman</span></code></pre>
+</section>
+
+<section id="sss">
+<h2>SSS</h2>
+<p><strong>Canlı ortama yük bindirir mi?</strong> Hayır. 15 dakikada bir, toplu-okuma API çağrıları yapılır.
+Kullanıcı trafiği platformlara hiç ulaşmaz.</p>
+<p><strong>Veriler ne kadar güncel?</strong> En fazla <code>SYNC_INTERVAL_MINUTES</code> kadar geride
+(varsayılan 15 dk). "Tümünü Yenile" ile anında tazelenir.</p>
+<p><strong>Kaç platform eklenebilir?</strong> Sınır yok; hepsi aynı envanterde birleşir.</p>
+<p><strong>VM'lere müdahale edebilir mi (başlat/durdur)?</strong> Hayır — bilinçli tasarım kararı.
+Sistem salt-okunur çalışır; bu sayede platform hesapları da salt-okunur olabilir.</p>
+<p><strong>SQLite mi PostgreSQL mi?</strong> Tek kullanıcılı küçük kurulumda SQLite yeterli;
+ekip kullanımı ve 500+ VM için PostgreSQL önerilir (Docker Compose varsayılanı).</p>
+</section>
+
+<footer>
+VM Envanter Yönetim Sistemi — Kurulum ve Kullanım Dokümantasyonu ·
+Bu dokümanın Markdown sürümü proje kökündeki <code>README.md</code> dosyasıdır.
+</footer>
+
+</main>
+</div>
+</body>
+</html>

@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex mb-3">
+  <p class="text-muted small mb-0">vCenter ve Proxmox bağlantılarınızı buradan yönetin.
+    Veriler arka planda otomatik senkronize edilir; aramalar lokal veritabanından yanıtlanır.</p>
+  {% if user.role == 'admin' %}
+  <button class="btn btn-primary btn-sm ms-auto" onclick="Platforms.openModal()">
+    <i class="bi bi-plus-lg"></i> Platform Ekle</button>
+  {% endif %}
+</div>
+<div class="row g-3" id="platformCards"><div class="text-muted">Yükleniyor…</div></div>
+
+<!-- Platform ekleme/düzenleme modalı -->
+<div class="modal fade" id="platformModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="pmTitle">Platform Ekle</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="pmId">
+        <div class="row g-3">
+          <div class="col-md-6"><label class="form-label">Görünen ad *</label>
+            <input id="pmName" class="form-control" placeholder="örn: Ankara vCenter"></div>
+          <div class="col-md-6"><label class="form-label">Tip *</label>
+            <select id="pmType" class="form-select" onchange="Platforms.onTypeChange()">
+              <option value="vcenter">VMware vCenter</option>
+              <option value="proxmox">Proxmox VE</option>
+            </select></div>
+          <div class="col-md-8"><label class="form-label">API adresi (FQDN / IP) *</label>
+            <input id="pmHost" class="form-control" placeholder="vcenter01.sirket.local"></div>
+          <div class="col-md-4"><label class="form-label">Port</label>
+            <input id="pmPort" type="number" class="form-control" value="443"></div>
+          <div class="col-md-6" id="pmAuthMethodWrap" style="display:none">
+            <label class="form-label">Kimlik doğrulama</label>
+            <select id="pmAuthMethod" class="form-select" onchange="Platforms.onAuthChange()">
+              <option value="token">API Token (önerilen)</option>
+              <option value="password">Kullanıcı / Parola</option>
+            </select></div>
+          <div class="col-md-6 pm-pass"><label class="form-label">Kullanıcı adı</label>
+            <input id="pmUser" class="form-control" placeholder="administrator@vsphere.local"></div>
+          <div class="col-md-6 pm-pass"><label class="form-label">Parola</label>
+            <input id="pmPass" type="password" class="form-control" placeholder="(düzenlemede boş bırakılırsa değişmez)"></div>
+          <div class="col-md-6 pm-token" style="display:none"><label class="form-label">Token adı</label>
+            <input id="pmTokenName" class="form-control" placeholder="api@pam!envanter"></div>
+          <div class="col-md-6 pm-token" style="display:none"><label class="form-label">Token değeri</label>
+            <input id="pmTokenValue" type="password" class="form-control"></div>
+          <div class="col-md-4"><label class="form-label">Lokasyon</label>
+            <input id="pmLocation" class="form-control" placeholder="Ankara DC"></div>
+          <div class="col-md-4"><label class="form-label">Ortam</label>
+            <select id="pmEnv" class="form-select">
+              <option value="production">Production</option>
+              <option value="test">Test</option>
+              <option value="development">Development</option>
+            </select></div>
+          <div class="col-md-4 d-flex align-items-end">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="pmSsl" checked>
+              <label class="form-check-label" for="pmSsl">SSL sertifika doğrula</label>
+            </div></div>
+        </div>
+        <div id="pmTestResult" class="mt-3"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-info" onclick="Platforms.test()"><i class="bi bi-plug"></i> Bağlantıyı Test Et</button>
+        <button class="btn btn-primary" onclick="Platforms.save()"><i class="bi bi-check-lg"></i> Kaydet</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Senkronizasyon logları modalı -->
+<div class="modal fade" id="logsModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">Senkronizasyon Logları</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body p-0">
+        <table class="table table-sm mb-0">
+          <thead><tr><th>Başlangıç</th><th>Bitiş</th><th>Durum</th><th>Host</th><th>VM</th><th>Mesaj</th></tr></thead>
+          <tbody id="logsBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/js/platforms.js?v={{ asset_version }}"></script>{% endblock %}

@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block content %}
+<!-- Özet kartları: üst sıra envanter, alt sıra kaynak toplamları -->
+<div class="row g-3 mb-3" id="statCards">
+  <div class="col-6 col-md-4 col-xl-2"><a class="stat-card" href="/platforms"><div class="stat-icon bg-vc"><i class="bi bi-cloud"></i></div><div><div class="stat-value" id="st-vcenter">—</div><div class="stat-label">vCenter</div></div></a></div>
+  <div class="col-6 col-md-4 col-xl-2"><a class="stat-card" href="/platforms"><div class="stat-icon bg-px"><i class="bi bi-box"></i></div><div><div class="stat-value" id="st-proxmox">—</div><div class="stat-label">Proxmox</div></div></a></div>
+  <div class="col-6 col-md-4 col-xl-2"><a class="stat-card" href="/hosts"><div class="stat-icon bg-host"><i class="bi bi-server"></i></div><div><div class="stat-value" id="st-host">—</div><div class="stat-label">Host</div></div></a></div>
+  <div class="col-6 col-md-4 col-xl-2"><a class="stat-card" href="/vms"><div class="stat-icon bg-vm"><i class="bi bi-pc-display"></i></div><div><div class="stat-value" id="st-vm">—</div><div class="stat-label">Toplam VM</div></div></a></div>
+  <div class="col-6 col-md-4 col-xl-2"><a class="stat-card" href="/vms?q=status:running"><div class="stat-icon bg-run"><i class="bi bi-play-circle"></i></div><div><div class="stat-value" id="st-running">—</div><div class="stat-label">Çalışan VM</div></div></a></div>
+  <div class="col-6 col-md-4 col-xl-2"><a class="stat-card" href="/vms?q=status:stopped"><div class="stat-icon bg-stop"><i class="bi bi-stop-circle"></i></div><div><div class="stat-value" id="st-stopped">—</div><div class="stat-label">Kapalı VM</div></div></a></div>
+</div>
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3"><div class="mini-stat"><i class="bi bi-cpu"></i><div><span id="st-vcpu">—</span><small>Toplam vCPU</small></div></div></div>
+  <div class="col-6 col-md-3"><div class="mini-stat"><i class="bi bi-memory"></i><div><span id="st-ram">—</span><small>Tahsisli RAM</small></div></div></div>
+  <div class="col-6 col-md-3"><div class="mini-stat"><i class="bi bi-device-hdd"></i><div><span id="st-disk">—</span><small>Tahsisli Disk</small></div></div></div>
+  <div class="col-6 col-md-3"><div class="mini-stat"><i class="bi bi-pause-circle"></i><div><span id="st-suspended">—</span><small>Askıdaki VM</small></div></div></div>
+</div>
+
+<div class="row g-3">
+  <!-- Dikkat gerektirenler: tıklanınca filtreli VM listesi -->
+  <div class="col-lg-4">
+    <div class="card panel h-100"><div class="card-header"><i class="bi bi-exclamation-triangle text-warning"></i> Dikkat Gerektirenler</div>
+      <div class="list-group list-group-flush" id="attentionList">
+        <a href="/vms?q=ip:yok" class="list-group-item attention-item"><i class="bi bi-wifi-off"></i> IP adresi alınamayan VM <span class="badge" id="at-noip">—</span></a>
+        <a href="/vms?q=tools:yok" class="list-group-item attention-item"><i class="bi bi-plug"></i> Agent / Tools kurulu olmayan <span class="badge" id="at-notools">—</span></a>
+        <a href="/vms?q=owner:yok" class="list-group-item attention-item"><i class="bi bi-person-x"></i> Sahibi atanmamış VM <span class="badge" id="at-noowner">—</span></a>
+      </div>
+    </div>
+  </div>
+  <!-- Ortam dağılımı -->
+  <div class="col-lg-4">
+    <div class="card panel h-100"><div class="card-header">Ortam Dağılımı</div>
+      <div class="card-body d-flex justify-content-center"><canvas id="chartEnv" height="200"></canvas></div></div>
+  </div>
+  <!-- OS ailesi -->
+  <div class="col-lg-4">
+    <div class="card panel h-100"><div class="card-header">İşletim Sistemi Ailesi</div>
+      <div class="card-body d-flex justify-content-center"><canvas id="chartOs" height="200"></canvas></div></div>
+  </div>
+
+  <!-- Cluster bazında VM sayısı -->
+  <div class="col-lg-6">
+    <div class="card panel"><div class="card-header d-flex align-items-center">Cluster Bazında VM Dağılımı
+        <span id="hiddenInfo" class="badge text-bg-secondary ms-2 d-none"></span>
+        <button class="btn btn-sm btn-outline-secondary ms-auto" id="btnClusters"
+                onclick="Clusters.open()"
+                title="Cluster görünürlüğünü yönet"><i class="bi bi-eye"></i> Yönet</button></div>
+      <div class="card-body"><canvas id="chartCluster" height="220"></canvas></div></div>
+  </div>
+  <!-- En çok kullanılan OS'ler (detaylı) -->
+  <div class="col-lg-6">
+    <div class="card panel"><div class="card-header">En Çok Kullanılan İşletim Sistemleri</div>
+      <div class="card-body"><canvas id="chartTopOs" height="220"></canvas></div></div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card panel"><div class="card-header d-flex align-items-center">Host CPU Kullanımı (%)
+      <small id="usageFresh" class="text-muted ms-auto fw-normal"></small></div>
+      <div class="card-body"><canvas id="chartCpu" height="220"></canvas></div></div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card panel"><div class="card-header">Host RAM Kullanımı (%)</div>
+      <div class="card-body"><canvas id="chartRam" height="220"></canvas></div></div>
+  </div>
+
+  <div class="col-12">
+    <div class="card panel"><div class="card-header">Depolama Kullanımı</div>
+      <div class="card-body"><canvas id="chartStorage" height="200"></canvas></div></div>
+  </div>
+
+  <!-- Son değişiklikler -->
+  <div class="col-lg-7">
+    <div class="card panel"><div class="card-header d-flex align-items-center">Son Envanter Değişiklikleri
+        <a href="/history" class="ms-auto small">Tümü <i class="bi bi-arrow-right"></i></a></div>
+      <div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">
+        <thead><tr><th>Tarih</th><th>Nesne</th><th>Değişiklik</th><th>Alan</th></tr></thead>
+        <tbody id="recentChanges"><tr><td colspan="4" class="text-muted p-3">Yükleniyor…</td></tr></tbody>
+      </table></div></div>
+  </div>
+  <!-- Platform durumları -->
+  <div class="col-lg-5">
+    <div class="card panel"><div class="card-header">Platform Bağlantı Durumu</div>
+      <div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">
+        <thead><tr><th>Platform</th><th>Tip</th><th>Son Senkronizasyon</th><th>Durum</th></tr></thead>
+        <tbody id="platformStatus"><tr><td colspan="4" class="text-muted p-3">Yükleniyor…</td></tr></tbody>
+      </table></div></div>
+  </div>
+</div>
+
+<!-- Cluster görünürlük yönetimi modalı -->
+<div class="modal fade" id="clusterModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title"><i class="bi bi-eye"></i> Cluster Görünürlüğü</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <p class="text-muted small mb-3">Kapattığınız cluster'lar dashboard sayılarına ve grafiklerine
+        dahil edilmez, VM listesinde varsayılan olarak görünmez. Veri silinmez — anahtarı açınca
+        her şey geri gelir.</p>
+        <ul class="list-group" id="clusterList">
+          <li class="list-group-item text-muted">Yükleniyor…</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/js/dashboard.js?v={{ asset_version }}"></script>{% endblock %}

@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block content %}
+<!-- Google benzeri hızlı arama -->
+<div class="search-hero mb-3">
+  <div class="search-box">
+    <i class="bi bi-search"></i>
+    <input type="text" id="vmSearch" class="form-control form-control-lg"
+           placeholder='Ara…  örn: ip:10.10.10.15  os:linux  ram:>=16  -cluster:test  status:running'>
+    <button class="btn btn-link p-0 me-1" id="searchHelp" title="Arama söz dizimi"><i class="bi bi-question-circle"></i></button>
+    <button class="btn btn-link p-0" id="searchClear" title="Temizle"><i class="bi bi-x-lg"></i></button>
+  </div>
+  <div class="search-chips mt-2">
+    <span class="text-muted small me-1">Hızlı filtreler:</span>
+    <button class="chip" data-q="status:running">Çalışan</button>
+    <button class="chip" data-q="status:stopped">Kapalı</button>
+    <button class="chip" data-q="os:windows">Windows</button>
+    <button class="chip" data-q="os:linux">Linux</button>
+    <button class="chip" data-q="ip:yok">IP'siz</button>
+    <button class="chip" data-q="tools:yok">Agent'sız</button>
+    <button class="chip chip-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#advFilters">
+      <i class="bi bi-sliders"></i> Gelişmiş <span id="advCount" class="badge text-bg-primary d-none"></span>
+    </button>
+    <span class="ms-3 text-muted small me-1">Grupla:</span>
+    <select id="groupBy" class="form-select form-select-sm d-inline-block w-auto">
+      <option value="">— Gruplama yok —</option>
+      <option value="cluster">Cluster'a göre</option>
+      <option value="os">İşletim sistemine göre</option>
+      <option value="vlan">VLAN'a göre</option>
+      <option value="environment">Ortama göre</option>
+      <option value="location">Lokasyona göre</option>
+      <option value="tag">Etikete göre</option>
+    </select>
+    <div class="ms-auto d-inline-flex gap-1">
+      <button class="btn btn-sm btn-outline-success" onclick="VMs.exportNow('xlsx')"><i class="bi bi-file-earmark-excel"></i> Excel</button>
+      <button class="btn btn-sm btn-outline-secondary" onclick="VMs.exportNow('csv')">CSV</button>
+      <button class="btn btn-sm btn-outline-danger" onclick="VMs.exportNow('pdf')">PDF</button>
+    </div>
+  </div>
+
+  <!-- Aktif filtre rozetleri: X ile tek tek kaldırılabilir -->
+  <div id="activeFilters" class="active-filters mt-2 d-none"></div>
+
+  <!-- Gelişmiş filtre paneli: seçimler arama kutusuna söz dizimi olarak yansır -->
+  <div class="collapse mt-3" id="advFilters">
+    <div class="adv-panel">
+      <div class="row g-2">
+        <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1">Platform</label>
+          <select class="form-select form-select-sm adv-sel" data-field="platform"></select></div>
+        <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1">Cluster</label>
+          <select class="form-select form-select-sm adv-sel" data-field="cluster"></select></div>
+        <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1">Host / Node</label>
+          <select class="form-select form-select-sm adv-sel" data-field="host"></select></div>
+        <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1">Durum</label>
+          <select class="form-select form-select-sm adv-sel" data-field="status"></select></div>
+        <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1">Ortam</label>
+          <select class="form-select form-select-sm adv-sel" data-field="env"></select></div>
+        <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1">VLAN</label>
+          <select class="form-select form-select-sm adv-sel" data-field="vlan"></select></div>
+        <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1">İşletim Sistemi</label>
+          <select class="form-select form-select-sm adv-sel" data-field="os"></select></div>
+        <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1">Etiket</label>
+          <select class="form-select form-select-sm adv-sel" data-field="tag"></select></div>
+        <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1">Tools / Agent</label>
+          <select class="form-select form-select-sm adv-sel" data-field="tools">
+            <option value="">— Tümü —</option>
+            <option value="running">Çalışıyor</option>
+            <option value="yok">Kurulu değil</option>
+          </select></div>
+        <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1">Min CPU</label>
+          <input type="number" min="1" class="form-control form-control-sm adv-num" data-field="cpu" placeholder="örn: 4"></div>
+        <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1">Min RAM (GB)</label>
+          <input type="number" min="1" class="form-control form-control-sm adv-num" data-field="ram" placeholder="örn: 16"></div>
+        <div class="col-6 col-md-4 col-xl-2 d-flex align-items-end">
+          <div class="form-check form-switch mb-1">
+            <input class="form-check-input" type="checkbox" role="switch" id="incHidden">
+            <label class="form-check-label small" for="incHidden">Gizli cluster'ları dahil et</label>
+          </div></div>
+        <div class="col-6 col-md-4 col-xl-2 d-flex align-items-end">
+          <button class="btn btn-sm btn-outline-secondary w-100" onclick="VMs.clearAdvanced()">
+            <i class="bi bi-x-circle"></i> Filtreleri Temizle</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Arama söz dizimi yardım modalı -->
+<div class="modal fade" id="helpModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title"><i class="bi bi-question-circle"></i> Arama Söz Dizimi</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <table class="table table-sm">
+          <thead><tr><th style="width:40%">Örnek</th><th>Açıklama</th></tr></thead>
+          <tbody>
+            <tr><td><code>web01</code></td><td>Serbest metin: ad, IP, MAC, OS, cluster, sahip ve notlarda arar</td></tr>
+            <tr><td><code>ip:10.10.10.15</code></td><td>IP adresine göre (kısmi eşleşir: <code>ip:10.10.</code>)</td></tr>
+            <tr><td><code>os:linux</code></td><td>OS ailesi: Ubuntu, CentOS, RHEL, Debian… hepsini bulur</td></tr>
+            <tr><td><code>os:windows,linux</code></td><td>Virgül = VEYA: Windows <em>veya</em> Linux</td></tr>
+            <tr><td><code>-os:windows</code></td><td>Dışlama: Windows <em>olmayanlar</em></td></tr>
+            <tr><td><code>ram:&gt;=16</code> &nbsp; <code>cpu:&gt;4</code> &nbsp; <code>disk:&lt;100</code></td><td>Sayısal karşılaştırma (RAM ve disk GB cinsinden)</td></tr>
+            <tr><td><code>status:running</code></td><td>Güç durumu: running / stopped / suspended (TR: çalışan, kapalı)</td></tr>
+            <tr><td><code>ip:yok</code> &nbsp; <code>tag:yok</code> &nbsp; <code>owner:yok</code></td><td>Boş alan araması — IP'si alınamayanlar, etiketsizler…</td></tr>
+            <tr><td><code>tools:yok</code></td><td>VMware Tools / QEMU Agent kurulu olmayanlar</td></tr>
+            <tr><td><code>host:esxi01</code> &nbsp; <code>cluster:prod</code> &nbsp; <code>vlan:100</code></td><td>Altyapı konumuna göre</td></tr>
+            <tr><td><code>platform:"Ankara vCenter"</code></td><td>Platform adına göre (boşluk varsa tırnakla)</td></tr>
+            <tr><td><code>type:proxmox</code> &nbsp; <code>location:ankara</code></td><td>Platform tipi / lokasyonuna göre</td></tr>
+            <tr><td><code>tag:kritik</code> &nbsp; <code>env:production</code> &nbsp; <code>datastore:ssd</code></td><td>Etiket, ortam, datastore</td></tr>
+          </tbody>
+        </table>
+        <div class="alert alert-light border small mb-0">
+          Kriterler boşlukla birleştirilir (VE mantığı):<br>
+          <code>cluster:production os:linux status:running ram:&gt;=16 -tag:test</code>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="groupResults" class="row g-2 mb-3 d-none"></div>
+
+<div class="card panel">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0" id="vmTable">
+      <thead>
+        <tr>
+          <th data-sort="name" class="sortable">VM Adı</th>
+          <th>IP Adresleri</th>
+          <th data-sort="guest_os" class="sortable">İşletim Sistemi</th>
+          <th data-sort="cpu_count" class="sortable">CPU</th>
+          <th data-sort="ram_mb" class="sortable">RAM</th>
+          <th>Disk</th>
+          <th>Host</th>
+          <th data-sort="cluster" class="sortable">Cluster</th>
+          <th>VLAN</th>
+          <th data-sort="power_state" class="sortable">Durum</th>
+        </tr>
+      </thead>
+      <tbody id="vmBody"><tr><td colspan="10" class="text-center text-muted p-4">Yükleniyor…</td></tr></tbody>
+    </table>
+  </div>
+  <div class="card-footer d-flex align-items-center">
+    <span class="small text-muted" id="vmCount"></span>
+    <nav class="ms-auto"><ul class="pagination pagination-sm mb-0" id="vmPager"></ul></nav>
+  </div>
+</div>
+
+<!-- VM detay paneli -->
+<div class="offcanvas offcanvas-end offcanvas-wide" tabindex="-1" id="vmDetail">
+  <div class="offcanvas-header border-bottom">
+    <h5 class="offcanvas-title" id="vmDetailTitle">VM Detayı</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+  </div>
+  <div class="offcanvas-body" id="vmDetailBody"></div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/js/vms.js?v={{ asset_version }}"></script>{% endblock %}

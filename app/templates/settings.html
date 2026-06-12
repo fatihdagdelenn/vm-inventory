@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block content %}
+<ul class="nav nav-tabs mb-3">
+  <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tabUsers">Kullanıcılar</a></li>
+  <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabAudit">Audit Log</a></li>
+</ul>
+<div class="tab-content">
+  <div class="tab-pane fade show active" id="tabUsers">
+    <div class="card panel">
+      <div class="card-header d-flex">Kullanıcılar
+        <button class="btn btn-sm btn-primary ms-auto" onclick="Settings.openUserModal()">
+          <i class="bi bi-person-plus"></i> Kullanıcı Ekle</button>
+      </div>
+      <div class="table-responsive">
+        <table class="table align-middle mb-0">
+          <thead><tr><th>Kullanıcı</th><th>Ad Soyad</th><th>E-posta</th><th>Rol</th><th>Kaynak</th><th>Son Giriş</th><th>Durum</th><th></th></tr></thead>
+          <tbody id="userBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="tab-pane fade" id="tabAudit">
+    <div class="card panel">
+      <div class="card-header">Denetim Kayıtları (son 200)</div>
+      <div class="table-responsive">
+        <table class="table table-sm mb-0">
+          <thead><tr><th>Zaman</th><th>Kullanıcı</th><th>İşlem</th><th>Detay</th><th>IP</th></tr></thead>
+          <tbody id="auditBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="userModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title" id="umTitle">Kullanıcı Ekle</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <input type="hidden" id="umId">
+        <div class="mb-2"><label class="form-label">Kullanıcı adı *</label><input id="umUsername" class="form-control"></div>
+        <div class="mb-2"><label class="form-label">Ad Soyad</label><input id="umFullName" class="form-control"></div>
+        <div class="mb-2"><label class="form-label">E-posta</label><input id="umEmail" class="form-control"></div>
+        <div class="mb-2"><label class="form-label">Rol *</label>
+          <select id="umRole" class="form-select">
+            <option value="viewer">Görüntüleyici — sadece okuma</option>
+            <option value="operator">Operatör — not/etiket/senkronizasyon</option>
+            <option value="admin">Admin — tam yetki</option>
+          </select></div>
+        <div class="mb-2"><label class="form-label">Parola</label>
+          <input id="umPassword" type="password" class="form-control" placeholder="(düzenlemede boş = değişmez)"></div>
+      </div>
+      <div class="modal-footer"><button class="btn btn-primary" onclick="Settings.saveUser()">Kaydet</button></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/js/settings.js?v={{ asset_version }}"></script>{% endblock %}
