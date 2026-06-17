@@ -35,3 +35,6 @@ ldap3==2.9.1
 pydantic==2.10.4
 pydantic-settings==2.7.1
 python-dotenv==1.0.1
+
+# Zaman dilimi verisi (python:slim imajında zoneinfo için gerekli)
+tzdata==2025.1

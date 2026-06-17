@@ -56,8 +56,8 @@ Bu soruların hepsi tek arama kutusundan, saniyeden kısa sürede yanıtlanır. 
 | 👁️ **Cluster göster/gizle** | Eski/test cluster'ları — standalone host'lardaki "(Cluster'sız)" VM'ler dahil — dashboard sayılarından tek anahtarla çıkarın; veri silinmez |
 | ⚡ **Anlık kullanım oranları** | VM ve host CPU/RAM kullanımı + gerçek disk doluluğu (thin-provision farkındalıklı); hafif görevle ~3 dk'da bir ve her açılışta tazelenir |
 | 👥 **Rol bazlı yetki** | Admin / Operatör / Görüntüleyici + opsiyonel LDAP/AD girişi |
-| 🏷️ **Manuel zenginleştirme** | VM'lere not, sahip, ortam ve etiket atama |
-| 🔐 **Güvenlik** | Fernet ile şifreli kimlik bilgisi saklama, bcrypt, CSRF koruması, oturum zaman aşımı, audit log |
+| 🏷️ **Manuel zenginleştirme** | VM'lere not, sahip, ortam ve etiket atama; ayrıca platformdan gelen açıklama (vCenter annotation / Proxmox description) "Platform Notu" olarak gösterilir |
+| 🔐 **Güvenlik** | Fernet ile şifreli kimlik bilgisi saklama, bcrypt, CSRF koruması, kayan oturum (son hareketten itibaren zaman aşımı), audit log |
 | 🇹🇷 **Türkçe** | Arayüz ve kod yorumları tamamen Türkçe |
 
 ## 🏗 Mimari: Nasıl Çalışır?
@@ -128,6 +128,7 @@ ENCRYPTION_KEY=ürettiğiniz-fernet-anahtarı
 SYNC_INTERVAL_MINUTES=15
 USAGE_SYNC_INTERVAL_MINUTES=3
 SESSION_TIMEOUT_MINUTES=480
+APP_TIMEZONE=Europe/Istanbul
 ```
 
 > ⚠️ **ENCRYPTION_KEY'i yedekleyin!** Bu anahtar kaybedilirse kayıtlı platform parolaları/token'ları çözülemez ve yeniden girilmesi gerekir.
@@ -246,7 +247,7 @@ Dashboard'daki **"Dikkat Gerektirenler"** kartından *"Agent/Tools kurulu olmaya
 | **Dashboard** | Genel durum: sayılar, kaynak toplamları, grafikler (dilime tıklayınca filtreli liste açılır), son değişiklikler, platform sağlığı. Cluster grafiğindeki **Yönet** butonu görünürlük ayarlarını açar |
 | **Sanal Makineler** | Arama + gelişmiş filtre + gruplama. CPU/RAM/disk kolonlarında anlık kullanım çubukları (sarı %75+, kırmızı %90+). Satıra tıklayınca detay paneli; not/sahip/etiket buradan düzenlenir. Host/cluster/VLAN hücreleri tıklanabilir filtre |
 | **Host'lar** | ESXi/PVE node'ları: CPU modeli, RAM kullanım çubuğu, VM sayısı |
-| **Ağlar** | Port group / bridge / SDN vnet envanteri, VLAN ve subnet bilgileri |
+| **Ağlar** | Port group / bridge / SDN vnet ve host fiziksel kartları (NIC). Açılır-kapanır gruplama: Host'a göre, Cluster'a göre, VLAN'a göre veya Fiziksel Kartlar; ad/VLAN/vSwitch/subnet/MAC araması |
 | **Raporlar** | Anlık Excel/CSV/PDF (filtre destekler) + her gün belirli saatte çalışan zamanlanmış raporlar (`data/reports/` klasörüne yazılır) |
 | **Geçmiş** | Envanter değişiklikleri: eklenen/silinen VM'ler, alan bazında eski→yeni değerler |
 | **Platformlar** | Bağlantı yönetimi, manuel senkronizasyon, API hata logları |
@@ -256,7 +257,7 @@ Dashboard'daki **"Dikkat Gerektirenler"** kartından *"Agent/Tools kurulu olmaya
 
 | Sözdizimi | Örnek | Açıklama |
 |---|---|---|
-| serbest metin | `web01` | Ad, IP, MAC, OS, cluster, sahip, notlarda arar |
+| serbest metin | `web01` | Ad, IP, MAC, OS, cluster, sahip, notlar ve platform notunda arar |
 | `ip:` | `ip:10.10.10.` | IP'ye göre (kısmi eşleşir) |
 | `mac:` | `mac:00:50:56` | MAC'e göre |
 | `os:` | `os:linux` | OS ailesi — Ubuntu/CentOS/RHEL/Debian… hepsini bulur |
@@ -264,6 +265,7 @@ Dashboard'daki **"Dikkat Gerektirenler"** kartından *"Agent/Tools kurulu olmaya
 | `cluster:` / `datastore:` | `cluster:"Ankara Prod"` | Boşluklu değerler tırnaklanır |
 | `status:` | `status:running` | running / stopped / suspended (TR: `çalışan`, `kapalı`) |
 | `tag:` / `env:` / `owner:` | `tag:kritik` | Manuel alanlara göre |
+| `aciklama:` / `desc:` | `aciklama:bakım` | Platform notu (vCenter annotation / Proxmox description) |
 | `platform:` / `type:` / `location:` | `type:proxmox` | Platforma göre |
 | `tools:` | `tools:yok` | Agent/Tools kurulu olmayanlar |
 | **Sayısal** | `ram:>=16` `cpu:>4` `disk:<100` | Karşılaştırma (RAM/disk GB) |

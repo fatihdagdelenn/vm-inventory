@@ -347,3 +347,42 @@ th.sorted-desc::after { content: " ▼"; color: var(--accent); font-size: .65rem
 }
 .usage-mini.warn > div { background: linear-gradient(90deg, #e8a13c, #f3bd6c); }
 .usage-mini.crit > div { background: linear-gradient(90deg, #e5534b, #f08079); }
+
+/* ---------- Ağlar: gruplama araç çubuğu + akordeon ---------- */
+.net-toolbar {
+  display: flex; align-items: center; gap: .9rem; flex-wrap: wrap;
+}
+.net-toolbar .search-box { flex: 1 1 280px; max-width: 460px; }
+.net-modes .btn {
+  border: 1px solid var(--border); background: var(--panel);
+  color: var(--text-muted); font-weight: 600; font-size: .82rem;
+}
+.net-modes .btn:hover { color: var(--text); }
+.net-modes .btn.active {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+}
+.net-actions { margin-left: auto; display: flex; gap: .3rem; }
+.net-actions .btn-link { color: var(--text-muted); text-decoration: none; font-size: .8rem; }
+.net-actions .btn-link:hover { color: var(--accent); }
+
+.net-group { padding: 0; margin-bottom: .8rem; overflow: hidden; }
+.net-group > summary {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .8rem; cursor: pointer; list-style: none;
+  padding: .85rem 1.1rem; font-weight: 600; color: var(--ink);
+  background: linear-gradient(90deg, var(--accent-soft), transparent);
+  transition: background .15s;
+}
+.net-group > summary:hover { background: var(--accent-soft); }
+.net-group > summary::-webkit-details-marker { display: none; }
+.net-group-title { display: flex; align-items: center; gap: .55rem; }
+.net-group-title i { color: var(--accent); }
+.net-group-count {
+  min-width: 1.7rem; text-align: center; padding: .1rem .5rem;
+  border-radius: 999px; background: var(--accent); color: #fff;
+  font-size: .76rem; font-weight: 700;
+}
+.net-group[open] > summary { border-bottom: 1px solid var(--border); }
+.net-group .table { font-size: .88rem; }
+.net-kind { font-size: .66rem; vertical-align: middle; font-weight: 600; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }

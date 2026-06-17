@@ -18,7 +18,8 @@ from fastapi.templating import Jinja2Templates
 from .config import get_settings
 from .database import Base, engine, SessionLocal
 from .models import User
-from .core.security import get_current_user, hash_password
+from .core.security import (get_current_user, hash_password,
+                            refresh_session_token, set_session_cookie)
 from .core.scheduler import start_scheduler, stop_scheduler
 from .api import (auth, dashboard, vms, hosts, networks, platforms,
                   reports, admin, clusters)
@@ -34,6 +35,8 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 # sonra tarayıcı asla eski CSS/JS kullanmaz (Ctrl+F5 gerekmez).
 import time as _time
 templates.env.globals["asset_version"] = int(_time.time())
+# Arayüzde tarih/saatleri çevirmek için kullanılan zaman dilimi (window.APP_TZ).
+templates.env.globals["app_tz"] = settings.app_timezone
 
 
 def _create_default_admin():
@@ -65,6 +68,24 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan,
               docs_url="/api/docs" if settings.debug else None)
+
+
+@app.middleware("http")
+async def _slide_session(request: Request, call_next):
+    """
+    Kayan oturum: kimliği doğrulanmış her istekten sonra oturum çerezini taze
+    zaman damgasıyla yeniden yazar; böylece zaman aşımı son hareketten itibaren
+    sayılır (aktif kullanıcı ortada atılmaz). get_current_user başarılıysa
+    request.state.session_refresh=True olur. Logout bu yoldan geçmediği için
+    çerez yenilenmez ve çıkış düzgün çalışır.
+    """
+    response = await call_next(request)
+    if getattr(request.state, "session_refresh", False):
+        token = request.cookies.get("session")
+        fresh = refresh_session_token(token) if token else None
+        if fresh:
+            set_session_cookie(response, fresh)
+    return response
 
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")),
           name="static")

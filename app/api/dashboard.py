@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import Platform, Host, VirtualMachine, Datastore, User
+from ..core.timezone import to_iso
 from ..core.security import get_current_user
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -64,10 +65,10 @@ def summary(db: Session = Depends(get_db), user: User = Depends(get_current_user
     # Kullanım verisinin en son ne zaman tazelendiği (arayüzde gösterilir)
     usage_times = [p.last_usage_sync for p in db.query(Platform).all()
                    if p.last_usage_sync]
-    usage_updated = max(usage_times).isoformat() if usage_times else None
+    usage_updated = to_iso(max(usage_times)) if usage_times else None
 
     last_syncs = [{"name": p.name, "type": p.type,
-                   "last_sync": p.last_sync.isoformat() if p.last_sync else None,
+                   "last_sync": to_iso(p.last_sync),
                    "status": p.last_sync_status or "-"}
                   for p in db.query(Platform).all()]
 
@@ -108,7 +109,7 @@ def summary(db: Session = Depends(get_db), user: User = Depends(get_current_user
     from ..models import ChangeHistory
     changes = db.query(ChangeHistory)\
                 .order_by(ChangeHistory.changed_at.desc()).limit(10).all()
-    recent_changes = [{"changed_at": c.changed_at.isoformat() if c.changed_at else None,
+    recent_changes = [{"changed_at": to_iso(c.changed_at),
                        "entity_type": c.entity_type, "entity_name": c.entity_name,
                        "change_type": c.change_type, "field": c.field,
                        "old_value": c.old_value, "new_value": c.new_value}

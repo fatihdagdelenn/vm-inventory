@@ -93,6 +93,32 @@ class ProxmoxCollector:
             pass
         return ""
 
+    # ---------- Yönetim IP'si seçimi ----------
+    @staticmethod
+    def _pick_mgmt_ip(ifaces: list) -> str:
+        """
+        Node'un yönetim IP'sini DETERMİNİSTİK seç.
+
+        Proxmox API ağ arayüzlerini sabit sırada döndürmez. Önceki sürümde
+        'ilk adresli arayüz' alındığı için çok kartlı node'larda her
+        senkronizasyonda IP değişebiliyor ve değişiklik geçmişi kirleniyordu.
+        Sabit öncelik:
+          1) Varsayılan rota (gateway tanımlı) arayüzü — gerçek yönetim IP'si
+          2) vmbr0 yönetim köprüsü
+          3) Geri düşüş: arayüz adına göre sıralı ilk adresli arayüz
+        """
+        addressed = [i for i in (ifaces or []) if i.get("address")]
+        if not addressed:
+            return ""
+        ordered = sorted(addressed, key=lambda x: str(x.get("iface", "")))
+        for i in ordered:                       # 1) gateway tanımlı arayüz
+            if i.get("gateway"):
+                return i["address"]
+        for i in ordered:                       # 2) vmbr0
+            if i.get("iface") == "vmbr0":
+                return i["address"]
+        return ordered[0]["address"]            # 3) sıralı ilk
+
     # ---------- Host'lar (node'lar) ----------
     def collect_hosts(self) -> list[dict]:
         hosts = []
@@ -120,11 +146,13 @@ class ProxmoxCollector:
                     cpuinfo = status.get("cpuinfo", {})
                     entry["cpu_model"] = cpuinfo.get("model", "")
                     entry["os_version"] = f"Proxmox VE {status.get('pveversion', '')}"
-                    # Yönetim IP'si: ağ arayüzlerinden
-                    for iface in self.api.nodes(name).network.get():
-                        if iface.get("address"):
-                            entry["mgmt_ip"] = iface["address"]
-                            break
+                    # Yönetim IP'si: ağ arayüzlerini DETERMİNİSTİK seç.
+                    # API arayüz sırasını garanti etmediğinden, çok kartlı
+                    # node'larda eskiden her senkronizasyonda farklı IP seçilip
+                    # değişiklik geçmişi gereksiz yere kirleniyordu. Sabit
+                    # öncelik uygulanır (bkz. _pick_mgmt_ip).
+                    entry["mgmt_ip"] = self._pick_mgmt_ip(
+                        self.api.nodes(name).network.get())
                 except Exception as exc:
                     logger.warning("Node detayı alınamadı %s: %s", name, exc)
             hosts.append(entry)
@@ -197,6 +225,26 @@ class ProxmoxCollector:
             pass  # SDN yapılandırılmamış olabilir, normal durum
         return mapping
 
+    # ---------- Disk boyutu ayrıştırma ----------
+    @staticmethod
+    def _size_to_gb(size: str) -> float:
+        """
+        Proxmox disk boyutunu GB (float) değerine çevir.
+        Kabul edilen biçimler: '32G', '512M', '1T', '1024K' veya çıplak bayt.
+        Çözülemezse 0.0 döner.
+        """
+        if not size:
+            return 0.0
+        s = str(size).strip().upper()
+        units = {"K": 1 / 1024**2, "M": 1 / 1024, "G": 1.0,
+                 "T": 1024.0, "P": 1024**2}
+        try:
+            if s and s[-1] in units:
+                return round(float(s[:-1]) * units[s[-1]], 1)
+            return round(float(s) / 1024**3, 1)   # birimsiz = bayt
+        except (ValueError, IndexError):
+            return 0.0
+
     # ---------- Sanal makineler ----------
     def collect_vms(self) -> list[dict]:
         vms = []
@@ -228,6 +276,7 @@ class ProxmoxCollector:
                 "created_date": None,
                 "last_boot": None,
                 "tools_status": "unknown",
+                "guest_notes": "",
                 "is_template": bool(r.get("template", 0)),
             }
             try:
@@ -235,6 +284,15 @@ class ProxmoxCollector:
                 cfg = self.api.nodes(node).qemu(vmid).config.get()
                 ostype = cfg.get("ostype", "")
                 entry["guest_os"] = OSTYPE_MAP.get(ostype, ostype)
+                # Proxmox "Notlar" alanı (Notes); URL-encode'lu gelebilir
+                desc = cfg.get("description", "") or ""
+                if desc:
+                    try:
+                        from urllib.parse import unquote
+                        desc = unquote(desc)
+                    except Exception:
+                        pass
+                entry["guest_notes"] = desc
                 if cfg.get("meta"):  # ctime=... oluşturulma zamanı
                     for part in cfg["meta"].split(","):
                         if part.startswith("ctime="):
@@ -274,11 +332,12 @@ class ProxmoxCollector:
                         store = sval.split(":", 1)[0]
                         if store not in ("none", "cdrom") and "media=cdrom" not in sval:
                             stores.append(store)
-                            size = ""
+                            size_raw = ""
                             for piece in sval.split(","):
                                 if piece.startswith("size="):
-                                    size = piece[5:]
-                            disks.append({"label": key, "size": size})
+                                    size_raw = piece[5:]
+                            disks.append({"label": key,
+                                          "size_gb": self._size_to_gb(size_raw)})
 
                 entry.update({
                     "mac_addresses": ",".join(sorted(set(macs))),
@@ -286,6 +345,9 @@ class ProxmoxCollector:
                     "networks": ",".join(sorted(set(bridges))),
                     "datastore": ",".join(sorted(set(stores))),
                     "disks_json": json.dumps(disks, ensure_ascii=False),
+                    # Tüm disklerin toplamı; ayrıştırılamazsa maxdisk'e geri düş
+                    "disk_total_gb": round(sum(d["size_gb"] for d in disks), 1)
+                                     or entry["disk_total_gb"],
                 })
 
                 # Çalışan VM'lerde QEMU Guest Agent ile IP adresleri ve uptime
@@ -347,9 +409,19 @@ class ProxmoxCollector:
             name = node["node"]
             try:
                 for iface in self.api.nodes(name).network.get():
-                    if iface.get("type") not in ("bridge", "vlan", "OVSBridge"):
-                        continue
+                    itype = iface.get("type")
                     iname = iface.get("iface", "")
+                    # Fiziksel / bağ kartları (host'un kendi NIC'leri)
+                    if itype in ("eth", "bond"):
+                        nets.append({
+                            "name": iname, "host_name": name, "kind": "pnic",
+                            "mac": iface.get("hwaddr", "") or "",
+                            "link_speed": "",
+                            "vswitch": "bond" if itype == "bond" else "",
+                        })
+                        continue
+                    if itype not in ("bridge", "vlan", "OVSBridge"):
+                        continue
                     # VLAN ID: önce alanın kendisi, sonra isimden (bond0.205),
                     # sonra köprü->VLAN eşlemesinden (vmbr1 -> 205)
                     vlan = str(iface.get("vlan-id", "") or "") or \
@@ -368,6 +440,7 @@ class ProxmoxCollector:
                         "portgroup": portgroup,
                         "subnet": iface.get("cidr", "") or "",
                         "host_name": name,
+                        "kind": "bridge",
                     })
             except Exception as exc:
                 logger.warning("Node ağı alınamadı %s: %s", name, exc)
@@ -382,6 +455,7 @@ class ProxmoxCollector:
                     "portgroup": "SDN vnet",
                     "subnet": "",
                     "host_name": "(cluster)",
+                    "kind": "vnet",
                 })
         except Exception:
             pass  # SDN yapılandırılmamış olabilir

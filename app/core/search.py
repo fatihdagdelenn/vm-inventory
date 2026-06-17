@@ -59,6 +59,10 @@ FIELD_MAP = {
     "owner": VirtualMachine.owner,
     "notes": VirtualMachine.notes,
     "not": VirtualMachine.notes,
+    "aciklama": VirtualMachine.guest_notes,
+    "açıklama": VirtualMachine.guest_notes,
+    "desc": VirtualMachine.guest_notes,
+    "platformnot": VirtualMachine.guest_notes,
     "network": VirtualMachine.networks,
 }
 
@@ -208,6 +212,7 @@ def apply_vm_search(query: Query, q: str) -> Query:
             _like(VirtualMachine.guest_os, like),
             _like(VirtualMachine.cluster, like),
             _like(VirtualMachine.notes, like),
+            _like(VirtualMachine.guest_notes, like),
             _like(VirtualMachine.owner, like),
         )
         query = query.filter(not_(cond) if negative else cond)

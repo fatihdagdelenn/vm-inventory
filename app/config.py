@@ -19,9 +19,16 @@ class Settings(BaseSettings):
     # Oturum
     session_timeout_minutes: int = 30
 
+    # Zaman dilimi (görüntüleme + zamanlanmış görevler).
+    # DB'de zamanlar UTC saklanır; arayüze ve cron'a bu TZ uygulanır.
+    app_timezone: str = "Europe/Istanbul"
+
     # Senkronizasyon
     sync_interval_minutes: int = 15
     usage_sync_interval_minutes: int = 3   # anlık kullanım tazeleme aralığı (dk)
+
+    # Zamanlanmış raporların yazılacağı klasör (Docker'da volume'e bağlanır)
+    report_dir: str = "data/reports"
 
     # LDAP
     ldap_enabled: bool = False

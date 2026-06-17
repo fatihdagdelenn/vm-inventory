@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import User, AuditLog, ChangeHistory
+from ..core.timezone import to_iso
 from ..core.security import (require_role, get_current_user, hash_password,
                              validate_csrf)
 
@@ -16,7 +17,7 @@ def list_users(db: Session = Depends(get_db),
     return {"items": [{"id": u.id, "username": u.username, "full_name": u.full_name,
                        "email": u.email, "role": u.role, "is_ldap": u.is_ldap,
                        "is_active": u.is_active,
-                       "last_login": u.last_login.isoformat() if u.last_login else None}
+                       "last_login": to_iso(u.last_login)}
                       for u in db.query(User).all()]}
 
 
@@ -65,7 +66,7 @@ def audit_logs(limit: int = 200, db: Session = Depends(get_db),
                user: User = Depends(require_role("admin"))):
     logs = db.query(AuditLog).order_by(AuditLog.timestamp.desc())\
              .limit(min(limit, 1000)).all()
-    return {"items": [{"timestamp": l.timestamp.isoformat(), "username": l.username,
+    return {"items": [{"timestamp": to_iso(l.timestamp), "username": l.username,
                        "action": l.action, "detail": l.detail,
                        "ip_address": l.ip_address} for l in logs]}
 
@@ -81,7 +82,7 @@ def change_history(entity: str = "", q: str = "", limit: int = 200,
     if q:
         query = query.filter(ChangeHistory.entity_name.ilike(f"%{q}%"))
     rows = query.order_by(ChangeHistory.changed_at.desc()).limit(min(limit, 1000)).all()
-    return {"items": [{"changed_at": r.changed_at.isoformat(),
+    return {"items": [{"changed_at": to_iso(r.changed_at),
                        "entity_type": r.entity_type, "entity_name": r.entity_name,
                        "change_type": r.change_type, "field": r.field,
                        "old_value": r.old_value, "new_value": r.new_value}

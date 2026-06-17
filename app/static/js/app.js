@@ -87,12 +87,14 @@ const App = {
     return gb >= 1024 ? (gb / 1024).toFixed(1) + ' TB' : Math.round(gb) + ' GB';
   },
 
-  /** ISO tarihi yerel TR biçiminde göster. */
+  /** ISO tarihi yerel TR biçiminde göster (UTC -> APP_TZ). */
   fmtDate(iso) {
     if (!iso) return '—';
     const d = new Date(iso);
+    if (isNaN(d)) return '—';
     return d.toLocaleString('tr-TR', {day: '2-digit', month: '2-digit', year: 'numeric',
-                                      hour: '2-digit', minute: '2-digit'});
+                                      hour: '2-digit', minute: '2-digit',
+                                      timeZone: window.APP_TZ || 'Europe/Istanbul'});
   },
 
   /** Güç/erişim durumu için renkli rozet üret. */

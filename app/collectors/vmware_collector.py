@@ -169,7 +169,7 @@ class VMwareCollector:
                     for dev in vm.config.hardware.device:
                         if isinstance(dev, vim.vm.device.VirtualDisk):
                             disks.append({"label": dev.deviceInfo.label,
-                                          "capacity_gb": round(dev.capacityInKB / 1024**2, 1)})
+                                          "size_gb": round((dev.capacityInKB or 0) / 1024**2, 1)})
                         elif isinstance(dev, vim.vm.device.VirtualEthernetCard):
                             if dev.macAddress and dev.macAddress not in macs:
                                 macs.append(dev.macAddress)
@@ -211,7 +211,7 @@ class VMwareCollector:
                                 (guest.guestFullName if guest else "") or "",
                     "cpu_count": config.numCpu if config else 0,
                     "ram_mb": config.memorySizeMB if config else 0,
-                    "disk_total_gb": round(sum(d["capacity_gb"] for d in disks), 1),
+                    "disk_total_gb": round(sum(d["size_gb"] for d in disks), 1),
                     "disks_json": json.dumps(disks, ensure_ascii=False),
                     "power_state": power_map.get(str(summary.runtime.powerState), "unknown"),
                     "host_name": host_name,
@@ -223,6 +223,8 @@ class VMwareCollector:
                                     hasattr(vm.config, "createDate") else None,
                     "last_boot": summary.runtime.bootTime,
                     "tools_status": str(guest.toolsRunningStatus) if guest else "unknown",
+                    "guest_notes": (config.annotation if config and
+                                    getattr(config, "annotation", None) else "") or "",
                     "is_template": bool(config.template) if config else False,
                 })
             except Exception as exc:
@@ -242,7 +244,17 @@ class VMwareCollector:
                                  "vlan": str(pg.spec.vlanId),
                                  "vswitch": pg.spec.vswitchName,
                                  "portgroup": pg.spec.name,
-                                 "host_name": h.name})
+                                 "host_name": h.name,
+                                 "kind": "portgroup"})
+                # Fiziksel ağ kartları (vmnicX) — host'un kendi uplink'leri
+                for pnic in h.config.network.pnic or []:
+                    speed = ""
+                    ls = getattr(pnic, "linkSpeed", None)
+                    if ls and getattr(ls, "speedMb", None):
+                        speed = f"{ls.speedMb} Mb/s"
+                    nets.append({"name": pnic.device, "host_name": h.name,
+                                 "kind": "pnic", "mac": pnic.mac or "",
+                                 "link_speed": speed})
             except Exception as exc:
                 logger.warning("Host ağı okunamadı: %s", exc)
         # Distributed port group'lar
@@ -253,7 +265,8 @@ class VMwareCollector:
                        isinstance(vlan_cfg.vlanId, int) else ""
                 nets.append({"name": dpg.name, "vlan": vlan,
                              "vswitch": dpg.config.distributedVirtualSwitch.name,
-                             "portgroup": dpg.name, "host_name": ""})
+                             "portgroup": dpg.name, "host_name": "",
+                             "kind": "portgroup"})
             except Exception as exc:
                 logger.warning("DVS portgroup okunamadı: %s", exc)
         return nets

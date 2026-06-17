@@ -72,6 +72,7 @@ class VirtualMachine(Base):
     tools_status = Column(String(64))               # VMware Tools / QEMU Agent durumu
     owner = Column(String(128))                     # Manuel: VM sahibi
     notes = Column(Text)                            # Manuel: notlar
+    guest_notes = Column(Text)                      # Platformdan: vCenter annotation / Proxmox description
     environment = Column(String(32), index=True)    # production | test | development
     is_template = Column(Boolean, default=False)
     cpu_usage_pct = Column(Float)                   # Anlık CPU kullanımı (%) — hafif senkr. günceller
@@ -103,6 +104,9 @@ class Network(Base):
     portgroup = Column(String(128))                 # Port Group (vCenter)
     subnet = Column(String(64))                     # IP Subnet (CIDR) - manuel/öğrenilmiş
     host_name = Column(String(255))                 # Hangi host üzerinde tanımlı
+    kind = Column(String(16), index=True)           # portgroup | bridge | vnet | pnic
+    mac = Column(String(64))                         # Fiziksel kart (pnic) MAC adresi
+    link_speed = Column(String(32))                  # Fiziksel kart bağlantı hızı
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
@@ -165,3 +169,35 @@ class ClusterSetting(Base):
     name = Column(String(128), unique=True, nullable=False, index=True)
     visible = Column(Boolean, default=True, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ScheduledReport(Base):
+    """
+    Zamanlanmış rapor tanımı (KALICI).
+
+    Eskiden zamanlanmış raporlar yalnızca APScheduler'ın bellek-içi
+    jobstore'unda tutuluyordu; uygulama yeniden başlayınca tümü kayboluyordu
+    ("oluşturdum ama yerinde yok"). Artık tanım bu tabloda saklanır ve her
+    açılışta scheduler'a yeniden kaydedilir. Cron saati uygulama zaman
+    dilimine (APP_TIMEZONE) göre yorumlanır.
+    """
+    __tablename__ = "scheduled_reports"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(128))                       # Görünen ad (opsiyonel)
+    target = Column(String(16), default="vms")       # vms | hosts
+    fmt = Column(String(8), default="xlsx")          # xlsx | csv | pdf
+    query = Column(Text, default="")                 # Arama filtresi (q)
+    hour = Column(Integer, default=7)                # Çalışma saati (yerel TZ)
+    minute = Column(Integer, default=0)
+    enabled = Column(Boolean, default=True)
+    created_by = Column(String(128))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_run = Column(DateTime)                      # Son çalışma (UTC)
+    last_status = Column(String(16))                 # success | error
+    last_path = Column(String(512))                  # Son üretilen dosya yolu
+    last_error = Column(Text)
+
+    @property
+    def job_id(self) -> str:
+        return f"report_{self.id}"

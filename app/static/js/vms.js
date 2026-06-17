@@ -162,6 +162,7 @@ const VMs = {
       row('Oluşturulma', App.fmtDate(v.created_date)) +
       row('Son Açılış', App.fmtDate(v.last_boot)) +
       row('Tools / Agent', App.esc(v.tools_status)) +
+      row('Platform Notu', App.esc(v.guest_notes).split('\n').join('<br>')) +
       row('Son Güncelleme', App.fmtDate(v.updated_at)) +
       '</div><hr>' +
       '<h6 class="mb-3"><i class="bi bi-pencil-square"></i> Manuel Bilgiler</h6>' +

@@ -63,9 +63,36 @@ def decrypt_secret(encrypted: str) -> str:
 
 
 # ---------- Oturum ----------
+SESSION_COOKIE_NAME = "session"
+
+
 def create_session_token(user: User) -> str:
     """İmzalı, zaman damgalı oturum token'ı üret."""
     return session_serializer.dumps({"uid": user.id, "role": user.role})
+
+
+def set_session_cookie(response, token: str) -> None:
+    """
+    Oturum çerezini standart niteliklerle yaz (login + kayan yenileme tek
+    yerden). HttpOnly + SameSite=Lax; max_age idle (hareketsizlik) penceresi.
+    """
+    response.set_cookie(
+        SESSION_COOKIE_NAME, token, httponly=True, samesite="lax",
+        max_age=settings.session_timeout_minutes * 60)
+
+
+def refresh_session_token(token: str) -> Optional[str]:
+    """
+    Geçerli bir oturum token'ını taze zaman damgasıyla yeniden imzala.
+    Kayan oturum için kullanılır: her aktif istekte süre baştan başlar.
+    Token geçersiz/süresi dolmuşsa None döner (yenileme yapılmaz).
+    """
+    try:
+        data = session_serializer.loads(
+            token, max_age=settings.session_timeout_minutes * 60)
+    except (BadSignature, SignatureExpired):
+        return None
+    return session_serializer.dumps(data)
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
@@ -86,6 +113,9 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     user = db.get(User, data["uid"])
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="Kullanıcı bulunamadı veya pasif")
+    # Kayan oturum: doğrulama başarılı → middleware yanıtta çerezi tazeleyecek.
+    # (logout get_current_user'dan geçmediği için bayrağı koymaz, çıkış bozulmaz)
+    request.state.session_refresh = True
     return user
 
 

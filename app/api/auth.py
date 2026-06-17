@@ -9,7 +9,8 @@ from ..database import get_db
 from ..models import User, AuditLog
 from ..config import get_settings
 from ..core.security import (verify_password, create_session_token,
-                             generate_csrf_token, hash_password)
+                             generate_csrf_token, hash_password,
+                             set_session_cookie)
 from ..services.ldap_service import ldap_authenticate
 
 router = APIRouter(tags=["auth"])
@@ -50,9 +51,8 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
     _audit(db, request, username, "login")
 
     response = RedirectResponse("/", status_code=303)
-    # Oturum çerezi: HttpOnly + SameSite (XSS/CSRF'e karşı)
-    response.set_cookie("session", create_session_token(user), httponly=True,
-                        samesite="lax", max_age=settings.session_timeout_minutes * 60)
+    # Oturum çerezi: HttpOnly + SameSite (XSS/CSRF'e karşı); kayan zaman aşımı
+    set_session_cookie(response, create_session_token(user))
     # CSRF çerezi: JS tarafından okunup X-CSRF-Token header'ına konur
     response.set_cookie("csrf_token", generate_csrf_token(), samesite="lax")
     return response

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import Platform, SyncLog, User, AuditLog
+from ..core.timezone import to_iso
 from ..core.security import (require_role, get_current_user, encrypt_secret,
                              decrypt_secret, validate_csrf)
 from ..collectors.vmware_collector import VMwareCollector
@@ -25,7 +26,7 @@ def _platform_to_dict(p: Platform) -> dict:
             "username": p.username, "token_name": p.token_name,
             "location": p.location, "environment": p.environment,
             "enabled": p.enabled,
-            "last_sync": p.last_sync.isoformat() if p.last_sync else None,
+            "last_sync": to_iso(p.last_sync),
             "last_sync_status": p.last_sync_status,
             "last_sync_error": p.last_sync_error}
 
@@ -188,7 +189,7 @@ def sync_logs(platform_id: int, db: Session = Depends(get_db),
     """API hata/senkronizasyon logları."""
     logs = db.query(SyncLog).filter_by(platform_id=platform_id)\
              .order_by(SyncLog.started_at.desc()).limit(50).all()
-    return {"items": [{"started_at": l.started_at.isoformat() if l.started_at else None,
-                       "finished_at": l.finished_at.isoformat() if l.finished_at else None,
+    return {"items": [{"started_at": to_iso(l.started_at),
+                       "finished_at": to_iso(l.finished_at),
                        "status": l.status, "hosts_found": l.hosts_found,
                        "vms_found": l.vms_found, "message": l.message} for l in logs]}

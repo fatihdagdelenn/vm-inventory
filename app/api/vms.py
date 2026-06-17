@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from ..database import get_db
 from ..models import VirtualMachine, Tag, User, AuditLog, Host
+from ..core.timezone import to_iso
 from ..core.security import get_current_user, require_role, validate_csrf
 from ..core.search import apply_vm_search
 
@@ -33,14 +34,15 @@ def _vm_to_dict(vm: VirtualMachine) -> dict:
         "host": vm.host_ref.name if vm.host_ref else "",
         "cluster": vm.cluster, "datastore": vm.datastore, "vlans": vm.vlans,
         "networks": vm.networks,
-        "created_date": vm.created_date.isoformat() if vm.created_date else None,
-        "last_boot": vm.last_boot.isoformat() if vm.last_boot else None,
+        "created_date": to_iso(vm.created_date),
+        "last_boot": to_iso(vm.last_boot),
         "tools_status": vm.tools_status, "owner": vm.owner, "notes": vm.notes,
+        "guest_notes": vm.guest_notes,
         "environment": vm.environment,
         "platform": vm.platform.name if vm.platform else "",
         "platform_type": vm.platform.type if vm.platform else "",
         "tags": [{"id": t.id, "name": t.name, "color": t.color} for t in vm.tags],
-        "updated_at": vm.updated_at.isoformat() if vm.updated_at else None,
+        "updated_at": to_iso(vm.updated_at),
     }
 
 
