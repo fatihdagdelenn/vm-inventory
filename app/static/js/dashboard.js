@@ -63,16 +63,19 @@
   });
 
   /* ---- OS ailesi (pasta) ---- */
-  const osLabels = Object.keys(d.os_distribution);
+  // os_distribution artık [{label, count, query}] listesi (ayrıntılı aileler)
+  const osData = d.os_distribution || [];
   new Chart(document.getElementById('chartOs'), {
     type: 'doughnut',
-    data: {labels: osLabels,
-           datasets: [{data: osLabels.map(k => d.os_distribution[k]),
-                       backgroundColor: [BLUE, GREEN, '#8957e5', ORANGE],
+    data: {labels: osData.map(o => o.label),
+           datasets: [{data: osData.map(o => o.count),
+                       backgroundColor: osData.map((_, i) => PALETTE[i % PALETTE.length]),
                        borderWidth: 2, borderColor: '#fff'}]},
     options: {plugins: {legend: {position: 'bottom'}}, cutout: '62%',
-              onClick: clickHandler(l =>
-                l === 'Windows' ? 'os:windows' : l === 'Linux' ? 'os:linux' : null)}
+              onClick: clickHandler(label => {
+                const f = osData.find(o => o.label === label);
+                return f ? f.query : null;
+              })}
   });
 
   /* ---- Cluster bazında VM (yatay bar) ---- */

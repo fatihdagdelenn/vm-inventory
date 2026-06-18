@@ -39,6 +39,7 @@ class Host(Base):
     disk_used_gb = Column(Float)                    # Kullanılan disk (GB)
     cluster = Column(String(128), index=True)       # Cluster adı
     status = Column(String(16), index=True)         # online | offline | maintenance
+    last_boot = Column(DateTime)                     # Son açılış zamanı (uptime hesabı için)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     platform = relationship("Platform", back_populates="hosts")
@@ -73,6 +74,9 @@ class VirtualMachine(Base):
     owner = Column(String(128))                     # Manuel: VM sahibi
     notes = Column(Text)                            # Manuel: notlar
     guest_notes = Column(Text)                      # Platformdan: vCenter annotation / Proxmox description
+    platform_tags = Column(Text)                    # Platform etiketleri (vCenter tag / Proxmox tags), virgülle
+    pool = Column(String(255), index=True)          # Resource pool (vCenter) / pool (Proxmox)
+    folder = Column(String(512))                    # VM klasörü (vCenter); Proxmox'ta yok
     environment = Column(String(32), index=True)    # production | test | development
     is_template = Column(Boolean, default=False)
     cpu_usage_pct = Column(Float)                   # Anlık CPU kullanımı (%) — hafif senkr. günceller

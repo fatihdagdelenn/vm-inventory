@@ -48,6 +48,8 @@ EMPTY_WORDS = ("yok", "bos", "boş", "none", "empty", "null")
 FIELD_MAP = {
     "name": VirtualMachine.name,
     "vm": VirtualMachine.name,
+    "vmid": VirtualMachine.vmid,
+    "id": VirtualMachine.vmid,
     "ip": VirtualMachine.ip_addresses,
     "mac": VirtualMachine.mac_addresses,
     "os": VirtualMachine.guest_os,
@@ -63,6 +65,13 @@ FIELD_MAP = {
     "açıklama": VirtualMachine.guest_notes,
     "desc": VirtualMachine.guest_notes,
     "platformnot": VirtualMachine.guest_notes,
+    "pool": VirtualMachine.pool,
+    "havuz": VirtualMachine.pool,
+    "folder": VirtualMachine.folder,
+    "klasor": VirtualMachine.folder,
+    "klasör": VirtualMachine.folder,
+    "ptag": VirtualMachine.platform_tags,
+    "petiket": VirtualMachine.platform_tags,
     "network": VirtualMachine.networks,
 }
 
@@ -185,6 +194,22 @@ def _field_condition(field: str, value: str):
                 conds.append(_like(VirtualMachine.guest_os, f"%{part}%"))
         return or_(*conds) if conds else None
 
+    # ---- OS ailesi (tek token): osfam:windows, osfam:other … ----
+    # Dashboard pastası ve filtre menüsü bu alanı kullanır; aile mantığı
+    # core/os_family.py'de tanımlıdır (ilk-eşleşen kazanır → exclude listesi).
+    if field in ("osfam", "osailesi", "os_family", "osaile"):
+        from .os_family import match_keywords
+        inc, exc = match_keywords(value)
+        if inc is None and exc is None:
+            return None          # bilinmeyen aile
+        conds = []
+        if inc:
+            conds.append(or_(*[_like(VirtualMachine.guest_os, f"%{k}%")
+                               for k in inc]))
+        conds.extend(not_(_like(VirtualMachine.guest_os, f"%{k}%"))
+                     for k in exc)
+        return and_(*conds) if conds else None
+
     # ---- Basit ilike alanları ----
     if field in FIELD_MAP:
         return _ilike_or(FIELD_MAP[field], value)
@@ -207,12 +232,16 @@ def apply_vm_search(query: Query, q: str) -> Query:
         like = f"%{word}%"
         cond = or_(
             _like(VirtualMachine.name, like),
+            _like(VirtualMachine.vmid, like),
             _like(VirtualMachine.ip_addresses, like),
             _like(VirtualMachine.mac_addresses, like),
             _like(VirtualMachine.guest_os, like),
             _like(VirtualMachine.cluster, like),
             _like(VirtualMachine.notes, like),
             _like(VirtualMachine.guest_notes, like),
+            _like(VirtualMachine.platform_tags, like),
+            _like(VirtualMachine.pool, like),
+            _like(VirtualMachine.folder, like),
             _like(VirtualMachine.owner, like),
         )
         query = query.filter(not_(cond) if negative else cond)

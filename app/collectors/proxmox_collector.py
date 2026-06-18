@@ -138,6 +138,9 @@ class ProxmoxCollector:
                 "disk_used_gb": round(node.get("disk", 0) / 1024**3, 1),
                 "cluster": "",
                 "status": "online" if node.get("status") == "online" else "offline",
+                "last_boot": (datetime.utcfromtimestamp(
+                    int(datetime.utcnow().timestamp()) - int(node["uptime"]))
+                    if node.get("uptime") else None),
             }
             # Çevrimiçi node'lardan detay bilgisi al (CPU modeli, sürüm, IP)
             if entry["status"] == "online":
@@ -253,8 +256,9 @@ class ProxmoxCollector:
         # cluster/resources tek çağrıda tüm VM özetini verir (500+ VM için verimli)
         resources = self.api.cluster.resources.get(type="vm")
         for r in resources:
-            if r.get("type") != "qemu":
-                continue  # LXC konteynerleri istenirse buraya eklenebilir
+            rtype = r.get("type")
+            if rtype not in ("qemu", "lxc"):
+                continue
             node, vmid = r["node"], r["vmid"]
             entry = {
                 "external_id": f"{node}/{vmid}",
@@ -277,8 +281,20 @@ class ProxmoxCollector:
                 "last_boot": None,
                 "tools_status": "unknown",
                 "guest_notes": "",
+                "pool": r.get("pool", "") or "",
+                "folder": "",
+                "platform_tags": "",
                 "is_template": bool(r.get("template", 0)),
             }
+            # LXC konteynerleri: yapılandırma/IP/disk biçimi qemu'dan farklı,
+            # QEMU Guest Agent yoktur → ayrı zenginleştirme.
+            if rtype == "lxc":
+                try:
+                    self._enrich_lxc(entry, node, vmid, vlan_map)
+                except Exception as exc:
+                    logger.warning("Konteyner detayı alınamadı %s/%s: %s", node, vmid, exc)
+                vms.append(entry)
+                continue
             try:
                 # VM yapılandırması: OS tipi, ağ kartları, diskler, VLAN
                 cfg = self.api.nodes(node).qemu(vmid).config.get()
@@ -293,6 +309,8 @@ class ProxmoxCollector:
                     except Exception:
                         pass
                 entry["guest_notes"] = desc
+                # Proxmox VM etiketleri (config 'tags' alanı; ';' ile ayrık)
+                entry["platform_tags"] = (cfg.get("tags") or "").replace(";", ",")
                 if cfg.get("meta"):  # ctime=... oluşturulma zamanı
                     for part in cfg["meta"].split(","):
                         if part.startswith("ctime="):
@@ -398,6 +416,92 @@ class ProxmoxCollector:
                 logger.warning("VM detayı alınamadı %s/%s: %s", node, vmid, exc)
             vms.append(entry)
         return vms
+
+    def _enrich_lxc(self, entry, node, vmid, vlan_map):
+        """LXC konteyneri detayı: OS tipi, etiketler, not, ağ (IP/MAC/VLAN),
+        mount-point diskleri, uptime ve çalışan konteynerde canlı IP'ler.
+        Konteynerlerde QEMU Guest Agent yoktur; IP doğrudan yapılandırmadan
+        veya çalışırken /lxc/{id}/interfaces ucundan alınır."""
+        cfg = self.api.nodes(node).lxc(vmid).config.get()
+        ostype = cfg.get("ostype", "") or ""
+        entry["guest_os"] = OSTYPE_MAP.get(ostype, ostype.capitalize()) or "Linux"
+        desc = cfg.get("description", "") or ""
+        if desc:
+            try:
+                from urllib.parse import unquote
+                desc = unquote(desc)
+            except Exception:
+                pass
+        entry["guest_notes"] = desc
+        entry["platform_tags"] = (cfg.get("tags") or "").replace(";", ",")
+
+        macs, vlans, bridges, disks, stores = [], [], [], [], []
+        static_ips = []
+        for key, val in cfg.items():
+            sval = str(val)
+            if key.startswith("net"):     # name=eth0,bridge=vmbr0,hwaddr=AA:..,ip=10.0.0.5/24,tag=100
+                nic_bridge, nic_tag = "", ""
+                for piece in sval.split(","):
+                    if "=" not in piece:
+                        continue
+                    k, v = piece.split("=", 1)
+                    if k == "hwaddr":
+                        macs.append(v.upper())
+                    elif k == "bridge":
+                        nic_bridge = v
+                        bridges.append(v)
+                    elif k == "tag":
+                        nic_tag = v
+                    elif k == "ip" and v not in ("dhcp", "manual", ""):
+                        static_ips.append(v.split("/")[0])
+                if nic_tag:
+                    vlans.append(nic_tag)
+                elif nic_bridge:
+                    mapped = vlan_map.get(f"{node}/{nic_bridge}") or vlan_map.get(nic_bridge)
+                    if mapped:
+                        vlans.append(mapped)
+            elif (key == "rootfs" or key.startswith("mp")) and ":" in sval:
+                store = sval.split(":", 1)[0]
+                if store not in ("none",):
+                    stores.append(store)
+                    size_raw = ""
+                    for piece in sval.split(","):
+                        if piece.startswith("size="):
+                            size_raw = piece[5:]
+                    disks.append({"label": key, "size_gb": self._size_to_gb(size_raw)})
+
+        entry.update({
+            "mac_addresses": ",".join(sorted(set(macs))),
+            "vlans": ",".join(sorted(set(vlans))),
+            "networks": ",".join(sorted(set(bridges))),
+            "datastore": ",".join(sorted(set(stores))),
+            "disks_json": json.dumps(disks, ensure_ascii=False),
+            "disk_total_gb": round(sum(d["size_gb"] for d in disks), 1)
+                             or entry["disk_total_gb"],
+        })
+
+        if entry["power_state"] == "running":
+            try:
+                status = self.api.nodes(node).lxc(vmid).status.current.get()
+                if status.get("uptime"):
+                    entry["last_boot"] = datetime.utcfromtimestamp(
+                        int(datetime.utcnow().timestamp()) - int(status["uptime"]))
+            except Exception:
+                pass
+            # Çalışan konteynerin canlı IP'leri (agent gerekmez)
+            try:
+                live = []
+                for iface in (self.api.nodes(node).lxc(vmid).interfaces.get() or []):
+                    ip = iface.get("inet", "") or ""
+                    if ip and not ip.startswith("127."):
+                        live.append(ip.split("/")[0])
+                if live:
+                    entry["ip_addresses"] = ",".join(sorted(set(live)))
+                    entry["tools_status"] = "guestToolsRunning"
+            except Exception:
+                pass
+        if not entry["ip_addresses"] and static_ips:
+            entry["ip_addresses"] = ",".join(sorted(set(static_ips)))
 
     # ---------- Ağlar ----------
     def collect_networks(self) -> list[dict]:

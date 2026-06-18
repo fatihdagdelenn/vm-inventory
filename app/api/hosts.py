@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 from ..database import get_db
 from ..models import Host, User
 from ..core.security import get_current_user
+from ..core.timezone import to_iso
 
 router = APIRouter(prefix="/api/hosts", tags=["hosts"])
 
@@ -17,6 +18,7 @@ def _host_to_dict(h: Host) -> dict:
             "ram_used_mb": h.ram_used_mb, "cpu_usage_pct": h.cpu_usage_pct,
             "disk_total_gb": h.disk_total_gb, "disk_used_gb": h.disk_used_gb,
             "cluster": h.cluster, "status": h.status,
+            "last_boot": to_iso(h.last_boot),
             "platform": h.platform.name if h.platform else "",
             "platform_type": h.platform.type if h.platform else "",
             "vm_count": len(h.vms)}

@@ -7,6 +7,7 @@ from ..database import get_db
 from ..models import Platform, Host, VirtualMachine, Datastore, User
 from ..core.timezone import to_iso
 from ..core.security import get_current_user
+from ..core.os_family import distribution as os_family_distribution
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -52,15 +53,10 @@ def summary(db: Session = Depends(get_db), user: User = Depends(get_current_user
     storage = [{"name": d.name, "capacity_gb": d.capacity_gb or 0,
                 "used_gb": d.used_gb or 0} for d in datastores]
 
-    # İşletim sistemi dağılımı (pasta grafik)
+    # İşletim sistemi dağılımı (pasta grafik) — ayrıntılı aile sınıflandırması
     os_rows = db.query(VirtualMachine.guest_os, func.count(VirtualMachine.id))\
                 .filter_by(is_template=False).group_by(VirtualMachine.guest_os).all()
-    os_dist = {}
-    for os_name, count in os_rows:
-        label = "Windows" if "win" in (os_name or "").lower() else \
-                "Linux" if any(x in (os_name or "").lower() for x in
-                               ("linux", "ubuntu", "centos", "rhel", "debian", "l26")) else "Diğer"
-        os_dist[label] = os_dist.get(label, 0) + count
+    os_dist = os_family_distribution(os_rows)
 
     # Kullanım verisinin en son ne zaman tazelendiği (arayüzde gösterilir)
     usage_times = [p.last_usage_sync for p in db.query(Platform).all()

@@ -50,11 +50,15 @@ Bu soruların hepsi tek arama kutusundan, saniyeden kısa sürede yanıtlanır. 
 | 🔍 **Google benzeri arama** | `ip:` `os:` `vlan:` `cluster:` `ram:>=16` `-tag:test` `ip:yok` … kriterler birleştirilebilir |
 | 🎛️ **Gelişmiş filtre paneli** | Mevcut değerlerden (sayılarıyla) seçim, X'le kaldırılabilir filtre rozetleri, tıklanabilir tablo hücreleri |
 | 📊 **Detaylı dashboard** | Kaynak toplamları, OS/ortam/cluster dağılımları, host CPU-RAM grafikleri, depolama, "dikkat gerektirenler" |
-| 🔗 **Çoklu platform** | Sınırsız sayıda vCenter + Proxmox aynı envanterde |
+| 🔗 **Çoklu platform** | Sınırsız sayıda vCenter + Proxmox (QEMU VM **ve LXC konteyner**) aynı envanterde |
 | 📄 **Raporlama** | Filtrelenmiş Excel / CSV / PDF; her gün otomatik üretilen zamanlanmış raporlar |
 | 🕓 **Değişiklik takibi** | Her senkronizasyonda fark analizi: ne, ne zaman, neyden neye değişti |
 | 👁️ **Cluster göster/gizle** | Eski/test cluster'ları — standalone host'lardaki "(Cluster'sız)" VM'ler dahil — dashboard sayılarından tek anahtarla çıkarın; veri silinmez |
 | ⚡ **Anlık kullanım oranları** | VM ve host CPU/RAM kullanımı + gerçek disk doluluğu (thin-provision farkındalıklı); hafif görevle ~3 dk'da bir ve her açılışta tazelenir |
+| 🐧 **Tam OS sürümü** | VMware'de ayrıntılı misafir OS verisi (ör. *"Ubuntu 24.04.1 LTS"*) — vSphere 8.0 U2+ ve VMware Tools 11.2+ ile; Proxmox'ta QEMU Guest Agent ile |
+| 🆔 **VM ID & çalışma süresi** | VM ID (Proxmox sayısal / VMware MoRef) ve host+VM **uptime** kolonları; host'larda CPU/RAM/Disk kullanım çubukları |
+| 🗂️ **Pool / klasör / etiket** | vCenter resource pool & klasör, Proxmox pool; platform etiketleri (vCenter REST tag / Proxmox tags) — hepsi aranır, filtrelenir ve gösterilir |
+| 🧰 **Kolon seçici** | VM listesinde görünür kolonları tek menüden seçme (tercih tarayıcıda hatırlanır) |
 | 👥 **Rol bazlı yetki** | Admin / Operatör / Görüntüleyici + opsiyonel LDAP/AD girişi |
 | 🏷️ **Manuel zenginleştirme** | VM'lere not, sahip, ortam ve etiket atama; ayrıca platformdan gelen açıklama (vCenter annotation / Proxmox description) "Platform Notu" olarak gösterilir |
 | 🔐 **Güvenlik** | Fernet ile şifreli kimlik bilgisi saklama, bcrypt, CSRF koruması, kayan oturum (son hareketten itibaren zaman aşımı), audit log |
@@ -245,8 +249,8 @@ Dashboard'daki **"Dikkat Gerektirenler"** kartından *"Agent/Tools kurulu olmaya
 | Ekran | Ne yapılır? |
 |---|---|
 | **Dashboard** | Genel durum: sayılar, kaynak toplamları, grafikler (dilime tıklayınca filtreli liste açılır), son değişiklikler, platform sağlığı. Cluster grafiğindeki **Yönet** butonu görünürlük ayarlarını açar |
-| **Sanal Makineler** | Arama + gelişmiş filtre + gruplama. CPU/RAM/disk kolonlarında anlık kullanım çubukları (sarı %75+, kırmızı %90+). Satıra tıklayınca detay paneli; not/sahip/etiket buradan düzenlenir. Host/cluster/VLAN hücreleri tıklanabilir filtre |
-| **Host'lar** | ESXi/PVE node'ları: CPU modeli, RAM kullanım çubuğu, VM sayısı |
+| **Sanal Makineler** | Arama + gelişmiş filtre + gruplama. CPU/RAM/disk kolonlarında anlık kullanım çubukları (sarı %75+, kırmızı %90+); ayrıca VM ID, Pool, Klasör, Tags ve Uptime kolonları. **Kolonlar** menüsünden görünür sütunları seçebilirsiniz (tercih tarayıcıda saklanır). Satıra tıklayınca detay paneli; not/sahip/etiket buradan düzenlenir. Host/cluster/VLAN/pool/klasör hücreleri tıklanabilir filtredir |
+| **Host'lar** | ESXi/PVE node'ları: CPU modeli, CPU/RAM/Disk kullanım çubukları, çalışma süresi (uptime), VM sayısı |
 | **Ağlar** | Port group / bridge / SDN vnet ve host fiziksel kartları (NIC). Açılır-kapanır gruplama: Host'a göre, Cluster'a göre, VLAN'a göre veya Fiziksel Kartlar; ad/VLAN/vSwitch/subnet/MAC araması |
 | **Raporlar** | Anlık Excel/CSV/PDF (filtre destekler) + her gün belirli saatte çalışan zamanlanmış raporlar (`data/reports/` klasörüne yazılır) |
 | **Geçmiş** | Envanter değişiklikleri: eklenen/silinen VM'ler, alan bazında eski→yeni değerler |
@@ -257,14 +261,19 @@ Dashboard'daki **"Dikkat Gerektirenler"** kartından *"Agent/Tools kurulu olmaya
 
 | Sözdizimi | Örnek | Açıklama |
 |---|---|---|
-| serbest metin | `web01` | Ad, IP, MAC, OS, cluster, sahip, notlar ve platform notunda arar |
+| serbest metin | `web01` | Ad, VM ID, IP, MAC, OS, cluster, sahip, notlar, platform notu, pool, klasör ve platform etiketlerinde arar |
 | `ip:` | `ip:10.10.10.` | IP'ye göre (kısmi eşleşir) |
 | `mac:` | `mac:00:50:56` | MAC'e göre |
 | `os:` | `os:linux` | OS ailesi — Ubuntu/CentOS/RHEL/Debian… hepsini bulur |
+| `osfam:` | `osfam:windows` `osfam:other` | Tek bir OS ailesi (dashboard pastası ve filtre menüsüyle aynı) |
+| `vmid:` / `id:` | `vmid:100` | VM ID (Proxmox sayısal / VMware MoRef) |
 | `vlan:` / `host:` / `node:` | `vlan:100` | Altyapı konumuna göre |
 | `cluster:` / `datastore:` | `cluster:"Ankara Prod"` | Boşluklu değerler tırnaklanır |
 | `status:` | `status:running` | running / stopped / suspended (TR: `çalışan`, `kapalı`) |
 | `tag:` / `env:` / `owner:` | `tag:kritik` | Manuel alanlara göre |
+| `pool:` / `havuz:` | `pool:Prod` | Resource pool (vCenter) / pool (Proxmox) |
+| `folder:` / `klasor:` | `folder:Web` | VM klasörü (vCenter); Proxmox'ta yok |
+| `ptag:` / `petiket:` | `ptag:kritik` | Platform etiketleri (vCenter REST tag / Proxmox tags) |
 | `aciklama:` / `desc:` | `aciklama:bakım` | Platform notu (vCenter annotation / Proxmox description) |
 | `platform:` / `type:` / `location:` | `type:proxmox` | Platforma göre |
 | `tools:` | `tools:yok` | Agent/Tools kurulu olmayanlar |
@@ -376,3 +385,9 @@ vm-inventory/
 **VM'lere müdahale edebilir mi (başlat/durdur)?** Hayır — bu bilinçli bir tasarım kararı. Sistem salt-okunur çalışır; bu yüzden platform hesapları da salt-okunur (Read-only / PVEAuditor) olabilir.
 
 **SQLite mi PostgreSQL mi?** Tek kullanıcılı küçük kurulumda SQLite yeterli; ekip kullanımı ve 500+ VM için PostgreSQL önerilir (Docker Compose varsayılanı).
+
+**Linux VM'lerinin tam sürümü neden bazen gelmiyor?** Tam sürüm (ör. "Ubuntu 24.04.1 LTS") VMware'de **vSphere 8.0 U2+ ve misafirde VMware Tools / open-vm-tools 11.2+** gerektirir; Proxmox'ta ise **QEMU Guest Agent**. Bunlar yoksa katalog adı ("Ubuntu Linux (64-bit)") gösterilir — yanlış değil, yalnızca yama sürümü içermez.
+
+**vCenter etiketleri (Tags) gelmiyor?** vSphere etiketleri pyVmomi/SOAP ile alınamaz; ayrı bir vCenter REST (vAPI tagging) oturumu kullanılır. Servis hesabının etiketleri okuma yetkisi olmalı. REST erişimi başarısız olursa etiketler boş kalır, senkronizasyonun geri kalanı etkilenmez (Platform → Loglar'da uyarı görünür). Proxmox etiketleri (VM `tags` alanı) için ek yetki gerekmez.
+
+**LXC konteynerleri görünüyor mu?** Evet. Proxmox QEMU VM'lerinin yanı sıra LXC konteynerleri de toplanır; OS, IP (çalışırken `interfaces` ucundan), disk, ağ ve etiketleri envantere girer (konteynerlerde agent gerekmez).

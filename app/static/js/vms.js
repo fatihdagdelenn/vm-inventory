@@ -46,7 +46,7 @@ const VMs = {
           '<span class="group-key">' + App.esc(g.key) + '</span>' +
           '<span class="group-count">' + g.count + ' VM</span></button></div>').join('');
       document.getElementById('vmBody').innerHTML =
-        '<tr><td colspan="10" class="text-center text-muted p-4">' +
+        '<tr><td colspan="15" class="text-center text-muted p-4">' +
         'Gruplardan birine tıklayarak VM listesini filtreleyebilirsiniz.</td></tr>';
       document.getElementById('vmCount').textContent = data.groups.length + ' grup';
       document.getElementById('vmPager').innerHTML = '';
@@ -58,31 +58,40 @@ const VMs = {
     VMs.total = data.total;
     const body = document.getElementById('vmBody');
     if (!data.items.length) {
-      body.innerHTML = '<tr><td colspan="10" class="text-center text-muted p-4">Sonuç bulunamadı.</td></tr>';
+      body.innerHTML = '<tr><td colspan="15" class="text-center text-muted p-4">Sonuç bulunamadı.</td></tr>';
     } else {
       body.innerHTML = data.items.map(v => {
         const pIcon = v.platform_type === 'vcenter'
           ? '<i class="bi bi-cloud text-primary" title="vCenter"></i>'
           : '<i class="bi bi-box text-warning" title="Proxmox"></i>';
         return '<tr class="vm-row" onclick="VMs.detail(' + v.id + ')">' +
-          '<td>' + pIcon + ' <strong>' + App.esc(v.name) + '</strong>' +
+          '<td data-col="name">' + pIcon + ' <strong>' + App.esc(v.name) + '</strong>' +
             (v.tags.length ? '<br><small>' + v.tags.map(t =>
               '<span class="badge text-bg-light border me-1">' + App.esc(t.name) + '</span>').join('') + '</small>' : '') + '</td>' +
-          '<td class="text-nowrap small">' + App.esc(v.ip_addresses || '—').split(',').join('<br>') + '</td>' +
-          '<td class="small">' + App.esc(v.guest_os || '—') + '</td>' +
-          '<td>' + (v.cpu_count || '—') + VMs.usageMini(v.cpu_usage_pct) + '</td>' +
-          '<td>' + App.fmtRam(v.ram_mb) +
+          '<td data-col="vmid" class="small text-muted text-nowrap">' + App.esc(v.vmid || '—') + '</td>' +
+          '<td data-col="ip" class="text-nowrap small">' + App.esc(v.ip_addresses || '—').split(',').join('<br>') + '</td>' +
+          '<td data-col="guest_os" class="small">' + App.esc(v.guest_os || '—') + '</td>' +
+          '<td data-col="cpu">' + (v.cpu_count || '—') + VMs.usageMini(v.cpu_usage_pct) + '</td>' +
+          '<td data-col="ram">' + App.fmtRam(v.ram_mb) +
             VMs.usageMini(v.ram_mb ? 100 * (v.ram_usage_mb || 0) / v.ram_mb : null,
                           v.ram_usage_mb) + '</td>' +
-          '<td>' + App.fmtGb(v.disk_total_gb) +
+          '<td data-col="disk">' + App.fmtGb(v.disk_total_gb) +
             VMs.usageMini(v.disk_total_gb ? 100 * (v.disk_used_gb || 0) / v.disk_total_gb : null,
                           null, v.disk_used_gb) + '</td>' +
-          '<td class="small cell-filter" onclick="VMs.cellFilter(event,\'host\',\'' + App.esc(v.host || '') + '\')" title="Bu host\'a göre filtrele">' + App.esc(v.host || '—') + '</td>' +
-          '<td class="small cell-filter" onclick="VMs.cellFilter(event,\'cluster\',\'' + App.esc(v.cluster || '') + '\')" title="Bu cluster\'a göre filtrele">' + App.esc(v.cluster || '—') + '</td>' +
-          '<td class="cell-filter" onclick="VMs.cellFilter(event,\'vlan\',\'' + App.esc((v.vlans || '').split(',')[0]) + '\')" title="Bu VLAN\'a göre filtrele">' + App.esc(v.vlans || '—') + '</td>' +
-          '<td>' + App.stateBadge(v.power_state) + '</td></tr>';
+          '<td data-col="host" class="small cell-filter" onclick="VMs.cellFilter(event,\'host\',\'' + App.esc(v.host || '') + '\')" title="Bu host\'a göre filtrele">' + App.esc(v.host || '—') + '</td>' +
+          '<td data-col="cluster" class="small cell-filter" onclick="VMs.cellFilter(event,\'cluster\',\'' + App.esc(v.cluster || '') + '\')" title="Bu cluster\'a göre filtrele">' + App.esc(v.cluster || '—') + '</td>' +
+          '<td data-col="pool" class="small cell-filter" onclick="VMs.cellFilter(event,\'pool\',\'' + App.esc(v.pool || '') + '\')" title="Bu pool\'a göre filtrele">' + App.esc(v.pool || '—') + '</td>' +
+          '<td data-col="folder" class="small cell-filter" onclick="VMs.cellFilter(event,\'folder\',\'' + App.esc(v.folder || '') + '\')" title="Bu klasöre göre filtrele">' + App.esc(v.folder || '—') + '</td>' +
+          '<td data-col="vlan" class="cell-filter" onclick="VMs.cellFilter(event,\'vlan\',\'' + App.esc((v.vlans || '').split(',')[0]) + '\')" title="Bu VLAN\'a göre filtrele">' + App.esc(v.vlans || '—') + '</td>' +
+          '<td data-col="ptags" class="small">' + (v.platform_tags
+            ? v.platform_tags.split(',').map(t => t.trim()).filter(Boolean).map(t =>
+                '<span class="badge bg-info-subtle text-info-emphasis border me-1">' + App.esc(t) + '</span>').join('')
+            : '—') + '</td>' +
+          '<td data-col="power_state">' + App.stateBadge(v.power_state) + '</td>' +
+          '<td data-col="uptime" class="small text-nowrap">' + App.fmtUptime(v.last_boot) + '</td></tr>';
       }).join('');
     }
+    VMs.applyCols();
     document.getElementById('vmCount').textContent =
       VMs.total + ' VM — sayfa ' + data.page + '/' + Math.max(1, Math.ceil(VMs.total / VMs.perPage));
     VMs.renderPager(data.page);
@@ -156,13 +165,20 @@ const VMs = {
            App.fmtGb(v.disk_used_gb) + '</small>' : '')) +
       row('Host', App.esc(v.host)) +
       row('Cluster', App.esc(v.cluster)) +
+      row('Pool', App.esc(v.pool)) +
+      row('Klasör', App.esc(v.folder)) +
       row('Datastore', App.esc(v.datastore)) +
       row('VLAN', App.esc(v.vlans)) +
       row('Ağlar', App.esc(v.networks)) +
       row('Oluşturulma', App.fmtDate(v.created_date)) +
       row('Son Açılış', App.fmtDate(v.last_boot)) +
+      row('Çalışma Süresi', App.fmtUptime(v.last_boot)) +
       row('Tools / Agent', App.esc(v.tools_status)) +
       row('Platform Notu', App.esc(v.guest_notes).split('\n').join('<br>')) +
+      row('Tags', v.platform_tags
+        ? v.platform_tags.split(',').map(t => t.trim()).filter(Boolean).map(t =>
+            '<span class="badge bg-info-subtle text-info-emphasis border me-1">' + App.esc(t) + '</span>').join('')
+        : '—') +
       row('Son Güncelleme', App.fmtDate(v.updated_at)) +
       '</div><hr>' +
       '<h6 class="mb-3"><i class="bi bi-pencil-square"></i> Manuel Bilgiler</h6>' +
@@ -232,9 +248,13 @@ const VMs = {
     fill('host', f.hosts);
     fill('env', f.environments);
     fill('vlan', f.vlans);
-    fill('os', f.os_families.map(i => ({key: i.key === 'Diğer' ? i.key : i.key.toLowerCase(),
-                                        count: i.count})));
+    const osLabelMap = {};
+    f.os_families.forEach(i => { osLabelMap[i.key] = i.label; });
+    fill('osfam', f.os_families.map(i => ({key: i.key, count: i.count})),
+         k => osLabelMap[k] || k);
     fill('tag', f.tags);
+    fill('pool', f.pools || []);
+    fill('folder', f.folders || []);
     fill('status', f.power_states, k =>
       ({running: 'Çalışıyor', stopped: 'Kapalı', suspended: 'Askıda'}[k] || k));
   },
@@ -335,6 +355,58 @@ const VMs = {
   },
 
   /** Tablo hücresinden tek tıkla filtre ekle (satır tıklamasını engeller). */
+  /* ---------- Kolon seçici (görünür kolonlar; tarayıcıda hatırlanır) ---------- */
+  COL_KEY: 'vmHiddenCols',
+
+  /** Başlıktaki tüm kolonları döndür: [{id, label, defHidden}]. */
+  allCols() {
+    return [...document.querySelectorAll('#vmTable thead th[data-col]')].map(th => ({
+      id: th.dataset.col,
+      label: th.textContent.trim() || th.dataset.col,
+      defHidden: th.dataset.colDefault === '0',
+    }));
+  },
+
+  /** Gizli kolon kümesi: kayıt varsa ondan, yoksa varsayılan-gizli (data-col-default="0"). */
+  hiddenCols() {
+    try {
+      const saved = localStorage.getItem(this.COL_KEY);
+      if (saved !== null) return new Set(JSON.parse(saved));
+    } catch (e) { /* yok say */ }
+    return new Set(this.allCols().filter(c => c.defHidden).map(c => c.id));
+  },
+
+  /** Görünürlüğü hem başlığa hem (yeniden çizilen) hücrelere uygula. */
+  applyCols() {
+    const hidden = this.hiddenCols();
+    this.allCols().forEach(c => {
+      const show = !hidden.has(c.id);
+      document.querySelectorAll('#vmTable [data-col="' + c.id + '"]')
+        .forEach(el => { el.style.display = show ? '' : 'none'; });
+    });
+  },
+
+  /** Menüyü kur (her kolon için onay kutusu). */
+  buildColChooser() {
+    const box = document.getElementById('colChooser');
+    if (!box) return;
+    const hidden = this.hiddenCols();
+    box.innerHTML = this.allCols().map(c =>
+      '<div class="form-check">' +
+        '<input class="form-check-input" type="checkbox" id="col_' + c.id + '" ' +
+          (hidden.has(c.id) ? '' : 'checked') + ' onchange="VMs.toggleCol(\'' + c.id + '\', this.checked)">' +
+        '<label class="form-check-label small" for="col_' + c.id + '">' + c.label + '</label>' +
+      '</div>').join('');
+  },
+
+  /** Bir kolonu aç/kapat, kaydet, uygula. */
+  toggleCol(id, show) {
+    const hidden = this.hiddenCols();
+    if (show) hidden.delete(id); else hidden.add(id);
+    try { localStorage.setItem(this.COL_KEY, JSON.stringify([...hidden])); } catch (e) { /* yok say */ }
+    this.applyCols();
+  },
+
   cellFilter(event, field, value) {
     event.stopPropagation();    // satırın detay açmasını önle
     if (!value || value === '—') return;
@@ -403,7 +475,13 @@ const VMs = {
       th.classList.add(VMs.order === 'asc' ? 'sorted-asc' : 'sorted-desc');
       VMs.load();
     });
+    // Açılışta aktif sıralama sütununu işaretle (varsayılan: name asc)
+    if (th.dataset.sort === VMs.sort)
+      th.classList.add(VMs.order === 'asc' ? 'sorted-asc' : 'sorted-desc');
   });
+
+  VMs.buildColChooser();
+  VMs.applyCols();
 
   VMs.load();
 })();

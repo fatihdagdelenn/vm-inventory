@@ -13,6 +13,7 @@ Performans: PropertyCollector tabanlı toplu görünüm (ContainerView) kullanı
 """
 import ssl
 import json
+import re
 import logging
 from datetime import datetime
 
@@ -20,6 +21,117 @@ from pyVim.connect import SmartConnect, Disconnect
 from pyVmomi import vim
 
 logger = logging.getLogger("collector.vmware")
+
+# guestInfo.detailed.data biçimi: anahtar='değer' çiftleri, boşlukla ayrık
+_DETAILED_RE = re.compile(r"(\w+)='([^']*)'")
+
+
+def _parse_detailed(raw: str) -> str:
+    """
+    vSphere 8.0 U2+ ayrıntılı guest verisini ('guestInfo.detailed.data' veya
+    guest.guestDetailedData) çözüp en iyi tam adı döndürür.
+    Örn: prettyName='Ubuntu 24.04.1 LTS'  ->  "Ubuntu 24.04.1 LTS".
+    """
+    if not raw:
+        return ""
+    d = dict(_DETAILED_RE.findall(raw))
+    pretty = (d.get("prettyName") or "").strip()
+    if pretty:
+        return pretty
+    name, ver = d.get("distroName", "").strip(), d.get("distroVersion", "").strip()
+    return (f"{name} {ver}".strip()) if name else ""
+
+
+def _best_guest_os(vm, guest, summary_config) -> str:
+    """
+    En ayrıntılı işletim sistemi adını katmanlı olarak bul:
+      1) guest.guestDetailedData              (VM açık, Tools 11.2+ — tam sürüm)
+      2) config.extraConfig['guestInfo.detailed.data']  (kalıcı; VM kapalı olsa da)
+      3) config.guestFullName                 (VM ayarındaki katalog adı)
+      4) guest.guestFullName                  (Tools'un bildirdiği çalışan OS)
+    Sürüm gereksinimi: vSphere 8.0 U2+ ve VMware Tools 11.2+ (1-2. adımlar için).
+    NOT: 3-4 sırası bilinçli — katalog adı (örn. "VMware Photon OS") çoğu zaman
+    Tools'un çalışma anında bildirdiği jenerik addan ("Other 3.x Linux") daha
+    belirgindir; bu yüzden ayrıntılı veri yoksa önce katalog adı kullanılır.
+    """
+    # 1) Canlı ayrıntılı veri (tam sürüm)
+    detailed = _parse_detailed(getattr(guest, "guestDetailedData", None) or "")
+    if detailed:
+        return detailed
+    # 2) Kalıcı ayrıntılı veri (extraConfig) — VM kapalıyken bile
+    #    Anahtar adı kaynaklarda guestinfo/guestInfo olarak geçebiliyor → harf duyarsız
+    try:
+        full_cfg = vm.config
+        if full_cfg and getattr(full_cfg, "extraConfig", None):
+            for opt in full_cfg.extraConfig:
+                if (opt.key or "").lower() == "guestinfo.detailed.data":
+                    detailed = _parse_detailed(opt.value or "")
+                    if detailed:
+                        return detailed
+                    break
+    except Exception:
+        pass
+    # 3) Katalog adı (config)  4) Tools'un bildirdiği OS  — eski (gerilemeyen) sıra
+    return (summary_config.guestFullName if summary_config else "") or \
+           (getattr(guest, "guestFullName", "") if guest else "") or ""
+
+
+def _fetch_vcenter_tags(host, port, username, password, verify_ssl) -> dict:
+    """
+    vCenter REST (vAPI) tagging servisinden  MoRef -> "etiket1,etiket2"  eşlemesi.
+    pyVmomi/SOAP etiketleri vermediği için ayrı bir REST oturumu açılır.
+    Tamamen defensive: herhangi bir hata olursa boş sözlük döner, sync'in
+    geri kalanını etkilemez. (Endpoint sürümü: legacy /rest, 8.0'da da çalışır.)
+    """
+    import requests
+    base = f"https://{host}:{port}"
+    s = requests.Session()
+    s.verify = verify_ssl
+    if not verify_ssl:
+        try:
+            import urllib3
+            urllib3.disable_warnings()
+        except Exception:
+            pass
+    try:
+        r = s.post(f"{base}/rest/com/vmware/cis/session",
+                   auth=(username, password), timeout=15)
+        r.raise_for_status()
+        s.headers["vmware-api-session-id"] = r.json()["value"]
+
+        tag_ids = s.get(f"{base}/rest/com/vmware/cis/tagging/tag",
+                        timeout=15).json().get("value", [])
+        if not tag_ids:
+            return {}
+        names = {}
+        for tid in tag_ids:
+            try:
+                names[tid] = s.get(
+                    f"{base}/rest/com/vmware/cis/tagging/tag/id:{tid}",
+                    timeout=15).json()["value"]["name"]
+            except Exception:
+                names[tid] = tid
+
+        r = s.post(f"{base}/rest/com/vmware/cis/tagging/tag-association",
+                   params={"~action": "list-attached-objects-on-tags"},
+                   json={"tag_ids": tag_ids}, timeout=30)
+        r.raise_for_status()
+        result = {}
+        for entry in r.json().get("value", []):
+            tname = names.get(entry.get("tag_id"), "")
+            for obj in entry.get("object_ids", []):
+                if obj.get("type") == "VirtualMachine":
+                    result.setdefault(obj["id"], []).append(tname)
+        return {mo: ",".join(sorted(set(t for t in tags if t)))
+                for mo, tags in result.items()}
+    except Exception as exc:
+        logger.warning("vCenter etiketleri (REST) alınamadı: %s", exc)
+        return {}
+    finally:
+        try:
+            s.delete(f"{base}/rest/com/vmware/cis/session", timeout=10)
+        except Exception:
+            pass
 
 
 class VMwareCollector:
@@ -94,6 +206,39 @@ class VMwareCollector:
             logger.warning("Cluster eşlemesi kurulamadı: %s", exc)
         return mapping
 
+    def _pool_map(self) -> dict:
+        """VM MoRef -> resource pool adı (toplu; her VM için ayrı sorgu yok).
+        Kök 'Resources' havuzu gürültü olduğu için boş bırakılır."""
+        mapping = {}
+        try:
+            for rp in self._get_objects([vim.ResourcePool]):
+                try:
+                    name = rp.name
+                    if name == "Resources":   # gizli kök havuz
+                        continue
+                    for vm in rp.vm:
+                        mapping[vm._moId] = name
+                except Exception:
+                    continue
+        except Exception as exc:
+            logger.warning("Pool eşlemesi kurulamadı: %s", exc)
+        return mapping
+
+    @staticmethod
+    def _vm_folder(vm) -> str:
+        """VM'in doğrudan içinde bulunduğu klasör adı (vm.parent).
+        Kanonik yöntem: VM'in envanterdeki üst öğesi klasördür. Kök 'vm'
+        klasörü gizli olduğundan boş döndürülür (VM doğrudan kökteyse)."""
+        try:
+            parent = vm.parent
+            if isinstance(parent, vim.Folder):
+                name = parent.name
+                if name and name != "vm":
+                    return name
+        except Exception:
+            pass
+        return ""
+
     # ---------- Host'lar ----------
     def collect_hosts(self) -> list[dict]:
         hosts = []
@@ -137,6 +282,7 @@ class VMwareCollector:
                     "disk_used_gb": round(disk_total - disk_free, 1),
                     "cluster": cluster,
                     "status": "online" if summary.runtime.connectionState == "connected" else "offline",
+                    "last_boot": getattr(summary.runtime, "bootTime", None),
                 })
             except Exception as exc:
                 logger.warning("Host okunamadı %s: %s", getattr(h, "name", "?"), exc)
@@ -146,6 +292,9 @@ class VMwareCollector:
     def collect_vms(self) -> list[dict]:
         vms = []
         cluster_map = self._cluster_map()   # host MoRef -> cluster adı
+        pool_map = self._pool_map()         # VM MoRef -> resource pool
+        tag_map = _fetch_vcenter_tags(      # VM MoRef -> "etiket1,etiket2" (REST)
+            self.host, self.port, self.username, self.password, self.verify_ssl)
         for vm in self._get_objects([vim.VirtualMachine]):
             try:
                 summary = vm.summary
@@ -207,8 +356,7 @@ class VMwareCollector:
                     "name": config.name if config else vm.name,
                     "ip_addresses": ",".join(sorted(set(ips))),
                     "mac_addresses": ",".join(sorted(set(macs))),
-                    "guest_os": (config.guestFullName if config else "") or
-                                (guest.guestFullName if guest else "") or "",
+                    "guest_os": _best_guest_os(vm, guest, config),
                     "cpu_count": config.numCpu if config else 0,
                     "ram_mb": config.memorySizeMB if config else 0,
                     "disk_total_gb": round(sum(d["size_gb"] for d in disks), 1),
@@ -225,6 +373,9 @@ class VMwareCollector:
                     "tools_status": str(guest.toolsRunningStatus) if guest else "unknown",
                     "guest_notes": (config.annotation if config and
                                     getattr(config, "annotation", None) else "") or "",
+                    "pool": pool_map.get(vm._moId, ""),
+                    "folder": self._vm_folder(vm),
+                    "platform_tags": tag_map.get(vm._moId, ""),
                     "is_template": bool(config.template) if config else False,
                 })
             except Exception as exc:

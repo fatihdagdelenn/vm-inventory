@@ -31,6 +31,14 @@
       <option value="tag">Etikete göre</option>
     </select>
     <div class="ms-auto d-inline-flex gap-1">
+      <div class="dropdown">
+        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
+                data-bs-toggle="dropdown" data-bs-auto-close="outside" title="Görünür kolonları seç">
+          <i class="bi bi-layout-three-columns"></i> Kolonlar
+        </button>
+        <div class="dropdown-menu dropdown-menu-end p-2" id="colChooser"
+             style="max-height:60vh; overflow:auto; min-width:200px"></div>
+      </div>
       <button class="btn btn-sm btn-outline-success" onclick="VMs.exportNow('xlsx')"><i class="bi bi-file-earmark-excel"></i> Excel</button>
       <button class="btn btn-sm btn-outline-secondary" onclick="VMs.exportNow('csv')">CSV</button>
       <button class="btn btn-sm btn-outline-danger" onclick="VMs.exportNow('pdf')">PDF</button>
@@ -57,9 +65,13 @@
         <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1">VLAN</label>
           <select class="form-select form-select-sm adv-sel" data-field="vlan"></select></div>
         <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1">İşletim Sistemi</label>
-          <select class="form-select form-select-sm adv-sel" data-field="os"></select></div>
+          <select class="form-select form-select-sm adv-sel" data-field="osfam"></select></div>
         <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1">Etiket</label>
           <select class="form-select form-select-sm adv-sel" data-field="tag"></select></div>
+        <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1">Pool</label>
+          <select class="form-select form-select-sm adv-sel" data-field="pool"></select></div>
+        <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1">Klasör</label>
+          <select class="form-select form-select-sm adv-sel" data-field="folder"></select></div>
         <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1">Tools / Agent</label>
           <select class="form-select form-select-sm adv-sel" data-field="tools">
             <option value="">— Tümü —</option>
@@ -124,19 +136,24 @@
     <table class="table table-hover align-middle mb-0" id="vmTable">
       <thead>
         <tr>
-          <th data-sort="name" class="sortable">VM Adı</th>
-          <th>IP Adresleri</th>
-          <th data-sort="guest_os" class="sortable">İşletim Sistemi</th>
-          <th data-sort="cpu_count" class="sortable">CPU</th>
-          <th data-sort="ram_mb" class="sortable">RAM</th>
-          <th>Disk</th>
-          <th>Host</th>
-          <th data-sort="cluster" class="sortable">Cluster</th>
-          <th>VLAN</th>
-          <th data-sort="power_state" class="sortable">Durum</th>
+          <th data-col="name" data-sort="name" class="sortable">VM Adı</th>
+          <th data-col="vmid" data-sort="vmid" class="sortable">VM ID</th>
+          <th data-col="ip">IP Adresleri</th>
+          <th data-col="guest_os" data-sort="guest_os" class="sortable">İşletim Sistemi</th>
+          <th data-col="cpu" data-sort="cpu_count" class="sortable">CPU</th>
+          <th data-col="ram" data-sort="ram_mb" class="sortable">RAM</th>
+          <th data-col="disk" data-sort="disk_total_gb" class="sortable">Disk</th>
+          <th data-col="host" data-sort="host" class="sortable">Host</th>
+          <th data-col="cluster" data-sort="cluster" class="sortable">Cluster</th>
+          <th data-col="pool" data-sort="pool" class="sortable">Pool</th>
+          <th data-col="folder" data-col-default="0">Klasör</th>
+          <th data-col="vlan">VLAN</th>
+          <th data-col="ptags">Tags</th>
+          <th data-col="power_state" data-sort="power_state" class="sortable">Durum</th>
+          <th data-col="uptime">Uptime</th>
         </tr>
       </thead>
-      <tbody id="vmBody"><tr><td colspan="10" class="text-center text-muted p-4">Yükleniyor…</td></tr></tbody>
+      <tbody id="vmBody"><tr><td colspan="15" class="text-center text-muted p-4">Yükleniyor…</td></tr></tbody>
     </table>
   </div>
   <div class="card-footer d-flex align-items-center">

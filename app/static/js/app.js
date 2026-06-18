@@ -97,6 +97,23 @@ const App = {
                                       timeZone: window.APP_TZ || 'Europe/Istanbul'});
   },
 
+  /** Açılış zamanından (ISO) canlı çalışma süresi: "12 gün 4 sa" / "3 sa 20 dk".
+   *  Açılış bilgisi yoksa veya gelecekteyse "—". Senkronizasyondan bağımsız
+   *  olarak her sayfa açılışında güncel hesaplanır (now - boot). */
+  fmtUptime(iso) {
+    if (!iso) return '—';
+    const boot = new Date(iso);
+    if (isNaN(boot)) return '—';
+    let s = Math.floor((Date.now() - boot.getTime()) / 1000);
+    if (s < 0) return '—';
+    const d = Math.floor(s / 86400); s -= d * 86400;
+    const h = Math.floor(s / 3600);  s -= h * 3600;
+    const m = Math.floor(s / 60);
+    if (d > 0) return d + ' gün ' + h + ' sa';
+    if (h > 0) return h + ' sa ' + m + ' dk';
+    return m + ' dk';
+  },
+
   /** Güç/erişim durumu için renkli rozet üret. */
   stateBadge(state) {
     const map = {

@@ -13,12 +13,18 @@ from ..models import VirtualMachine, Tag, User, AuditLog, Host
 from ..core.timezone import to_iso
 from ..core.security import get_current_user, require_role, validate_csrf
 from ..core.search import apply_vm_search
+from ..core.os_family import distribution as os_family_distribution
 
 router = APIRouter(prefix="/api/vms", tags=["vms"])
 
 SORTABLE = {"name": VirtualMachine.name, "power_state": VirtualMachine.power_state,
             "cluster": VirtualMachine.cluster, "guest_os": VirtualMachine.guest_os,
-            "ram_mb": VirtualMachine.ram_mb, "cpu_count": VirtualMachine.cpu_count}
+            "ram_mb": VirtualMachine.ram_mb, "cpu_count": VirtualMachine.cpu_count,
+            "disk_total_gb": VirtualMachine.disk_total_gb, "vmid": VirtualMachine.vmid,
+            "pool": VirtualMachine.pool}
+# Metin kolonları büyük/küçük harf duyarsız (gerçek alfabetik) sıralanır;
+# aksi halde DB bayt/ASCII sırasıyla dizer (önce büyük harfler → alfabetik görünmez)
+CASE_INSENSITIVE = {"name", "cluster", "guest_os", "vmid", "pool"}
 
 
 def _vm_to_dict(vm: VirtualMachine) -> dict:
@@ -38,6 +44,8 @@ def _vm_to_dict(vm: VirtualMachine) -> dict:
         "last_boot": to_iso(vm.last_boot),
         "tools_status": vm.tools_status, "owner": vm.owner, "notes": vm.notes,
         "guest_notes": vm.guest_notes,
+        "pool": vm.pool, "folder": vm.folder,
+        "platform_tags": vm.platform_tags,
         "environment": vm.environment,
         "platform": vm.platform.name if vm.platform else "",
         "platform_type": vm.platform.type if vm.platform else "",
@@ -95,7 +103,13 @@ def list_vms(q: str = "", page: int = 1, per_page: int = 50,
         return {"groups": [{"key": r[0] or "(boş)", "count": r[1]} for r in rows]}
 
     total = query.count()
-    sort_col = SORTABLE.get(sort, VirtualMachine.name)
+    if sort == "host":
+        # İlişkili host adına göre (büyük/küçük harf duyarsız) sırala
+        query = query.outerjoin(Host, VirtualMachine.host_id == Host.id)
+        sort_col = func.lower(func.coalesce(Host.name, ""))
+    else:
+        base_col = SORTABLE.get(sort, VirtualMachine.name)
+        sort_col = func.lower(base_col) if sort in CASE_INSENSITIVE else base_col
     query = query.order_by(sort_col.desc() if order == "desc" else sort_col.asc())
     items = query.offset((page - 1) * per_page).limit(per_page).all()
     return {"total": total, "page": page, "per_page": per_page,
@@ -148,17 +162,11 @@ def vm_facets(include_hidden: bool = False,
             if v:
                 vlan_counts[v] = vlan_counts.get(v, 0) + 1
 
-    # OS ailesi (Windows / Linux / Diğer)
-    os_counts = {"Windows": 0, "Linux": 0, "Diğer": 0}
-    for (os_name, cnt) in base.with_entities(
-            VirtualMachine.guest_os, func.count(VirtualMachine.id))\
-            .group_by(VirtualMachine.guest_os).all():
-        low = (os_name or "").lower()
-        fam = "Windows" if "win" in low else \
-              "Linux" if any(x in low for x in ("linux", "ubuntu", "centos",
-                  "rhel", "debian", "suse", "fedora", "alma", "rocky", "l26")) \
-              else "Diğer"
-        os_counts[fam] += cnt
+    # OS ailesi (ayrıntılı: Windows / Ubuntu / Debian / Red Hat / SUSE / …)
+    os_rows = base.with_entities(
+        VirtualMachine.guest_os, func.count(VirtualMachine.id))\
+        .group_by(VirtualMachine.guest_os).all()
+    os_families_facet = os_family_distribution(os_rows)
 
     # Etiketler
     tag_rows = db.query(Tag.name, func.count(VirtualMachine.id))\
@@ -183,9 +191,12 @@ def vm_facets(include_hidden: bool = False,
                             key=lambda x: x["key"]),
         "vlans": sorted([{"key": k, "count": v} for k, v in vlan_counts.items()],
                         key=lambda x: (len(x["key"]), x["key"])),
-        "os_families": [{"key": k, "count": v} for k, v in os_counts.items() if v],
+        "os_families": [{"key": o["key"], "label": o["label"], "count": o["count"]}
+                        for o in os_families_facet],
         "tags": sorted([{"key": r[0], "count": r[1]} for r in tag_rows],
                        key=lambda x: x["key"]),
+        "pools": counted(VirtualMachine.pool),
+        "folders": counted(VirtualMachine.folder),
     }
 
 

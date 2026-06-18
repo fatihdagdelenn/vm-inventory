@@ -386,3 +386,9 @@ th.sorted-desc::after { content: " ▼"; color: var(--accent); font-size: .65rem
 .net-group .table { font-size: .88rem; }
 .net-kind { font-size: .66rem; vertical-align: middle; font-weight: 600; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* ---------- Host kaynak hücreleri (CPU/RAM/Disk): değer + satır içi % + geniş mini bar ---------- */
+.res-cell { min-width: 150px; }
+.res-top { font-size: .88rem; white-space: nowrap; }
+.res-pct { color: var(--text-muted); font-weight: 600; font-size: .78rem; margin-left: .15rem; }
+.res-cell .usage-mini { width: 100%; max-width: 170px; height: 6px; margin-top: 5px; }
