@@ -1,21 +1,61 @@
-# Ortam ve gizli bilgiler — ASLA commit edilmemeli
-.env
-
-# Çalışma verileri
+# ===== VERİLER & VERİTABANI (ASLA push edilmemeli) =====
 data/
 *.db
+*.db-journal
 *.sqlite
+*.sqlite3
+db/
+backups/
 
-# Python
+# ===== SIRLAR & ORTAM DEĞİŞKENLERİ =====
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.crt
+secrets/
+secret_key*
+encryption_key*
+
+# Yerel docker override (sır içerebilir)
+docker-compose.override.yml
+docker-compose.override.yaml
+
+# ===== ÇIKTILAR / YÜKLEMELER / GEÇİCİ =====
+exports/
+uploads/
+output/
+tmp/
+*.tmp
+*.bak
+*.patch
+# ===== LOGLAR =====
+*.log
+logs/
+
+# ===== PYTHON =====
 __pycache__/
 *.py[cod]
-venv/
-.venv/
+*$py.class
 *.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
-# IDE / OS
-.idea/
+# ===== IDE / İŞLETİM SİSTEMİ =====
 .vscode/
+.idea/
+*.swp
 .DS_Store
 Thumbs.db
-*.patch
+
+# ===== NODE (varsa) =====
+node_modules/

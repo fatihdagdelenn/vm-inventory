@@ -74,18 +74,45 @@ const Settings = {
   },
 
   async loadAudit() {
+    const q = document.getElementById('auditSearch').value.trim();
+    const action = document.getElementById('auditAction').value;
     let data;
-    try { data = await App.api('/api/admin/audit'); } catch (e) { return; }
+    try {
+      data = await App.api('/api/admin/audit?q=' + encodeURIComponent(q) +
+                           '&action=' + encodeURIComponent(action));
+    } catch (e) { return; }
+    if (!this.auditActionsLoaded && data.actions) {
+      const sel = document.getElementById('auditAction');
+      data.actions.forEach(a => {
+        const o = document.createElement('option'); o.value = a; o.textContent = a;
+        sel.appendChild(o);
+      });
+      this.auditActionsLoaded = true;
+    }
+    const roleBadge = r => r
+      ? ' <span class="badge text-bg-light border text-muted" style="font-size:.65rem">' + App.esc(r) + '</span>' : '';
+    const change = l => {
+      if (l.old_value == null && l.new_value == null)
+        return l.detail ? '<span class="text-muted small">' + App.esc(l.detail) + '</span>' : '—';
+      return '<span class="small">' +
+        (l.old_value ? '<span class="text-danger">' + App.esc(l.old_value) + '</span>' : '—') +
+        ' <i class="bi bi-arrow-right text-muted"></i> ' +
+        (l.new_value ? '<span class="text-success">' + App.esc(l.new_value) + '</span>' : '—') +
+        '</span>';
+    };
     document.getElementById('auditBody').innerHTML = data.items.length
       ? data.items.map(l => '<tr>' +
           '<td class="text-nowrap small">' + App.fmtDate(l.timestamp) + '</td>' +
-          '<td>' + App.esc(l.username) + '</td>' +
+          '<td class="small">' + App.esc(l.username) + roleBadge(l.role) + '</td>' +
           '<td><code>' + App.esc(l.action) + '</code></td>' +
-          '<td class="small">' + App.esc(l.detail || '') + '</td>' +
-          '<td class="small">' + App.esc(l.ip_address || '') + '</td></tr>').join('')
-      : '<tr><td colspan="5" class="text-muted p-3">Kayıt yok.</td></tr>';
+          '<td class="small">' + App.esc(l.target || '—') + '</td>' +
+          '<td>' + change(l) + '</td>' +
+          '<td class="small text-muted">' + App.esc(l.ip_address || '') + '</td></tr>').join('')
+      : '<tr><td colspan="6" class="text-muted p-3">Kayıt yok.</td></tr>';
   },
 };
 
 Settings.loadUsers();
 Settings.loadAudit();
+document.getElementById('auditSearch').addEventListener('input', App.debounce(() => Settings.loadAudit(), 300));
+document.getElementById('auditAction').addEventListener('change', () => Settings.loadAudit());

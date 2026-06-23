@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card panel mb-3"><div class="card-body py-3">
+  <div class="d-flex gap-2 flex-wrap align-items-center">
+    <div class="search-box flex-grow-1" style="min-width:240px;max-width:420px">
+      <i class="bi bi-search"></i>
+      <input type="text" id="bkSearch" class="form-control" placeholder="VM, vmid, depo veya not ara…">
+    </div>
+    <select id="bkStorage" class="form-select form-select-sm" style="width:auto">
+      <option value="">Tüm depolar</option>
+    </select>
+    <select id="bkSource" class="form-select form-select-sm" style="width:auto">
+      <option value="">Tüm kaynaklar</option>
+    </select>
+    <div class="form-check form-switch mb-0">
+      <input class="form-check-input" type="checkbox" id="bkProtected">
+      <label class="form-check-label small" for="bkProtected">Yalnızca korumalı</label>
+    </div>
+    <div class="ms-auto d-flex gap-2">
+      <button class="btn btn-outline-success btn-sm" onclick="location='/api/reports/backups/export?fmt=xlsx'"><i class="bi bi-file-earmark-excel"></i> Excel</button>
+      <button class="btn btn-outline-secondary btn-sm" onclick="location='/api/reports/backups/export?fmt=csv'">CSV</button>
+      <button class="btn btn-outline-danger btn-sm" onclick="location='/api/reports/backups/export?fmt=pdf'">PDF</button>
+    </div>
+  </div>
+</div></div>
+
+<div class="card panel">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0" id="bkTable">
+      <thead><tr>
+        <th data-sort="vm_name" class="sortable">VM</th>
+        <th data-sort="platform" class="sortable">Platform</th>
+        <th>Cluster</th>
+        <th data-sort="storage" class="sortable">Depo</th>
+        <th data-sort="source" class="sortable">Kaynak</th>
+        <th data-sort="created_at" class="sortable">Oluşturma</th>
+        <th>Yaş</th>
+        <th data-sort="size_gb" class="sortable">Boyut</th>
+        <th>Not</th>
+      </tr></thead>
+      <tbody id="bkBody"><tr><td colspan="9" class="text-center text-muted p-4">Yükleniyor…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+<div class="text-muted small mt-2" id="bkCount"></div>
+{% endblock %}
+{% block scripts %}<script src="/static/js/backups.js?v={{ asset_version }}"></script>{% endblock %}

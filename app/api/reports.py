@@ -12,6 +12,7 @@ from ..database import get_db
 from ..models import VirtualMachine, Host, User, AuditLog, ScheduledReport
 from ..core.security import get_current_user, require_role, validate_csrf
 from ..core.search import apply_vm_search
+from ..core.audit import log_audit
 from ..core.scheduler import scheduler
 from ..services import report_service as rs
 from ..core.timezone import to_iso, now_local
@@ -48,8 +49,7 @@ def export_vms(fmt: str = "xlsx", q: str = "", db: Session = Depends(get_db),
     query = db.query(VirtualMachine).options(
         joinedload(VirtualMachine.host_ref)).filter_by(is_template=False)
     items = apply_vm_search(query, q).order_by(VirtualMachine.name).all()
-    db.add(AuditLog(username=user.username, action="export",
-                    detail=f"vms fmt={fmt} q='{q}' count={len(items)}"))
+    log_audit(db, user, "export", target=f"vms ({fmt})", detail=f"q='{q}' count={len(items)}")
     db.commit()
     return _export(items, rs.VM_COLUMNS, fmt, "VM Envanteri")
 
@@ -58,10 +58,39 @@ def export_vms(fmt: str = "xlsx", q: str = "", db: Session = Depends(get_db),
 def export_hosts(fmt: str = "xlsx", db: Session = Depends(get_db),
                  user: User = Depends(get_current_user)):
     items = db.query(Host).order_by(Host.name).all()
-    db.add(AuditLog(username=user.username, action="export",
-                    detail=f"hosts fmt={fmt} count={len(items)}"))
+    log_audit(db, user, "export", target=f"hosts ({fmt})", detail=f"count={len(items)}")
     db.commit()
     return _export(items, rs.HOST_COLUMNS, fmt, "Host Envanteri")
+
+
+@router.get("/datastores/export")
+def export_datastores(fmt: str = "xlsx", db: Session = Depends(get_db),
+                      user: User = Depends(get_current_user)):
+    from ..models import Datastore
+    items = db.query(Datastore).order_by(Datastore.name).all()
+    log_audit(db, user, "export", target=f"datastores ({fmt})", detail=f"count={len(items)}")
+    db.commit()
+    return _export(items, rs.DATASTORE_COLUMNS, fmt, "Datastore Envanteri")
+
+
+@router.get("/snapshots/export")
+def export_snapshots(fmt: str = "xlsx", db: Session = Depends(get_db),
+                     user: User = Depends(get_current_user)):
+    from ..models import Snapshot
+    items = db.query(Snapshot).order_by(Snapshot.created_at).all()
+    log_audit(db, user, "export", target=f"snapshots ({fmt})", detail=f"count={len(items)}")
+    db.commit()
+    return _export(items, rs.SNAPSHOT_COLUMNS, fmt, "Snapshot Envanteri")
+
+
+@router.get("/backups/export")
+def export_backups(fmt: str = "xlsx", db: Session = Depends(get_db),
+                   user: User = Depends(get_current_user)):
+    from ..models import Backup
+    items = db.query(Backup).order_by(Backup.created_at.desc()).all()
+    log_audit(db, user, "export", target=f"backups ({fmt})", detail=f"count={len(items)}")
+    db.commit()
+    return _export(items, rs.BACKUP_COLUMNS, fmt, "Yedek Envanteri")
 
 
 # ---------- Zamanlanmış raporlar (KALICI) ----------
@@ -177,7 +206,7 @@ def schedule_report(request: Request, payload: dict = Body(...),
     db.commit()
     db.refresh(rep)
     _register_job(rep)
-    db.add(AuditLog(username=user.username, action="schedule_report", detail=rep.job_id))
+    log_audit(db, user, "schedule_report", target=rep.job_id)
     db.commit()
     return {"ok": True, "item": _serialize(rep)}
 
@@ -200,7 +229,7 @@ def run_now(report_id: int, request: Request,
         raise HTTPException(404, "Zamanlanmış rapor bulunamadı")
     run_scheduled_report(report_id)
     db.refresh(rep)
-    db.add(AuditLog(username=user.username, action="run_report_now", detail=rep.job_id))
+    log_audit(db, user, "run_report_now", target=rep.job_id)
     db.commit()
     return {"ok": True, "item": _serialize(rep)}
 

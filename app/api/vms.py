@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, joinedload
 from ..database import get_db
 from ..models import VirtualMachine, Tag, User, AuditLog, Host
 from ..core.timezone import to_iso
+from ..core.audit import log_audit
 from ..core.security import get_current_user, require_role, validate_csrf
 from ..core.search import apply_vm_search
 from ..core.os_family import distribution as os_family_distribution
@@ -27,11 +28,22 @@ SORTABLE = {"name": VirtualMachine.name, "power_state": VirtualMachine.power_sta
 CASE_INSENSITIVE = {"name", "cluster", "guest_os", "vmid", "pool"}
 
 
+def _agent_state(ts, ptype) -> str:
+    """3 durumlu agent/Tools durumu: running | stopped | none."""
+    t = (ts or "").lower()
+    if "running" in t and "notrunning" not in t:
+        return "running"                       # kurulu + çalışıyor
+    if ptype == "vcenter" and "notrunning" in t:
+        return "stopped"                       # Tools kurulu ama çalışmıyor
+    return "none"                              # kurulu değil / bilinmiyor
+
+
 def _vm_to_dict(vm: VirtualMachine) -> dict:
     return {
         "id": vm.id, "vmid": vm.vmid, "name": vm.name,
         "ip_addresses": vm.ip_addresses, "mac_addresses": vm.mac_addresses,
         "guest_os": vm.guest_os, "cpu_count": vm.cpu_count, "ram_mb": vm.ram_mb,
+        "kernel": vm.kernel, "arch": vm.arch,
         "cpu_usage_pct": vm.cpu_usage_pct, "ram_usage_mb": vm.ram_usage_mb,
         "disk_used_gb": vm.disk_used_gb,
         "disk_total_gb": vm.disk_total_gb,
@@ -43,6 +55,8 @@ def _vm_to_dict(vm: VirtualMachine) -> dict:
         "created_date": to_iso(vm.created_date),
         "last_boot": to_iso(vm.last_boot),
         "tools_status": vm.tools_status, "owner": vm.owner, "notes": vm.notes,
+        "agent_state": _agent_state(vm.tools_status,
+                                    vm.platform.type if vm.platform else ""),
         "guest_notes": vm.guest_notes,
         "pool": vm.pool, "folder": vm.folder,
         "platform_tags": vm.platform_tags,
@@ -206,7 +220,16 @@ def get_vm(vm_id: int, db: Session = Depends(get_db),
     vm = db.get(VirtualMachine, vm_id)
     if not vm:
         raise HTTPException(404, "VM bulunamadı")
-    return _vm_to_dict(vm)
+    from ..models import Snapshot
+    snaps = (db.query(Snapshot).filter_by(vm_id=vm.id)
+               .order_by(Snapshot.created_at.asc().nullslast()).all())
+    data = _vm_to_dict(vm)
+    data["snapshots"] = [{
+        "name": s.name, "created_at": to_iso(s.created_at),
+        "age_days": s.age_days, "is_current": bool(s.is_current),
+        "parent": s.parent or "", "description": s.description or "",
+    } for s in snaps]
+    return data
 
 
 @router.patch("/{vm_id}")
@@ -218,6 +241,10 @@ def update_vm_meta(vm_id: int, request: Request, payload: dict = Body(...),
     vm = db.get(VirtualMachine, vm_id)
     if not vm:
         raise HTTPException(404, "VM bulunamadı")
+
+    old = {"notes": vm.notes or "", "owner": vm.owner or "",
+           "environment": vm.environment or "",
+           "tags": ", ".join(t.name for t in vm.tags)}
 
     if "notes" in payload:
         vm.notes = payload["notes"]
@@ -237,8 +264,13 @@ def update_vm_meta(vm_id: int, request: Request, payload: dict = Body(...),
             tags.append(tag)
         vm.tags = tags
 
-    db.add(AuditLog(username=user.username, action="update_vm",
-                    detail=f"VM={vm.name} alanlar={list(payload.keys())}",
-                    ip_address=request.client.host if request.client else ""))
+    new = {"notes": vm.notes or "", "owner": vm.owner or "",
+           "environment": vm.environment or "",
+           "tags": ", ".join(t.name for t in vm.tags)}
+    changed = [k for k in new if k in payload and old[k] != new[k]]
+    log_audit(db, user, "update_vm", target=vm.name,
+              old="; ".join(f"{k}={old[k]}" for k in changed) or None,
+              new="; ".join(f"{k}={new[k]}" for k in changed) or None,
+              detail=f"alanlar={list(payload.keys())}", request=request)
     db.commit()
     return _vm_to_dict(vm)

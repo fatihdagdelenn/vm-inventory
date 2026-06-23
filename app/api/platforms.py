@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import Platform, SyncLog, User, AuditLog
 from ..core.timezone import to_iso
+from ..core.audit import log_audit
 from ..core.security import (require_role, get_current_user, encrypt_secret,
                              decrypt_secret, validate_csrf)
 from ..collectors.vmware_collector import VMwareCollector
@@ -59,8 +60,7 @@ def create_platform(request: Request, payload: dict = Body(...),
         environment=payload.get("environment", "production"),
     )
     db.add(p)
-    db.add(AuditLog(username=user.username, action="create_platform",
-                    detail=f"{p.type}:{p.name}"))
+    log_audit(db, user, "create_platform", target=p.name, detail=p.type, request=request)
     db.commit()
     return _platform_to_dict(p)
 
@@ -87,7 +87,7 @@ def update_platform(platform_id: int, request: Request, payload: dict = Body(...
         p.password_encrypted = encrypt_secret(payload["password"])
     if payload.get("token_value"):
         p.token_value_encrypted = encrypt_secret(payload["token_value"])
-    db.add(AuditLog(username=user.username, action="update_platform", detail=p.name))
+    log_audit(db, user, "update_platform", target=p.name, request=request)
     db.commit()
     return _platform_to_dict(p)
 
@@ -113,7 +113,7 @@ def delete_platform(platform_id: int, request: Request,
     db.query(VirtualMachine).filter_by(platform_id=p.id).delete()
     db.query(Network).filter_by(platform_id=p.id).delete()
     db.query(Datastore).filter_by(platform_id=p.id).delete()
-    db.add(AuditLog(username=user.username, action="delete_platform", detail=p.name))
+    log_audit(db, user, "delete_platform", target=p.name, request=request)
     db.delete(p)   # host'lar ve sync log'ları ORM cascade ile silinir
     db.commit()
     return {"ok": True}
@@ -162,11 +162,11 @@ def trigger_sync(platform_id: int, request: Request, background: BackgroundTasks
                  user: User = Depends(require_role("operator"))):
     """Tek platform için manuel senkronizasyon (arka planda çalışır)."""
     validate_csrf(request, None)
-    if not db.get(Platform, platform_id):
+    platform = db.get(Platform, platform_id)
+    if not platform:
         raise HTTPException(404, "Platform bulunamadı")
     background.add_task(sync_platform, platform_id)
-    db.add(AuditLog(username=user.username, action="manual_sync",
-                    detail=f"platform_id={platform_id}"))
+    log_audit(db, user, "manual_sync", target=platform.name, request=request)
     db.commit()
     return {"ok": True, "message": "Senkronizasyon arka planda başlatıldı"}
 
@@ -178,7 +178,7 @@ def trigger_sync_all(request: Request, background: BackgroundTasks,
     """Toplu veri yenileme: tüm platformları arka planda senkronize et."""
     validate_csrf(request, None)
     background.add_task(sync_all_platforms)
-    db.add(AuditLog(username=user.username, action="manual_sync_all"))
+    log_audit(db, user, "manual_sync_all", request=request)
     db.commit()
     return {"ok": True, "message": "Tüm platformlar için senkronizasyon başlatıldı"}
 

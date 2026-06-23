@@ -65,6 +65,25 @@ HOST_COLUMNS = [
     ("Disk (GB)", "disk_total_gb"), ("Cluster", "cluster"), ("Durum", "status"),
 ]
 
+DATASTORE_COLUMNS = [
+    ("Datastore", "name"), ("Node", "node"), ("Platform", "platform_name"),
+    ("Tip", "type"), ("Kapasite (GB)", "capacity_gb"), ("Kullanılan (GB)", "used_gb"),
+    ("Boş (GB)", "free_gb"), ("Kullanım %", "usage_pct"),
+    ("Host", "host_count"), ("VM", "vm_count"), ("Durum", "status"),
+]
+
+SNAPSHOT_COLUMNS = [
+    ("VM", "vm_name"), ("Snapshot", "name"), ("Platform", "platform_name"),
+    ("Oluşturma", "created_at"), ("Yaş (gün)", "age_days"),
+    ("Üst Snapshot", "parent"), ("Açıklama", "description"),
+]
+
+BACKUP_COLUMNS = [
+    ("VM", "vm_name"), ("VMID", "vmid"), ("Depo", "storage"), ("Kaynak", "source"),
+    ("Format", "fmt"), ("Oluşturma", "created_at"), ("Yaş (gün)", "age_days"),
+    ("Boyut (GB)", "size_gb"), ("Korumalı", "protected"), ("Not", "notes"),
+]
+
 
 def _row_values(obj, columns):
     """Model nesnesinden kolon sırasına göre değerleri çıkar."""

@@ -17,6 +17,7 @@ from ..database import get_db
 from ..models import VirtualMachine, Host, ClusterSetting, AuditLog
 from ..models.user import User
 from ..core.security import get_current_user, require_role
+from ..core.audit import log_audit
 
 router = APIRouter(prefix="/api/clusters", tags=["clusters"])
 
@@ -122,9 +123,7 @@ def set_visibility(payload: VisibilityPayload,
         db.add(setting)
     setting.visible = payload.visible
     display = "(Cluster'sız)" if payload.name == NONE_SENTINEL else payload.name
-    db.add(AuditLog(username=user.username,
-                    action="cluster_visibility",
-                    detail=f"{display} -> "
-                           f"{'görünür' if payload.visible else 'gizli'}"))
+    log_audit(db, user, "cluster_visibility", target=display,
+              new=("görünür" if payload.visible else "gizli"))
     db.commit()
     return {"ok": True, "name": payload.name, "visible": payload.visible}

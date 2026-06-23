@@ -337,16 +337,18 @@ th.sorted-desc::after { content: " ▼"; color: var(--accent); font-size: .65rem
 
 /* ---------- Anlık kullanım mini çubuğu (VM tablosu) ---------- */
 .usage-mini {
-  width: 56px; height: 4px; background: #e9edf3; border-radius: 99px;
+  width: 56px; height: 5px; background: #d8dfe9; border-radius: 99px;
   margin-top: 4px; overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(15, 30, 60, .06);
 }
 .usage-mini > div {
-  height: 100%; border-radius: 99px;
+  height: 100%; border-radius: 99px; min-width: 4px;
   background: linear-gradient(90deg, var(--accent), #6db1ff);
   transition: width .4s;
 }
 .usage-mini.warn > div { background: linear-gradient(90deg, #e8a13c, #f3bd6c); }
 .usage-mini.crit > div { background: linear-gradient(90deg, #e5534b, #f08079); }
+.usage-mini.zero > div { min-width: 0; }
 
 /* ---------- Ağlar: gruplama araç çubuğu + akordeon ---------- */
 .net-toolbar {

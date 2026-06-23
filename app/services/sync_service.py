@@ -11,12 +11,13 @@ Akış:
 
 Bu sayede kullanıcı aramaları her zaman hızlı lokal verilerle çalışır.
 """
+import re
 import logging
 from datetime import datetime
 
 from ..database import SessionLocal
 from ..models import (Platform, SyncLog, Host, VirtualMachine,
-                      Network, Datastore, ChangeHistory)
+                      Network, Datastore, Snapshot, Backup, ChangeHistory)
 from ..core.security import decrypt_secret
 from ..collectors.vmware_collector import VMwareCollector
 from ..collectors.proxmox_collector import ProxmoxCollector
@@ -27,6 +28,30 @@ logger = logging.getLogger("sync")
 TRACKED_VM_FIELDS = ["name", "ip_addresses", "guest_os", "cpu_count", "ram_mb",
                      "disk_total_gb", "power_state", "cluster", "datastore", "vlans"]
 TRACKED_HOST_FIELDS = ["name", "mgmt_ip", "cpu_cores", "ram_total_mb", "cluster", "status"]
+
+# Misafir agent'ı / config sorgusu geçici başarısız olunca bu alanlar "iyi" değerden
+# jenerik/boş değere düşebilir. Geçmiş'i (ChangeHistory) gürültüden korumak için
+# bu düşüşlerde eski (iyi) değeri koruruz.
+_ENRICH_FIELDS = ("guest_os", "ip_addresses", "datastore", "vlans", "networks",
+                  "mac_addresses", "kernel", "arch", "disk_total_gb",
+                  "guest_notes", "platform_tags")
+# Jenerik / belirsiz OS adları (agent yokken ostype/guestFullName'den gelir)
+_GENERIC_OS_RE = re.compile(
+    r"çekirdek|kernel\)|\bother\b|^diğer$|^linux$|^windows$|2\.6\+|2\.4 ",
+    re.IGNORECASE)
+
+
+def _is_generic_os(s) -> bool:
+    return (not s) or bool(_GENERIC_OS_RE.search(str(s)))
+
+
+def _preserve_old(field, old, new) -> bool:
+    """Geçici agent/enrich düşüşünde eski iyi değer korunmalı mı?"""
+    if field == "guest_os":
+        return new is not None and _is_generic_os(new) and old and not _is_generic_os(old)
+    if field in ("ip_addresses", "datastore", "vlans", "disk_total_gb"):
+        return (not new) and bool(old)   # eski doluyken yeni boş/0 → geçici düşüş
+    return False
 
 
 def _record_change(db, entity_type, entity_name, platform_id, change_type,
@@ -72,6 +97,16 @@ def sync_platform(platform_id: int):
         vms_data = collector.collect_vms()
         nets_data = collector.collect_networks()
         ds_data = collector.collect_datastores()
+        try:
+            snaps_data = collector.collect_snapshots()
+        except Exception as exc:
+            snaps_data = []
+            logger.warning("Snapshot toplanamadı (%s): %s", platform.name, exc)
+        try:
+            backups_data = collector.collect_backups()
+        except Exception as exc:
+            backups_data = []
+            logger.warning("Yedek toplanamadı (%s): %s", platform.name, exc)
         if hasattr(collector, "disconnect"):
             collector.disconnect()
 
@@ -110,6 +145,9 @@ def sync_platform(platform_id: int):
             seen_vms.add(vd["external_id"])
             host_name = vd.pop("host_name", "")
             host_obj = host_by_name.get(host_name)
+            enrich_failed = vd.pop("enrich_failed", False)
+            os_from_agent = vd.pop("os_from_agent", True)   # vCenter/LXC için varsayılan: güven
+            ip_from_agent = vd.pop("ip_from_agent", True)
             vm = existing_vms.get(vd["external_id"])
             if vm is None:
                 vm = VirtualMachine(platform_id=platform.id,
@@ -118,10 +156,31 @@ def sync_platform(platform_id: int):
                 db.add(vm)
                 _record_change(db, "vm", vd["name"], platform.id, "created")
             else:
+                # Bu turda VM detay sorgusu tümden başarısızsa, enrich'e bağlı
+                # alanları eskiye sabitle (jenerik/boş değerlerle ezilmesin).
+                if enrich_failed:
+                    for f in _ENRICH_FIELDS:
+                        if f in vd:
+                            vd[f] = getattr(vm, f)
+                # Provenance: agent bu turda OS/IP veremediyse, eski (agent kaynaklı)
+                # değeri koru. Böylece "Server 2019" ↔ "Windows 10" gibi gidip gelmeler
+                # (agent osinfo arada yanıt vermediğinde) Geçmiş'i kirletmez.
+                if not os_from_agent and vm.guest_os:
+                    for f in ("guest_os", "kernel", "arch"):
+                        if f in vd:
+                            vd[f] = getattr(vm, f)
+                if not ip_from_agent and vm.ip_addresses:
+                    for f in ("ip_addresses", "mac_addresses", "networks"):
+                        if f in vd:
+                            vd[f] = getattr(vm, f)
                 for f in TRACKED_VM_FIELDS:
-                    if getattr(vm, f) != vd.get(f) and vd.get(f) is not None:
+                    old, new = getattr(vm, f), vd.get(f)
+                    if _preserve_old(f, old, new):   # geçici düşüş → eskiyi koru
+                        vd[f] = old
+                        continue
+                    if old != new and new is not None:
                         _record_change(db, "vm", vm.name, platform.id,
-                                       "updated", f, getattr(vm, f), vd[f])
+                                       "updated", f, old, new)
                 for k, v in vd.items():
                     setattr(vm, k, v)
                 vm.host_id = host_obj.id if host_obj else None
@@ -135,8 +194,55 @@ def sync_platform(platform_id: int):
         for nd in nets_data:
             db.add(Network(platform_id=platform.id, **nd))
         db.query(Datastore).filter_by(platform_id=platform.id).delete()
+        # vm_count: bu platformdaki VM'lerin 'datastore' alanından (virgülle ayrık
+        # depo adları) çapraz hesaplanır. Yerel Proxmox depoları için ayrıca VM'in
+        # bulunduğu node, datastore'un node'u ile eşleşmelidir.
+        vm_ds_rows = db.query(Host.name, VirtualMachine.datastore)\
+                       .outerjoin(Host, VirtualMachine.host_id == Host.id)\
+                       .filter(VirtualMachine.platform_id == platform.id,
+                               VirtualMachine.is_template == False).all()
+
+        def _ds_vm_count(ds_name, ds_node, shared):
+            n = 0
+            for host_name, dstr in vm_ds_rows:
+                tokens = [t.strip() for t in (dstr or "").split(",") if t.strip()]
+                # paylaşımlı depo tüm host'lardaki VM'lerce kullanılabilir; yerel depo
+                # yalnızca kendi node'undaki VM'lerce kullanılır
+                if ds_name in tokens and (shared or not ds_node or host_name == ds_node):
+                    n += 1
+            return n
+
         for dd in ds_data:
+            dd["vm_count"] = _ds_vm_count(dd["name"], dd.get("node", ""),
+                                          dd.get("shared", False))
             db.add(Datastore(platform_id=platform.id, **dd))
+
+        # ---------- Snapshot'lar: sil-yaz, VM'e external_id ile bağla ----------
+        db.query(Snapshot).filter_by(platform_id=platform.id).delete()
+        vm_id_map = {ext: vid for ext, vid in
+                     db.query(VirtualMachine.external_id, VirtualMachine.id)
+                       .filter_by(platform_id=platform.id).all()}
+        _snap_cols = {"vm_external_id", "vm_name", "name", "description",
+                      "created_at", "is_current", "parent", "size_gb"}
+        for sd in snaps_data:
+            clean = {k: v for k, v in sd.items() if k in _snap_cols}
+            db.add(Snapshot(platform_id=platform.id,
+                            vm_id=vm_id_map.get(sd.get("vm_external_id")), **clean))
+
+        # ---------- Yedekler: sil-yaz, VM'e vmid ile bağla (yalnızca Proxmox) ----------
+        db.query(Backup).filter_by(platform_id=platform.id).delete()
+        vmid_map = {str(vid): (i, nm) for vid, i, nm in
+                    db.query(VirtualMachine.vmid, VirtualMachine.id, VirtualMachine.name)
+                      .filter_by(platform_id=platform.id).all()}
+        _bkp_cols = {"vmid", "vm_name", "storage", "volid", "fmt", "created_at",
+                     "size_gb", "protected", "notes", "source"}
+        for bd in backups_data:
+            link = vmid_map.get(str(bd.get("vmid")))
+            clean = {k: v for k, v in bd.items() if k in _bkp_cols}
+            if link and not clean.get("vm_name"):
+                clean["vm_name"] = link[1]
+            db.add(Backup(platform_id=platform.id,
+                          vm_id=link[0] if link else None, **clean))
 
         # ---------- Sonuç ----------
         platform.last_sync = datetime.utcnow()

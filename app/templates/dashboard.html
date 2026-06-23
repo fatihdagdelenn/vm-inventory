@@ -24,6 +24,8 @@
         <a href="/vms?q=ip:yok" class="list-group-item attention-item"><i class="bi bi-wifi-off"></i> IP adresi alınamayan VM <span class="badge" id="at-noip">—</span></a>
         <a href="/vms?q=tools:yok" class="list-group-item attention-item"><i class="bi bi-plug"></i> Agent / Tools kurulu olmayan <span class="badge" id="at-notools">—</span></a>
         <a href="/vms?q=owner:yok" class="list-group-item attention-item"><i class="bi bi-person-x"></i> Sahibi atanmamış VM <span class="badge" id="at-noowner">—</span></a>
+        <a href="/snapshots?old=1" class="list-group-item attention-item"><i class="bi bi-camera"></i> 30 günden eski snapshot <span class="badge" id="at-oldsnap">—</span></a>
+        <a href="/backups" class="list-group-item attention-item"><i class="bi bi-shield-exclamation"></i> Yedeği olmayan VM <span class="badge" id="at-nobackup">—</span></a>
       </div>
     </div>
   </div>
@@ -36,6 +38,20 @@
   <div class="col-lg-4">
     <div class="card panel h-100"><div class="card-header">İşletim Sistemi Ailesi</div>
       <div class="card-body d-flex justify-content-center"><canvas id="chartOs" height="200"></canvas></div></div>
+  </div>
+
+  <!-- En çok kaynak tüketen VM'ler (ilk bakışta, büyükten küçüğe) -->
+  <div class="col-lg-4">
+    <div class="card panel h-100"><div class="card-header"><i class="bi bi-cpu text-primary"></i> En Çok CPU Kullanan VM</div>
+      <div class="card-body"><canvas id="chartTopCpu" height="240"></canvas></div></div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card panel h-100"><div class="card-header"><i class="bi bi-memory text-success"></i> En Çok RAM Kullanan VM</div>
+      <div class="card-body"><canvas id="chartTopRam" height="240"></canvas></div></div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card panel h-100"><div class="card-header"><i class="bi bi-device-hdd text-warning"></i> En Çok Disk Kullanan VM</div>
+      <div class="card-body"><canvas id="chartTopDisk" height="240"></canvas></div></div>
   </div>
 
   <!-- Cluster bazında VM sayısı -->
@@ -63,9 +79,19 @@
       <div class="card-body"><canvas id="chartRam" height="220"></canvas></div></div>
   </div>
 
+  <div class="col-lg-6">
+    <div class="card panel"><div class="card-header"><i class="bi bi-server"></i> Host Bazında VM Dağılımı</div>
+      <div class="card-body"><canvas id="chartHostVm" height="220"></canvas></div></div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card panel"><div class="card-header"><i class="bi bi-diagram-3"></i> Cluster Bazında Kaynak (vCPU / RAM)</div>
+      <div class="card-body"><canvas id="chartClusterRes" height="220"></canvas></div></div>
+  </div>
+
   <div class="col-12">
-    <div class="card panel"><div class="card-header">Depolama Kullanımı</div>
-      <div class="card-body"><canvas id="chartStorage" height="200"></canvas></div></div>
+    <div class="card panel"><div class="card-header d-flex align-items-center"><i class="bi bi-hdd-stack"></i> Datastore Doluluk (%)
+        <a href="/datastores" class="ms-auto small">Tümü <i class="bi bi-arrow-right"></i></a></div>
+      <div class="card-body"><canvas id="chartDatastore" height="220"></canvas></div></div>
   </div>
 
   <!-- Son değişiklikler -->

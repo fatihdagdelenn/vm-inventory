@@ -59,6 +59,8 @@ class VirtualMachine(Base):
     ip_addresses = Column(Text)                     # Virgülle ayrılmış IP listesi
     mac_addresses = Column(Text)                    # Virgülle ayrılmış MAC listesi
     guest_os = Column(String(255), index=True)      # İşletim sistemi
+    kernel = Column(String(128))                     # Çekirdek sürümü (Proxmox agent / —)
+    arch = Column(String(32))                        # Mimari: x86_64 / aarch64 …
     cpu_count = Column(Integer)
     ram_mb = Column(BigInteger)
     disk_total_gb = Column(Float)
@@ -122,10 +124,93 @@ class Datastore(Base):
     platform_id = Column(Integer, ForeignKey("platforms.id"), index=True, nullable=False)
     name = Column(String(255), index=True)
     type = Column(String(64))                       # VMFS, NFS, ZFS, LVM, Ceph...
+    node = Column(String(128))                      # Proxmox yerel depo için node; paylaşımlı/vCenter'da boş
+    shared = Column(Boolean, default=False)         # birden çok host/node tarafından paylaşılıyor mu
     capacity_gb = Column(Float)
     used_gb = Column(Float)
     free_gb = Column(Float)
+    host_count = Column(Integer, default=0)         # bağlı host/node sayısı
+    vm_count = Column(Integer, default=0)           # bu depoyu kullanan VM sayısı
+    status = Column(String(32))                     # active | inactive | maintenance
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    platform = relationship("Platform")
+
+    @property
+    def usage_pct(self) -> int:
+        return round(100 * (self.used_gb or 0) / self.capacity_gb) if self.capacity_gb else 0
+
+    @property
+    def platform_name(self) -> str:
+        return self.platform.name if self.platform else ""
+
+
+class Snapshot(Base):
+    """VM anlık görüntüleri (vCenter snapshot ağacı / Proxmox qemu+lxc snapshot)."""
+    __tablename__ = "snapshots"
+
+    id = Column(Integer, primary_key=True)
+    platform_id = Column(Integer, ForeignKey("platforms.id"), index=True, nullable=False)
+    vm_id = Column(Integer, ForeignKey("virtual_machines.id"), index=True)
+    vm_external_id = Column(String(128), index=True)  # eşleştirme için
+    vm_name = Column(String(255), index=True)
+    name = Column(String(255))
+    description = Column(Text)
+    created_at = Column(DateTime, index=True)         # snapshot oluşturulma zamanı (UTC)
+    is_current = Column(Boolean, default=False)       # aktif/çalışılan snapshot mı
+    parent = Column(String(255))                      # üst snapshot adı (zincir)
+    size_gb = Column(Float)                           # API çoğunlukla vermez → None ("—")
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    platform = relationship("Platform")
+    vm = relationship("VirtualMachine")
+
+    @property
+    def platform_name(self) -> str:
+        return self.platform.name if self.platform else ""
+
+    @property
+    def age_days(self):
+        if not self.created_at:
+            return None
+        return (datetime.utcnow() - self.created_at).days
+
+
+class Backup(Base):
+    """Proxmox yedekleri (vzdump dosyaları + PBS anlık görüntüleri).
+
+    Yalnızca Proxmox: vCenter'ın yedek API'si yoktur. Depo içeriğinden
+    (content=backup) toplanır; PBS bağlı depolar da yedek içeriği döndürür.
+    """
+    __tablename__ = "backups"
+
+    id = Column(Integer, primary_key=True)
+    platform_id = Column(Integer, ForeignKey("platforms.id"), index=True, nullable=False)
+    vm_id = Column(Integer, ForeignKey("virtual_machines.id"), index=True)
+    vmid = Column(String(32), index=True)        # Proxmox sayısal VM id
+    vm_name = Column(String(255), index=True)
+    storage = Column(String(128), index=True)
+    volid = Column(String(512))                  # depo:backup/vzdump-...
+    fmt = Column(String(48))                     # vma.zst, tar.zst, pbs...
+    created_at = Column(DateTime, index=True)
+    size_gb = Column(Float)
+    protected = Column(Boolean, default=False)   # silinmeye karşı korumalı
+    notes = Column(String(512))
+    source = Column(String(32))                  # vzdump | pbs
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    platform = relationship("Platform")
+    vm = relationship("VirtualMachine")
+
+    @property
+    def platform_name(self) -> str:
+        return self.platform.name if self.platform else ""
+
+    @property
+    def age_days(self):
+        if not self.created_at:
+            return None
+        return (datetime.utcnow() - self.created_at).days
 
 
 class Tag(Base):

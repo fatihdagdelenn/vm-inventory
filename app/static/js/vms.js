@@ -15,7 +15,8 @@ const VMs = {
     if (pct == null || isNaN(pct)) return '';
     if (!usedMb && !usedGb && pct === 0) return '';   // veri henüz yoksa çubuk çizme
     pct = Math.min(100, Math.round(pct));
-    const cls = pct >= 90 ? 'crit' : pct >= 75 ? 'warn' : '';
+    const cls = (pct === 0 ? 'zero ' : '') +
+                (pct >= 90 ? 'crit' : pct >= 75 ? 'warn' : '');
     const title = usedMb ? App.fmtRam(usedMb) + ' kullanımda (%' + pct + ')'
                 : usedGb ? App.fmtGb(usedGb) + ' kullanımda (%' + pct + ')'
                 : 'anlık kullanım %' + pct;
@@ -146,6 +147,30 @@ const VMs = {
 
     const canEdit = document.querySelector('.role-badge')?.textContent.trim() !== 'Görüntüleyici';
 
+    const agentMap = {running: ['Çalışıyor', 'text-bg-success'],
+                      stopped: ['Kurulu, durmuş', 'text-bg-warning text-dark'],
+                      none: ['Kurulu değil', 'text-bg-secondary']};
+    const ab = agentMap[v.agent_state] || ['—', 'text-bg-light text-dark border'];
+    const agentBadge = '<span class="badge ' + ab[1] + '">' + ab[0] + '</span>';
+
+    const snapAge = a => {
+      if (a == null) return '';
+      let c = 'text-bg-light text-dark border';
+      if (a >= 30) c = 'text-bg-danger'; else if (a >= 14) c = 'text-bg-warning text-dark';
+      else if (a >= 7) c = 'text-bg-info text-dark';
+      return ' <span class="badge ' + c + '">' + a + ' gün</span>';
+    };
+    const snapHtml = (v.snapshots && v.snapshots.length)
+      ? '<h6 class="mb-2 mt-1"><i class="bi bi-camera"></i> Snapshot\'lar (' + v.snapshots.length + ')</h6>' +
+        '<div class="mb-3 small">' + v.snapshots.map(s =>
+          '<div class="d-flex justify-content-between align-items-center border-bottom py-1 gap-2">' +
+          '<span>' + App.esc(s.name) +
+            (s.is_current ? ' <span class="badge text-bg-success">aktif</span>' : '') +
+            (s.parent ? ' <small class="text-muted">← ' + App.esc(s.parent) + '</small>' : '') + '</span>' +
+          '<span class="text-muted text-nowrap">' + (s.created_at ? App.fmtDate(s.created_at) : '') +
+            snapAge(s.age_days) + '</span></div>').join('') + '</div>'
+      : '';
+
     document.getElementById('vmDetailBody').innerHTML =
       '<div class="d-flex align-items-center gap-2 mb-3">' + App.stateBadge(v.power_state) +
       '<span class="badge text-bg-light border">' + App.esc(v.platform) + '</span></div>' +
@@ -154,6 +179,8 @@ const VMs = {
       row('IP Adresleri', App.esc(v.ip_addresses).split(',').join('<br>')) +
       row('MAC Adresleri', App.esc(v.mac_addresses).split(',').join('<br>')) +
       row('İşletim Sistemi', App.esc(v.guest_os)) +
+      row('Çekirdek / Mimari',
+          [App.esc(v.kernel), App.esc(v.arch)].filter(Boolean).join(' · ') || '—') +
       row('CPU', (v.cpu_count || '—') +
           (v.cpu_usage_pct != null ? ' <small class="text-muted">(anlık %' +
            Math.round(v.cpu_usage_pct) + ')</small>' : '')) +
@@ -173,14 +200,14 @@ const VMs = {
       row('Oluşturulma', App.fmtDate(v.created_date)) +
       row('Son Açılış', App.fmtDate(v.last_boot)) +
       row('Çalışma Süresi', App.fmtUptime(v.last_boot)) +
-      row('Tools / Agent', App.esc(v.tools_status)) +
+      row('Tools / Agent', agentBadge) +
       row('Platform Notu', App.esc(v.guest_notes).split('\n').join('<br>')) +
       row('Tags', v.platform_tags
         ? v.platform_tags.split(',').map(t => t.trim()).filter(Boolean).map(t =>
             '<span class="badge bg-info-subtle text-info-emphasis border me-1">' + App.esc(t) + '</span>').join('')
         : '—') +
       row('Son Güncelleme', App.fmtDate(v.updated_at)) +
-      '</div><hr>' +
+      '</div>' + snapHtml + '<hr>' +
       '<h6 class="mb-3"><i class="bi bi-pencil-square"></i> Manuel Bilgiler</h6>' +
       '<div class="mb-2"><label class="form-label small">Sahip</label>' +
       '<input id="vmdOwner" class="form-control form-control-sm" value="' + App.esc(v.owner) + '"' + (canEdit ? '' : ' disabled') + '></div>' +

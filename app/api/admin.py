@@ -1,10 +1,12 @@
 """Yönetim API'si: kullanıcılar, audit log, değişiklik geçmişi (admin)."""
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import User, AuditLog, ChangeHistory
 from ..core.timezone import to_iso
+from ..core.audit import log_audit
 from ..core.security import (require_role, get_current_user, hash_password,
                              validate_csrf)
 
@@ -34,7 +36,8 @@ def create_user(request: Request, payload: dict = Body(...),
              email=payload.get("email", ""), role=payload["role"],
              password_hash=hash_password(payload["password"]))
     db.add(u)
-    db.add(AuditLog(username=user.username, action="create_user", detail=u.username))
+    log_audit(db, user, "create_user", target=u.username, new=f"rol={u.role}",
+              request=request)
     db.commit()
     return {"ok": True, "id": u.id}
 
@@ -47,6 +50,7 @@ def update_user(user_id: int, request: Request, payload: dict = Body(...),
     u = db.get(User, user_id)
     if not u:
         raise HTTPException(404, "Kullanıcı bulunamadı")
+    old_role, old_active = u.role, u.is_active
     if "role" in payload and payload["role"] in ("admin", "operator", "viewer"):
         u.role = payload["role"]
     if "is_active" in payload:
@@ -56,19 +60,42 @@ def update_user(user_id: int, request: Request, payload: dict = Body(...),
     for f in ("full_name", "email"):
         if f in payload:
             setattr(u, f, payload[f])
-    db.add(AuditLog(username=user.username, action="update_user", detail=u.username))
+    changes = []
+    if u.role != old_role:
+        changes.append(("rol", old_role, u.role))
+    if u.is_active != old_active:
+        changes.append(("durum", "aktif" if old_active else "pasif",
+                        "aktif" if u.is_active else "pasif"))
+    if payload.get("password"):
+        changes.append(("parola", "***", "*** (değişti)"))
+    log_audit(db, user, "update_user", target=u.username,
+              old=", ".join(f"{k}={o}" for k, o, _ in changes) or None,
+              new=", ".join(f"{k}={n}" for k, _, n in changes) or None,
+              detail=f"alanlar={list(payload.keys())}", request=request)
     db.commit()
     return {"ok": True}
 
 
 @router.get("/audit")
-def audit_logs(limit: int = 200, db: Session = Depends(get_db),
+def audit_logs(limit: int = 200, q: str = "", action: str = "",
+               db: Session = Depends(get_db),
                user: User = Depends(require_role("admin"))):
-    logs = db.query(AuditLog).order_by(AuditLog.timestamp.desc())\
-             .limit(min(limit, 1000)).all()
+    query = db.query(AuditLog)
+    if action:
+        query = query.filter(AuditLog.action == action)
+    if q:
+        like = f"%{q}%"
+        query = query.filter(or_(AuditLog.username.ilike(like),
+                                 AuditLog.target.ilike(like),
+                                 AuditLog.detail.ilike(like)))
+    logs = query.order_by(AuditLog.timestamp.desc()).limit(min(limit, 1000)).all()
+    actions = [r[0] for r in db.query(AuditLog.action).distinct().all() if r[0]]
     return {"items": [{"timestamp": to_iso(l.timestamp), "username": l.username,
-                       "action": l.action, "detail": l.detail,
-                       "ip_address": l.ip_address} for l in logs]}
+                       "role": l.role or "", "action": l.action,
+                       "target": l.target or "", "detail": l.detail or "",
+                       "old_value": l.old_value, "new_value": l.new_value,
+                       "ip_address": l.ip_address} for l in logs],
+            "actions": sorted(actions)}
 
 
 @router.get("/changes")

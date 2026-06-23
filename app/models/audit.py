@@ -9,7 +9,11 @@ class AuditLog(Base):
 
     id = Column(Integer, primary_key=True)
     username = Column(String(64), index=True)
-    action = Column(String(64), index=True)   # login, logout, create_platform, export, ...
+    role = Column(String(32))                  # işlem anındaki kullanıcı rolü
+    action = Column(String(64), index=True)    # login, logout, create_platform, export, ...
+    target = Column(String(255), index=True)   # işlemin hedefi (VM/kullanıcı/platform adı…)
     detail = Column(Text)
+    old_value = Column(Text)                   # değişiklikten önceki değer
+    new_value = Column(Text)                   # değişiklikten sonraki değer
     ip_address = Column(String(64))
     timestamp = Column(DateTime, default=datetime.utcnow, index=True)

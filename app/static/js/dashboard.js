@@ -23,6 +23,8 @@
   set('at-noip', d.attention.no_ip);
   set('at-notools', d.attention.no_tools);
   set('at-noowner', d.attention.no_owner);
+  set('at-oldsnap', d.attention.old_snapshots);
+  set('at-nobackup', d.attention.no_backup);
 
   // Gizli cluster bilgisi ve kullanım verisi tazeliği
   const hi = document.getElementById('hiddenInfo');
@@ -41,6 +43,9 @@
   const PALETTE = ['#2f81f7','#3fb950','#8957e5','#d29922','#f85149',
                    '#39c5cf','#db61a2','#768390'];
   const BLUE='#2f81f7', GREEN='#3fb950', ORANGE='#d29922', RED='#f85149';
+  const PURPLE='#8957e5';
+  /** Kullanım yüzdesine göre kritik renk: %90+ kırmızı, %75+ turuncu. */
+  const critColor = pct => pct >= 90 ? RED : pct >= 75 ? ORANGE : BLUE;
 
   /** Dilime tıklanınca filtreli VM listesine git. */
   const goVms = q => location.href = '/vms?q=' + encodeURIComponent(q);
@@ -100,33 +105,97 @@
               scales: {x: {beginAtZero: true, ticks: {precision: 0}}}}
   });
 
-  /* ---- Host CPU / RAM (bar) ---- */
-  const hostNames = d.host_usage.map(h => h.name);
-  const usageBar = (canvasId, key, base) => new Chart(document.getElementById(canvasId), {
+  /* ---- Host CPU / RAM (bar, büyükten küçüğe, kritik renkli) ---- */
+  const usageBar = (canvasId, key, base) => {
+    const rows = [...d.host_usage].sort((a, b) => (b[key] || 0) - (a[key] || 0));
+    new Chart(document.getElementById(canvasId), {
     type: 'bar',
-    data: {labels: hostNames,
-           datasets: [{label: '%', data: d.host_usage.map(h => h[key]),
+    data: {labels: rows.map(h => h.name),
+           datasets: [{label: '%', data: rows.map(h => h[key]),
                        borderRadius: 6, maxBarThickness: 40,
-                       backgroundColor: d.host_usage.map(h =>
+                       backgroundColor: rows.map(h =>
                          h[key] >= 90 ? RED : h[key] >= 75 ? ORANGE : base)}]},
     options: {plugins: {legend: {display: false}},
               scales: {y: {beginAtZero: true, max: 100, ticks: {callback: v => v + '%'}}}}
   });
+  };
   usageBar('chartCpu', 'cpu_pct', BLUE);
   usageBar('chartRam', 'ram_pct', GREEN);
 
-  /* ---- Depolama (stacked yatay bar) ---- */
-  new Chart(document.getElementById('chartStorage'), {
+  /* ---- En çok kaynak tüketen VM'ler (yatay bar, kritik renkli, zengin hover) ---- */
+  const topVmChart = (canvasId, items, valueFn, tipFn, colorFn) => {
+    const el = document.getElementById(canvasId);
+    if (!el) return;
+    new Chart(el, {
+      type: 'bar',
+      data: {labels: items.map(v => v.name),
+             datasets: [{data: items.map(valueFn), backgroundColor: items.map(colorFn),
+                         borderRadius: 6, maxBarThickness: 22}]},
+      options: {indexAxis: 'y',
+        plugins: {legend: {display: false},
+                  tooltip: {callbacks: {label: ctx => tipFn(items[ctx.dataIndex])}}},
+        scales: {x: {beginAtZero: true}},
+        onClick: (e, els) => { if (els.length) goVms(items[els[0].index].name); }}
+    });
+  };
+  topVmChart('chartTopCpu', d.top_cpu_vms || [], v => v.pct,
+    v => `CPU %${v.pct}` + (v.host ? ' · ' + v.host : '') + (v.cluster ? ' · ' + v.cluster : ''),
+    v => critColor(v.pct));
+  topVmChart('chartTopRam', d.top_ram_vms || [], v => v.pct,
+    v => `RAM %${v.pct} (${v.used_gb} GB)` + (v.host ? ' · ' + v.host : ''),
+    v => critColor(v.pct));
+  topVmChart('chartTopDisk', d.top_disk_vms || [], v => (v.value_gb != null ? v.value_gb : v.used_gb),
+    v => (v.is_used ? `${v.used_gb} / ${v.total_gb} GB kullanımda`
+                    : `${v.total_gb} GB ayrılan (kullanım için agent gerekli)`)
+         + (v.host ? ' · ' + v.host : ''),
+    v => v.is_used ? critColor(v.total_gb ? 100 * v.used_gb / v.total_gb : 0) : '#8aa0c0');
+
+  /* ---- Host bazında VM dağılımı (yatay bar) ---- */
+  new Chart(document.getElementById('chartHostVm'), {
     type: 'bar',
-    data: {labels: d.storage.map(s => s.name),
-           datasets: [
-             {label: 'Kullanılan (GB)', data: d.storage.map(s => Math.round(s.used_gb)),
-              backgroundColor: BLUE, borderRadius: 4},
-             {label: 'Boş (GB)',
-              data: d.storage.map(s => Math.max(0, Math.round(s.capacity_gb - s.used_gb))),
-              backgroundColor: '#e3e8ee', borderRadius: 4}]},
-    options: {indexAxis: 'y', plugins: {legend: {position: 'bottom'}},
-              scales: {x: {stacked: true}, y: {stacked: true}}}
+    data: {labels: (d.host_vm_dist || []).map(h => h.name),
+           datasets: [{label: 'VM', data: (d.host_vm_dist || []).map(h => h.count),
+                       backgroundColor: BLUE, borderRadius: 6, maxBarThickness: 24}]},
+    options: {indexAxis: 'y', plugins: {legend: {display: false}},
+              scales: {x: {beginAtZero: true, ticks: {precision: 0}}},
+              onClick: clickHandler(l => l === '—' ? null :
+                (/\s/.test(l) ? 'host:"' + l + '"' : 'host:' + l))}
+  });
+
+  /* ---- Cluster bazında kaynak (vCPU bar, RAM/VM hover'da) ---- */
+  const cr = d.cluster_resource || [];
+  new Chart(document.getElementById('chartClusterRes'), {
+    type: 'bar',
+    data: {labels: cr.map(c => c.key),
+           datasets: [{label: 'vCPU', data: cr.map(c => c.vcpu),
+                       backgroundColor: PURPLE, borderRadius: 6, maxBarThickness: 24}]},
+    options: {indexAxis: 'y',
+      plugins: {legend: {display: false},
+        tooltip: {callbacks: {label: ctx => {
+          const c = cr[ctx.dataIndex];
+          return `${c.vcpu} vCPU · ${c.ram_gb} GB RAM · ${c.vms} VM`;
+        }}}},
+      scales: {x: {beginAtZero: true, ticks: {precision: 0}}},
+      onClick: clickHandler(l => l === '—' ? 'cluster:yok' :
+        (/\s/.test(l) ? 'cluster:"' + l + '"' : 'cluster:' + l))}
+  });
+
+  /* ---- Datastore doluluk (%) (yatay bar, kritik renkli) ---- */
+  const dsf = d.datastore_fill || [];
+  new Chart(document.getElementById('chartDatastore'), {
+    type: 'bar',
+    data: {labels: dsf.map(s => s.name),
+           datasets: [{label: 'Doluluk %', data: dsf.map(s => s.usage_pct),
+                       backgroundColor: dsf.map(s => critColor(s.usage_pct)),
+                       borderRadius: 6, maxBarThickness: 22}]},
+    options: {indexAxis: 'y',
+      plugins: {legend: {display: false},
+        tooltip: {callbacks: {label: ctx => {
+          const s = dsf[ctx.dataIndex];
+          return `%${s.usage_pct} · ${s.used_gb} / ${s.capacity_gb} GB`;
+        }}}},
+      scales: {x: {beginAtZero: true, max: 100, ticks: {callback: v => v + '%'}}},
+      onClick: () => { location.href = '/datastores'; }}
   });
 
   /* ---- Son değişiklikler ---- */

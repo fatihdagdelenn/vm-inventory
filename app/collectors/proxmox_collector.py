@@ -16,8 +16,8 @@ logger = logging.getLogger("collector.proxmox")
 # Proxmox'un iç "ostype" kodları -> okunaklı isimler.
 # Guest Agent çalışıyorsa gerçek OS adı misafirden alınır ve bu değeri ezer.
 OSTYPE_MAP = {
-    "l26": "Linux (2.6+ çekirdek)",
-    "l24": "Linux (2.4 çekirdek)",
+    "l26": "Linux",                  # Proxmox 'l26' = modern Linux ipucu (gerçek dağıtım değil)
+    "l24": "Linux (eski çekirdek)",
     "win11": "Windows 11 / Server 2022+",
     "win10": "Windows 10 / Server 2016-2019",
     "win8": "Windows 8 / Server 2012",
@@ -292,6 +292,7 @@ class ProxmoxCollector:
                 try:
                     self._enrich_lxc(entry, node, vmid, vlan_map)
                 except Exception as exc:
+                    entry["enrich_failed"] = True
                     logger.warning("Konteyner detayı alınamadı %s/%s: %s", node, vmid, exc)
                 vms.append(entry)
                 continue
@@ -394,6 +395,7 @@ class ProxmoxCollector:
                     # Agent'tan gerçek OS adı (örn: "Ubuntu 22.04.3 LTS").
                     # Ağ çağrısından BAĞIMSIZ denenir: bazı misafirlerde
                     # network-get-interfaces engellidir ama get-osinfo çalışır.
+                    os_from_agent = False
                     try:
                         osinfo = self.api.nodes(node).qemu(vmid).agent(
                             "get-osinfo").get()
@@ -404,15 +406,26 @@ class ProxmoxCollector:
                         if pretty:
                             entry["guest_os"] = pretty
                             entry["tools_status"] = "guestToolsRunning"
+                            os_from_agent = True
+                        kern = result.get("kernel-release", "") or \
+                            result.get("kernel-version", "")
+                        if kern:
+                            entry["kernel"] = kern
+                        if result.get("machine"):
+                            entry["arch"] = result.get("machine", "")
                     except Exception:
-                        if not agent_ok:
-                            pass  # agent yok; ostype çevirisi (OSTYPE_MAP) kullanılır
+                        pass  # agent osinfo yanıt vermedi; ostype çevirisi kullanılır
+                    # Provenance: guest_os/IP agent'tan mı geldi yoksa fallback mı?
+                    # Sync, agent başarısızsa eski (agent kaynaklı) değeri korur.
+                    entry["os_from_agent"] = os_from_agent
+                    entry["ip_from_agent"] = agent_ok
 
                 # Agent'tan IP gelmediyse cloud-init statik IP'lerine geri düş
                 # (kapalı VM'ler ve agent kurulu olmayan misafirler için)
                 if not entry["ip_addresses"] and cloudinit_ips:
                     entry["ip_addresses"] = ",".join(sorted(set(cloudinit_ips)))
             except Exception as exc:
+                entry["enrich_failed"] = True
                 logger.warning("VM detayı alınamadı %s/%s: %s", node, vmid, exc)
             vms.append(entry)
         return vms
@@ -567,19 +580,174 @@ class ProxmoxCollector:
 
     # ---------- Storage ----------
     def collect_datastores(self) -> list[dict]:
-        result, seen = [], set()
+        # Paylaşımlı depolar (NFS / Ceph / PBS …) her node'da tekrarlanır → tek satıra
+        # indir, host_count'ı artır. Yerel depolar (local, local-lvm …) her node'da
+        # AYRI fiziksel depodur (ad aynı olsa bile) → node bazında ayrı satır.
+        # 'shared' bayrağı bu ayrımı sağlar (mükerrer kayıt önlenir).
+        # Paylaşımlı depoda 'node' yerine cluster adı gösterilir (çoklu cluster ayrımı).
+        cluster = self._cluster_name()
+        rows = {}
         for s in self.api.cluster.resources.get(type="storage"):
-            key = s.get("storage")
-            if key in seen:
-                continue  # paylaşımlı storage'lar her node'da tekrarlanır
-            seen.add(key)
-            cap = s.get("maxdisk", 0) / 1024**3
-            used = s.get("disk", 0) / 1024**3
-            result.append({"name": key, "type": s.get("plugintype", ""),
-                           "capacity_gb": round(cap, 1),
-                           "used_gb": round(used, 1),
-                           "free_gb": round(cap - used, 1)})
+            name = s.get("storage", "")
+            node = s.get("node", "")
+            shared = bool(int(s.get("shared", 0) or 0))
+            cap = (s.get("maxdisk", 0) or 0) / 1024**3
+            used = (s.get("disk", 0) or 0) / 1024**3
+            active = s.get("status", "") == "available"
+            key = name if shared else f"{name}@{node}"
+            if key in rows:
+                rows[key]["host_count"] += 1
+                continue
+            rows[key] = {"name": name, "type": s.get("plugintype", ""),
+                         "node": (cluster if shared else node), "shared": shared,
+                         "capacity_gb": round(cap, 1), "used_gb": round(used, 1),
+                         "free_gb": round(cap - used, 1), "host_count": 1,
+                         "status": "active" if active else "inactive"}
+        return list(rows.values())
+
+    def collect_snapshots(self) -> list[dict]:
+        """Her qemu/lxc misafiri için snapshot listesi. 'current' (canlı durum) hariç."""
+        result = []
+        for r in self.api.cluster.resources.get(type="vm"):
+            rtype = r.get("type")
+            if rtype not in ("qemu", "lxc"):
+                continue
+            node, vmid = r["node"], r["vmid"]
+            vmname = r.get("name", f"vm-{vmid}")
+            ext = f"{node}/{vmid}"
+            try:
+                endpoint = (self.api.nodes(node).qemu(vmid) if rtype == "qemu"
+                            else self.api.nodes(node).lxc(vmid))
+                snaps = endpoint.snapshot.get()
+            except Exception as exc:
+                logger.warning("Snapshot listesi alınamadı %s: %s", ext, exc)
+                continue
+            # 'current' girdisinin parent'ı = VM'in şu an üstünde olduğu aktif snapshot
+            active = ""
+            for s in snaps:
+                if s.get("name") == "current":
+                    active = s.get("parent", "") or ""
+                    break
+            for s in snaps:
+                nm = s.get("name")
+                if not nm or nm == "current":   # 'current' gerçek snapshot değil
+                    continue
+                st = s.get("snaptime")
+                result.append({
+                    "vm_external_id": ext, "vm_name": vmname,
+                    "name": nm, "description": (s.get("description") or "").strip(),
+                    "created_at": datetime.utcfromtimestamp(st) if st else None,
+                    "is_current": nm == active,
+                    "parent": s.get("parent", "") or "",
+                })
         return result
+
+    def collect_backups(self) -> list[dict]:
+        """Depo içeriğinden yedekleri topla (vzdump dosyaları + PBS anlık görüntüleri).
+
+        Mümkün olduğunca hoşgörülü: HER depo sorgulanır (status/content ön-filtresi yok),
+        içerikten yalnızca yedek olanlar süzülür, volid ile tekilleştirilir.
+        content='backup' sorgusu kabul edilmezse filtresiz tekrar denenir.
+        """
+        result, seen_vol, seen_store = [], set(), set()
+        try:
+            storages = self.api.cluster.resources.get(type="storage")
+        except Exception as exc:
+            logger.warning("Depo listesi alınamadı: %s", exc)
+            return result
+        for s in storages:
+            name, node = s.get("storage", ""), s.get("node", "")
+            if not name or not node:
+                continue
+            shared = bool(int(s.get("shared", 0) or 0))
+            plugin = s.get("plugintype", "")
+            # paylaşımlı depoyu tek kez, yerel depoyu node bazında sorgula
+            skey = name if shared else f"{node}/{name}"
+            if skey in seen_store:
+                continue
+            seen_store.add(skey)
+            content = None
+            last_exc = None
+            for kwargs in ({"content": "backup"}, {}):   # önce filtreli, olmazsa filtresiz
+                try:
+                    content = self.api.nodes(node).storage(name).content.get(**kwargs)
+                    break
+                except Exception as exc:
+                    last_exc = exc
+            if content is None:
+                logger.warning("İçerik alınamadı %s/%s: %s", node, name, last_exc)
+                continue
+            found = 0
+            for c in content:
+                ctype = c.get("content")
+                volid = c.get("volid", "")
+                # yalnızca yedekler: content alanı 'backup' VEYA volid yedek desenli
+                is_backup = (ctype == "backup") or ("/backup/" in volid) \
+                    or ("vzdump-" in volid) or (ctype is None and "backup" in volid)
+                if not is_backup or not volid or volid in seen_vol:
+                    continue
+                seen_vol.add(volid)
+                found += 1
+                ctime = c.get("ctime")
+                tail = volid.split("/")[-1]
+                fmt = c.get("format", "") or (tail.split(".", 1)[1] if "." in tail else "")
+                result.append({
+                    "vmid": str(c.get("vmid") or ""), "vm_name": "",
+                    "storage": name, "volid": volid, "fmt": fmt,
+                    "created_at": datetime.utcfromtimestamp(ctime) if ctime else None,
+                    "size_gb": round((c.get("size") or 0) / 1024**3, 2),
+                    "protected": bool(c.get("protected", 0)),
+                    "notes": (c.get("notes") or c.get("comment") or "").strip(),
+                    "source": "pbs" if plugin == "pbs" else "vzdump",
+                })
+            logger.info("Yedek tarama: depo=%s node=%s tip=%s içerik=%d yedek=%d",
+                        name, node, plugin or "?", len(content), found)
+        logger.info("Yedek taraması tamamlandı: toplam %d yedek", len(result))
+        return result
+
+    def diagnose_backups(self) -> list[dict]:
+        """Yedek toplamanın neden boş döndüğünü teşhis et (UI'da gösterilir).
+
+        Her depo için: ad, node, eklenti, content alanı, içerik sayısı, yedek sayısı,
+        örnek volid ve varsa hata mesajı. Hiç istisna fırlatmaz.
+        """
+        out, seen = [], set()
+        try:
+            storages = self.api.cluster.resources.get(type="storage")
+        except Exception as exc:
+            return [{"error": f"cluster/resources okunamadı: {exc}"}]
+        for s in storages:
+            name, node = s.get("storage", ""), s.get("node", "")
+            if not name or not node:
+                continue
+            shared = bool(int(s.get("shared", 0) or 0))
+            skey = name if shared else f"{node}/{name}"
+            if skey in seen:
+                continue
+            seen.add(skey)
+            info = {"storage": name, "node": node, "plugin": s.get("plugintype", ""),
+                    "content_field": s.get("content", ""), "items": 0, "backups": 0,
+                    "sample": "", "error": ""}
+            content = None
+            for kwargs in ({"content": "backup"}, {}):
+                try:
+                    content = self.api.nodes(node).storage(name).content.get(**kwargs)
+                    break
+                except Exception as exc:
+                    info["error"] = str(exc)
+            if content is None:
+                out.append(info)
+                continue
+            info["error"] = ""
+            info["items"] = len(content)
+            for c in content:
+                volid = c.get("volid", "")
+                if c.get("content") == "backup" or "/backup/" in volid or "vzdump-" in volid:
+                    info["backups"] += 1
+                    if not info["sample"]:
+                        info["sample"] = volid
+            out.append(info)
+        return out
 
     # ---------- Hafif kullanım senkronizasyonu ----------
     def collect_usage(self) -> dict:
@@ -592,11 +760,11 @@ class ProxmoxCollector:
         """
         vms, hosts = [], []
         for res in self.api.cluster.resources.get():
-            if res.get("type") == "qemu" and not res.get("template"):
-                maxmem = res.get("maxmem") or 0
+            if res.get("type") in ("qemu", "lxc") and not res.get("template"):
                 disk_used = res.get("disk") or 0   # agent yoksa 0 döner
                 vms.append({
-                    "external_id": str(res.get("vmid", "")),
+                    # VM'ler node/vmid ile kayıtlı (collect_vms ile aynı anahtar)
+                    "external_id": f"{res.get('node', '')}/{res.get('vmid', '')}",
                     "cpu_pct": round((res.get("cpu") or 0) * 100, 1),
                     "ram_used_mb": int((res.get("mem") or 0) / (1024 * 1024)),
                     "disk_used_gb": round(disk_used / (1024 ** 3), 1) if disk_used else None,

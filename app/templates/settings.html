@@ -21,10 +21,19 @@
   </div>
   <div class="tab-pane fade" id="tabAudit">
     <div class="card panel">
-      <div class="card-header">Denetim Kayıtları (son 200)</div>
+      <div class="card-header d-flex align-items-center gap-2 flex-wrap">
+        <span>Denetim Kayıtları</span>
+        <div class="search-box ms-auto" style="max-width:260px">
+          <i class="bi bi-search"></i>
+          <input type="text" id="auditSearch" class="form-control form-control-sm" placeholder="Kullanıcı, hedef, detay…">
+        </div>
+        <select id="auditAction" class="form-select form-select-sm" style="width:auto">
+          <option value="">Tüm işlemler</option>
+        </select>
+      </div>
       <div class="table-responsive">
-        <table class="table table-sm mb-0">
-          <thead><tr><th>Zaman</th><th>Kullanıcı</th><th>İşlem</th><th>Detay</th><th>IP</th></tr></thead>
+        <table class="table table-sm align-middle mb-0">
+          <thead><tr><th>Zaman</th><th>Kullanıcı</th><th>İşlem</th><th>Hedef</th><th>Değişiklik</th><th>IP</th></tr></thead>
           <tbody id="auditBody"></tbody>
         </table>
       </div>

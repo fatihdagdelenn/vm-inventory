@@ -36,7 +36,7 @@ services:
       DATABASE_URL: postgresql+psycopg2://vminv:vminv_parola@db:5432/vminventory
       REPORT_DIR: /app/data/reports
     ports:
-      - "8000:8000"
+      - "18443:8000"
     volumes:
       - appdata:/app/data                       # zamanlanmış raporlar + SQLite (kullanılırsa)
 

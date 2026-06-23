@@ -84,6 +84,21 @@ def summary(db: Session = Depends(get_db), user: User = Depends(get_current_user
         VirtualMachine.tools_status.ilike("%unknown%")).count()
     no_owner = base.filter(func.coalesce(VirtualMachine.owner, "") == "").count()
 
+    # 30 günden eski snapshot'lar (temizlik adayı)
+    from datetime import datetime as _dt, timedelta as _td
+    from ..models import Snapshot
+    old_snapshots = db.query(Snapshot).filter(
+        Snapshot.created_at.isnot(None),
+        Snapshot.created_at < _dt.utcnow() - _td(days=30)).count()
+
+    # Yedeği hiç olmayan çalışan VM'ler (yalnızca Proxmox; vCenter'da yedek API'si yok)
+    from ..models import Backup
+    backed_up = {r[0] for r in db.query(Backup.vm_id).distinct().all() if r[0]}
+    no_backup = base.filter(VirtualMachine.power_state == "running") \
+        .join(Platform, VirtualMachine.platform_id == Platform.id) \
+        .filter(Platform.type == "proxmox",
+                ~VirtualMachine.id.in_(backed_up) if backed_up else True).count()
+
     # ---- Ortam ve cluster dağılımları ----
     env_dist = {r[0] or "—": r[1] for r in base.with_entities(
         VirtualMachine.environment, func.count(VirtualMachine.id))
@@ -100,6 +115,71 @@ def summary(db: Session = Depends(get_db), user: User = Depends(get_current_user
                                  func.count(VirtualMachine.id))
               .group_by(VirtualMachine.guest_os)
               .order_by(func.count(VirtualMachine.id).desc()).limit(8).all()]
+
+    # ---- En çok kaynak tüketen VM'ler (çalışanlar, ilk 8) — büyükten küçüğe ----
+    running = base.filter(VirtualMachine.power_state == "running")
+
+    def _running_top(cols, order_col, limit=8):
+        return (running.outerjoin(Host, VirtualMachine.host_id == Host.id)
+                       .with_entities(*cols)
+                       .order_by(order_col.desc()).limit(limit).all())
+
+    top_cpu_vms = [{"name": r[0], "host": r[1] or "", "cluster": r[2] or "",
+                    "pct": round(r[3] or 0, 1)}
+                   for r in _running_top(
+                       [VirtualMachine.name, Host.name, VirtualMachine.cluster,
+                        VirtualMachine.cpu_usage_pct], VirtualMachine.cpu_usage_pct)
+                   if (r[3] or 0) > 0]
+
+    ram_pct = VirtualMachine.ram_usage_mb * 100.0 / func.nullif(VirtualMachine.ram_mb, 0)
+    top_ram_vms = [{"name": r[0], "host": r[1] or "", "cluster": r[2] or "",
+                    "pct": round(r[3] or 0, 1), "used_gb": round((r[4] or 0) / 1024, 1)}
+                   for r in _running_top(
+                       [VirtualMachine.name, Host.name, VirtualMachine.cluster,
+                        ram_pct, VirtualMachine.ram_usage_mb], ram_pct)
+                   if (r[3] or 0) > 0]
+
+    # Disk: agent'sız Proxmox'ta kullanılan disk (disk_used_gb) 0 gelir; o yüzden
+    # kullanılan yoksa AYRILAN diske (disk_total_gb) düşeriz — kart hiç boş kalmaz.
+    disk_metric = func.coalesce(func.nullif(VirtualMachine.disk_used_gb, 0),
+                                VirtualMachine.disk_total_gb)
+    top_disk_vms = [{"name": r[0], "host": r[1] or "", "cluster": r[2] or "",
+                     "used_gb": round(r[3] or 0, 1), "total_gb": round(r[4] or 0, 1),
+                     "value_gb": round((r[3] or r[4] or 0), 1),
+                     "is_used": bool(r[3] and r[3] > 0)}
+                    for r in _running_top(
+                        [VirtualMachine.name, Host.name, VirtualMachine.cluster,
+                         VirtualMachine.disk_used_gb, VirtualMachine.disk_total_gb],
+                        disk_metric)
+                    if (r[3] or r[4] or 0) > 0]
+
+    # ---- Host bazında VM dağılımı (büyükten küçüğe, ilk 12) ----
+    host_vm_dist = [{"name": r[0] or "—", "count": r[1]} for r in
+                    base.outerjoin(Host, VirtualMachine.host_id == Host.id)
+                    .with_entities(Host.name, func.count(VirtualMachine.id))
+                    .group_by(Host.name)
+                    .order_by(func.count(VirtualMachine.id).desc()).limit(12).all()]
+
+    # ---- Cluster bazında kaynak kullanımı (vCPU/RAM, ilk 10) ----
+    cluster_resource = [{"key": r[0] or "—", "vcpu": int(r[1] or 0),
+                         "ram_gb": round((r[2] or 0) / 1024, 1), "vms": r[3]}
+                        for r in base.with_entities(
+                            VirtualMachine.cluster,
+                            func.coalesce(func.sum(VirtualMachine.cpu_count), 0),
+                            func.coalesce(func.sum(VirtualMachine.ram_mb), 0),
+                            func.count(VirtualMachine.id))
+                        .group_by(VirtualMachine.cluster)
+                        .order_by(func.coalesce(func.sum(VirtualMachine.cpu_count), 0).desc())
+                        .limit(10).all()]
+
+    # ---- Datastore doluluk (%) — büyükten küçüğe, ilk 12 ----
+    datastore_fill = [{"name": d.name + (f" ({d.node})" if d.node else ""),
+                       "usage_pct": d.usage_pct, "used_gb": round(d.used_gb or 0, 1),
+                       "capacity_gb": round(d.capacity_gb or 0, 1)}
+                      for d in db.query(Datastore)
+                      .order_by((Datastore.used_gb /
+                                 func.nullif(Datastore.capacity_gb, 0)).desc().nullslast())
+                      .limit(12).all()]
 
     # ---- Son envanter değişiklikleri (10 kayıt) ----
     from ..models import ChangeHistory
@@ -118,9 +198,13 @@ def summary(db: Session = Depends(get_db), user: User = Depends(get_current_user
             "total_vcpu": int(totals[0]),
             "total_ram_gb": round(totals[1] / 1024, 1),
             "total_disk_tb": round(totals[2] / 1024, 2),
-            "attention": {"no_ip": no_ip, "no_tools": no_tools, "no_owner": no_owner},
+            "attention": {"no_ip": no_ip, "no_tools": no_tools, "no_owner": no_owner,
+                          "old_snapshots": old_snapshots, "no_backup": no_backup},
             "env_distribution": env_dist, "cluster_distribution": cluster_dist,
             "top_os": top_os, "recent_changes": recent_changes,
+            "top_cpu_vms": top_cpu_vms, "top_ram_vms": top_ram_vms,
+            "top_disk_vms": top_disk_vms, "host_vm_dist": host_vm_dist,
+            "cluster_resource": cluster_resource, "datastore_fill": datastore_fill,
             "host_usage": host_usage, "storage": storage,
             "os_distribution": os_dist, "platforms": last_syncs,
             "hidden_clusters": len(hidden),

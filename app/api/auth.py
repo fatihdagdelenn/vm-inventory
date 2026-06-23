@@ -17,8 +17,10 @@ router = APIRouter(tags=["auth"])
 settings = get_settings()
 
 
-def _audit(db: Session, request: Request, username: str, action: str, detail: str = ""):
-    db.add(AuditLog(username=username, action=action, detail=detail,
+def _audit(db: Session, request: Request, username: str, action: str,
+           detail: str = "", role: str = ""):
+    db.add(AuditLog(username=username, role=role, action=action,
+                    target=username, detail=detail,
                     ip_address=request.client.host if request.client else ""))
     db.commit()
 
@@ -48,7 +50,7 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
 
     user.last_login = datetime.utcnow()
     db.commit()
-    _audit(db, request, username, "login")
+    _audit(db, request, username, "login", role=user.role)
 
     response = RedirectResponse("/", status_code=303)
     # Oturum çerezi: HttpOnly + SameSite (XSS/CSRF'e karşı); kayan zaman aşımı

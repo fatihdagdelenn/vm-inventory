@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card panel mb-3"><div class="card-body py-3">
+  <div class="d-flex gap-2 flex-wrap align-items-center">
+    <div class="search-box flex-grow-1" style="min-width:260px;max-width:520px">
+      <i class="bi bi-search"></i>
+      <input type="text" id="snapSearch" class="form-control"
+             placeholder="vm:web  snap:upgrade  age:>30  current:yes  parent:yok …">
+    </div>
+    <button class="btn btn-outline-secondary btn-sm" type="button" id="snapHelpBtn"
+            title="Arama söz dizimi"><i class="bi bi-question-circle"></i></button>
+    <select id="snapPlatform" class="form-select form-select-sm" style="width:auto">
+      <option value="">Tüm platformlar</option>
+    </select>
+    <select id="snapCluster" class="form-select form-select-sm" style="width:auto">
+      <option value="">Tüm cluster'lar</option>
+    </select>
+    <select id="snapAge" class="form-select form-select-sm" style="width:auto">
+      <option value="">Tüm yaşlar</option>
+      <option value="7">7+ gün</option>
+      <option value="14">14+ gün</option>
+      <option value="30">30+ gün</option>
+    </select>
+    <div class="form-check form-switch mb-0">
+      <input class="form-check-input" type="checkbox" id="snapActive">
+      <label class="form-check-label small" for="snapActive">Yalnızca aktif</label>
+    </div>
+    <div class="ms-auto d-flex gap-2">
+      <button class="btn btn-outline-success btn-sm" onclick="location='/api/reports/snapshots/export?fmt=xlsx'"><i class="bi bi-file-earmark-excel"></i> Excel</button>
+      <button class="btn btn-outline-secondary btn-sm" onclick="location='/api/reports/snapshots/export?fmt=csv'">CSV</button>
+      <button class="btn btn-outline-danger btn-sm" onclick="location='/api/reports/snapshots/export?fmt=pdf'">PDF</button>
+    </div>
+  </div>
+  <div id="snapHelp" class="small text-muted mt-3 d-none">
+    <div class="row g-2">
+      <div class="col-md-6"><code>vm:web01</code> · <code>snap:upgrade</code> · <code>platform:"merkez"</code> — alanlarda ara</div>
+      <div class="col-md-6"><code>age:&gt;30</code> · <code>age:&lt;7</code> · <code>age:&gt;=14</code> — yaşa göre (gün)</div>
+      <div class="col-md-6"><code>current:yes</code> / <code>current:no</code> — aktif snapshot · <code>parent:yok</code> — kök snapshot</div>
+      <div class="col-md-6"><code>-snap:test</code> dışla · <code>snap:a,b</code> (virgül = veya) · boş kelime = her yerde ara</div>
+    </div>
+  </div>
+</div></div>
+
+<div class="card panel">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0" id="snapTable">
+      <thead><tr>
+        <th data-sort="vm_name" class="sortable">VM</th>
+        <th data-sort="name" class="sortable">Snapshot</th>
+        <th data-sort="platform" class="sortable">Platform</th>
+        <th data-sort="cluster" class="sortable">Cluster</th>
+        <th data-sort="created_at" class="sortable">Oluşturma</th>
+        <th data-sort="age" class="sortable">Yaş</th>
+        <th>Üst</th>
+        <th>Açıklama</th>
+      </tr></thead>
+      <tbody id="snapBody"><tr><td colspan="8" class="text-center text-muted p-4">Yükleniyor…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+<div class="text-muted small mt-2" id="snapCount"></div>
+{% endblock %}
+{% block scripts %}<script src="/static/js/snapshots.js?v={{ asset_version }}"></script>{% endblock %}

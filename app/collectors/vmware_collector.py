@@ -15,7 +15,7 @@ import ssl
 import json
 import re
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from pyVim.connect import SmartConnect, Disconnect
 from pyVmomi import vim
@@ -357,6 +357,8 @@ class VMwareCollector:
                     "ip_addresses": ",".join(sorted(set(ips))),
                     "mac_addresses": ",".join(sorted(set(macs))),
                     "guest_os": _best_guest_os(vm, guest, config),
+                    "arch": ("x86_64" if config and "64" in (config.guestId or "")
+                             else "x86" if config else ""),
                     "cpu_count": config.numCpu if config else 0,
                     "ram_mb": config.memorySizeMB if config else 0,
                     "disk_total_gb": round(sum(d["size_gb"] for d in disks), 1),
@@ -425,18 +427,81 @@ class VMwareCollector:
     # ---------- Datastore'lar ----------
     def collect_datastores(self) -> list[dict]:
         result = []
+        cluster_map = self._cluster_map()   # host MoRef -> cluster adı
         for ds in self._get_objects([vim.Datastore]):
             try:
                 s = ds.summary
                 cap = (s.capacity or 0) / 1024**3
                 free = (s.freeSpace or 0) / 1024**3
+                maint = getattr(s, "maintenanceMode", "normal") or "normal"
+                status = ("maintenance" if maint != "normal"
+                          else "active" if getattr(s, "accessible", True) else "inactive")
+                hosts = getattr(ds, "host", []) or []
+                # Yerel datastore (tek host) → host adı. Paylaşımlı (çok host) →
+                # bağlı host'ların cluster'ı tekse cluster adı (çoklu cluster ise boş).
+                node = ""
+                if len(hosts) == 1:
+                    try:
+                        node = hosts[0].key.name or ""
+                    except Exception:
+                        node = ""
+                elif len(hosts) > 1:
+                    clusters = set()
+                    for hm in hosts:
+                        try:
+                            clusters.add(cluster_map.get(hm.key._moId, ""))
+                        except Exception:
+                            pass
+                    clusters.discard("")
+                    if len(clusters) == 1:
+                        node = next(iter(clusters))
                 result.append({"name": s.name, "type": s.type,
+                               "node": node,
+                               "shared": len(hosts) > 1,
                                "capacity_gb": round(cap, 1),
                                "used_gb": round(cap - free, 1),
-                               "free_gb": round(free, 1)})
+                               "free_gb": round(free, 1),
+                               "host_count": len(hosts),
+                               "status": status})
             except Exception as exc:
                 logger.warning("Datastore okunamadı: %s", exc)
         return result
+
+    def collect_snapshots(self) -> list[dict]:
+        """VM snapshot ağacını düz listeye çevir (vm.snapshot.rootSnapshotList)."""
+        result = []
+        for vm in self._get_objects([vim.VirtualMachine]):
+            try:
+                snap = getattr(vm, "snapshot", None)
+                if not snap or not snap.rootSnapshotList:
+                    continue
+                current = getattr(snap, "currentSnapshot", None)
+                moid, vmname = vm._moId, vm.name
+
+                def _walk(nodes, parent_name=""):
+                    for n in nodes:
+                        created = n.createTime
+                        if created and created.tzinfo:
+                            created = created.astimezone(timezone.utc).replace(tzinfo=None)
+                        result.append({
+                            "vm_external_id": moid, "vm_name": vmname,
+                            "name": n.name, "description": (n.description or "").strip(),
+                            "created_at": created,
+                            "is_current": bool(current and n.snapshot == current),
+                            "parent": parent_name,
+                        })
+                        if n.childSnapshotList:
+                            _walk(n.childSnapshotList, n.name)
+
+                _walk(snap.rootSnapshotList)
+            except Exception as exc:
+                logger.warning("Snapshot okunamadı (%s): %s",
+                               getattr(vm, "name", "?"), exc)
+        return result
+
+    def collect_backups(self) -> list[dict]:
+        # vCenter'ın yedek yönetimi API'si yoktur; yedekler yalnızca Proxmox'tadır.
+        return []
 
     # ---------- Hafif kullanım senkronizasyonu ----------
     def collect_usage(self) -> dict:
@@ -461,7 +526,9 @@ class VMwareCollector:
                 vms.append({
                     "external_id": vm._moId,
                     "cpu_pct": cpu_pct,
-                    "ram_used_mb": qs.guestMemoryUsage or 0,   # Tools yoksa 0 gelir
+                    # hostMemoryUsage (tüketilen fiziksel RAM) Tools gerektirmez;
+                    # guestMemoryUsage (aktif bellek) yalnızca Tools varken gelir
+                    "ram_used_mb": (qs.hostMemoryUsage or qs.guestMemoryUsage or 0),
                     "disk_used_gb": round((committed or 0) / 1024**3, 1),
                 })
             except Exception:
