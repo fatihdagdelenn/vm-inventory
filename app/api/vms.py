@@ -20,6 +20,7 @@ router = APIRouter(prefix="/api/vms", tags=["vms"])
 
 SORTABLE = {"name": VirtualMachine.name, "power_state": VirtualMachine.power_state,
             "cluster": VirtualMachine.cluster, "guest_os": VirtualMachine.guest_os,
+            "agent": VirtualMachine.tools_status,
             "ram_mb": VirtualMachine.ram_mb, "cpu_count": VirtualMachine.cpu_count,
             "disk_total_gb": VirtualMachine.disk_total_gb, "vmid": VirtualMachine.vmid,
             "pool": VirtualMachine.pool}
@@ -121,6 +122,11 @@ def list_vms(q: str = "", page: int = 1, per_page: int = 50,
         # İlişkili host adına göre (büyük/küçük harf duyarsız) sırala
         query = query.outerjoin(Host, VirtualMachine.host_id == Host.id)
         sort_col = func.lower(func.coalesce(Host.name, ""))
+    elif sort == "platform":
+        # İlişkili platform tipine göre (VMware/Proxmox) sırala
+        from ..models import Platform
+        query = query.outerjoin(Platform, VirtualMachine.platform_id == Platform.id)
+        sort_col = func.lower(func.coalesce(Platform.type, ""))
     else:
         base_col = SORTABLE.get(sort, VirtualMachine.name)
         sort_col = func.lower(base_col) if sort in CASE_INSENSITIVE else base_col

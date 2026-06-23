@@ -194,7 +194,7 @@ const Platforms = {
     if (id && !payload.password && !payload.token_value) payload.id = parseInt(id, 10);
     try {
       const r = await App.api('/api/platforms/test', {method: 'POST', body: payload});
-      out.innerHTML = r.ok
+      out.innerHTML = r.success
         ? '<div class="alert alert-success mb-0 d-flex align-items-center gap-2">' +
           '<span class="badge text-bg-success"><i class="bi bi-check-circle-fill"></i> Bağlantı Başarılı</span>' +
           '<span class="small">' + App.esc(r.message || '') + '</span></div>'

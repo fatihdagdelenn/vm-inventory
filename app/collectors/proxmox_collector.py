@@ -749,6 +749,35 @@ class ProxmoxCollector:
             out.append(info)
         return out
 
+    def collect_recent_actors(self) -> dict:
+        """Son görevlerden 'VM'i kim değiştirdi' eşlemesi: node/vmid → kullanıcı.
+
+        Proxmox /cluster/tasks görev kaydını okur (qmcreate, qmconfig, qmdestroy…).
+        Görevler en yeniden eskiye gelir; her VM için ilk (en yeni) ilgili görevin
+        kullanıcısı alınır. Değişiklik Geçmişi'nde "kim yaptı" için kullanılır.
+        """
+        actors = {}
+        try:
+            tasks = self.api.cluster.tasks.get(limit=500)
+        except Exception as exc:
+            logger.warning("Görev kaydı alınamadı: %s", exc)
+            return actors
+        relevant = {"qmcreate", "qmconfig", "qmstart", "qmstop", "qmshutdown",
+                    "qmreset", "qmdestroy", "qmrollback", "qmmigrate", "qmclone",
+                    "vzcreate", "vzconfig", "vzdestroy", "vzstart", "vzstop"}
+        for t in tasks:
+            ttype = t.get("type", "")
+            vmid = str(t.get("id", "") or "")
+            node = t.get("node", "")
+            user = t.get("user", "")
+            if not (user and vmid and node) or ttype not in relevant:
+                continue
+            # id "100" gibi olmalı; bazı görevlerde "100:..." olabilir → ilk parça
+            vmid = vmid.split(":")[0]
+            key = f"{node}/{vmid}"
+            actors.setdefault(key, user)   # en yeni görev önce → ilk gören kalır
+        return actors
+
     # ---------- Hafif kullanım senkronizasyonu ----------
     def collect_usage(self) -> dict:
         """

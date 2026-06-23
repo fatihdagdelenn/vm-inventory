@@ -240,6 +240,7 @@ class ChangeHistory(Base):
     field = Column(String(64))                      # Değişen alan adı
     old_value = Column(Text)
     new_value = Column(Text)
+    actor = Column(String(128))                     # Platformda işlemi yapan kullanıcı (görev/olay kaydından)
     changed_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 

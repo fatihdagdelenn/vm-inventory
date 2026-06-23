@@ -55,11 +55,12 @@ def _preserve_old(field, old, new) -> bool:
 
 
 def _record_change(db, entity_type, entity_name, platform_id, change_type,
-                   field=None, old=None, new=None):
+                   field=None, old=None, new=None, actor=None):
     db.add(ChangeHistory(entity_type=entity_type, entity_name=entity_name,
                          platform_id=platform_id, change_type=change_type,
                          field=field, old_value=str(old) if old is not None else None,
-                         new_value=str(new) if new is not None else None))
+                         new_value=str(new) if new is not None else None,
+                         actor=actor or None))
 
 
 def _build_collector(platform: Platform):
@@ -107,6 +108,11 @@ def sync_platform(platform_id: int):
         except Exception as exc:
             backups_data = []
             logger.warning("Yedek toplanamadı (%s): %s", platform.name, exc)
+        try:
+            actors = collector.collect_recent_actors() or {}
+        except Exception as exc:
+            actors = {}
+            logger.warning("İşlem yapan kullanıcılar alınamadı (%s): %s", platform.name, exc)
         if hasattr(collector, "disconnect"):
             collector.disconnect()
 
@@ -154,7 +160,8 @@ def sync_platform(platform_id: int):
                                     host_id=host_obj.id if host_obj else None,
                                     environment=platform.environment, **vd)
                 db.add(vm)
-                _record_change(db, "vm", vd["name"], platform.id, "created")
+                _record_change(db, "vm", vd["name"], platform.id, "created",
+                               actor=actors.get(vd["external_id"]))
             else:
                 # Bu turda VM detay sorgusu tümden başarısızsa, enrich'e bağlı
                 # alanları eskiye sabitle (jenerik/boş değerlerle ezilmesin).
@@ -180,13 +187,15 @@ def sync_platform(platform_id: int):
                         continue
                     if old != new and new is not None:
                         _record_change(db, "vm", vm.name, platform.id,
-                                       "updated", f, old, new)
+                                       "updated", f, old, new,
+                                       actor=actors.get(vm.external_id))
                 for k, v in vd.items():
                     setattr(vm, k, v)
                 vm.host_id = host_obj.id if host_obj else None
         for ext_id, vm in existing_vms.items():
             if ext_id not in seen_vms:
-                _record_change(db, "vm", vm.name, platform.id, "deleted")
+                _record_change(db, "vm", vm.name, platform.id, "deleted",
+                               actor=actors.get(ext_id))
                 db.delete(vm)
 
         # ---------- Ağ ve datastore: basit yenileme (sil-yaz) ----------

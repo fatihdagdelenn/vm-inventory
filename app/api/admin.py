@@ -112,7 +112,8 @@ def change_history(entity: str = "", q: str = "", limit: int = 200,
     return {"items": [{"changed_at": to_iso(r.changed_at),
                        "entity_type": r.entity_type, "entity_name": r.entity_name,
                        "change_type": r.change_type, "field": r.field,
-                       "old_value": r.old_value, "new_value": r.new_value}
+                       "old_value": r.old_value, "new_value": r.new_value,
+                       "actor": r.actor or ""}
                       for r in rows]}
 
 

@@ -503,6 +503,10 @@ class VMwareCollector:
         # vCenter'ın yedek yönetimi API'si yoktur; yedekler yalnızca Proxmox'tadır.
         return []
 
+    def collect_recent_actors(self) -> dict:
+        # vCenter olay (eventManager) korelasyonu ileride eklenebilir; şimdilik boş.
+        return {}
+
     # ---------- Hafif kullanım senkronizasyonu ----------
     def collect_usage(self) -> dict:
         """

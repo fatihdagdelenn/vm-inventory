@@ -12,7 +12,7 @@ const History = {
     } catch (e) { return; }
     const body = document.getElementById('histBody');
     if (!data.items.length) {
-      body.innerHTML = '<tr><td colspan="7" class="text-center text-muted p-4">Kayıt bulunamadı.</td></tr>';
+      body.innerHTML = '<tr><td colspan="8" class="text-center text-muted p-4">Kayıt bulunamadı.</td></tr>';
       return;
     }
     const typeBadge = t => ({
@@ -24,6 +24,9 @@ const History = {
       '<td class="text-nowrap small">' + App.fmtDate(r.changed_at) + '</td>' +
       '<td>' + (r.entity_type === 'vm' ? 'VM' : 'Host') + '</td>' +
       '<td><strong>' + App.esc(r.entity_name) + '</strong></td>' +
+      '<td class="small">' + (r.actor
+        ? '<span class="badge text-bg-light text-dark border"><i class="bi bi-person"></i> ' + App.esc(r.actor) + '</span>'
+        : '<span class="text-muted">—</span>') + '</td>' +
       '<td>' + typeBadge(r.change_type) + '</td>' +
       '<td>' + App.esc(r.field || '—') + '</td>' +
       '<td class="small text-muted">' + App.esc(r.old_value || '—') + '</td>' +
