@@ -110,9 +110,39 @@ const Settings = {
           '<td class="small text-muted">' + App.esc(l.ip_address || '') + '</td></tr>').join('')
       : '<tr><td colspan="6" class="text-muted p-3">Kayıt yok.</td></tr>';
   },
+  async loadSync() {
+    const el = document.getElementById('syncFull');
+    if (!el) return;
+    let d;
+    try { d = await App.api('/api/admin/sync-settings'); } catch (e) { return; }
+    document.getElementById('syncFull').value = d.sync_interval_minutes;
+    document.getElementById('syncUsage').value = d.usage_sync_interval_minutes;
+  },
+
+  async saveSync() {
+    const full = parseInt(document.getElementById('syncFull').value, 10);
+    const usage = parseInt(document.getElementById('syncUsage').value, 10);
+    const msg = document.getElementById('syncSaveMsg');
+    const okRange = n => Number.isInteger(n) && n >= 1 && n <= 1440;
+    if (!okRange(full) || !okRange(usage)) {
+      msg.className = 'ms-2 small text-danger';
+      msg.textContent = 'Değerler 1–1440 dakika arasında olmalı';
+      return;
+    }
+    try {
+      await App.api('/api/admin/sync-settings', {method: 'PUT',
+        body: {sync_interval_minutes: full, usage_sync_interval_minutes: usage}});
+      msg.className = 'ms-2 small text-success';
+      msg.textContent = '✓ Kaydedildi — yeniden başlatmadan geçerli';
+    } catch (e) {
+      msg.className = 'ms-2 small text-danger';
+      msg.textContent = 'Kaydedilemedi';
+    }
+  },
 };
 
 Settings.loadUsers();
 Settings.loadAudit();
+Settings.loadSync();
 document.getElementById('auditSearch').addEventListener('input', App.debounce(() => Settings.loadAudit(), 300));
 document.getElementById('auditAction').addEventListener('change', () => Settings.loadAudit());

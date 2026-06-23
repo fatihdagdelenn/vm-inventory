@@ -29,7 +29,8 @@
               <option value="proxmox">Proxmox VE</option>
             </select></div>
           <div class="col-md-8"><label class="form-label">API adresi (FQDN / IP) *</label>
-            <input id="pmHost" class="form-control" placeholder="vcenter01.sirket.local"></div>
+            <input id="pmHost" class="form-control" placeholder="vcenter01.sirket.local"
+                   onblur="Platforms.normalizeHost()"></div>
           <div class="col-md-4"><label class="form-label">Port</label>
             <input id="pmPort" type="number" class="form-control" value="443"></div>
           <div class="col-md-6" id="pmAuthMethodWrap" style="display:none">

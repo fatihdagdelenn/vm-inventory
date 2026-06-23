@@ -77,6 +77,7 @@ const Platforms = {
     document.getElementById('pmEnv').value = p ? p.environment : 'production';
     document.getElementById('pmSsl').checked = p ? p.verify_ssl : true;
     document.getElementById('pmTestResult').innerHTML = '';
+    Platforms._clearErrors();
     Platforms.onTypeChange();
     bootstrap.Modal.getOrCreateInstance(document.getElementById('platformModal')).show();
   },
@@ -105,8 +106,66 @@ const Platforms = {
     document.querySelectorAll('.pm-pass').forEach(el => el.style.display = isToken ? 'none' : '');
   },
 
+  /** Host alanını temizle: şema (https://), path ve gömülü portu ayıkla.
+   *  pyVmomi/proxmoxer bare host bekler; URL yapıştırılırsa bozulmasın. */
+  normalizeHost() {
+    const el = document.getElementById('pmHost');
+    let v = (el.value || '').trim();
+    if (!v) return;
+    v = v.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '');   // https:// http:// vs.
+    v = v.replace(/\/.*$/, '');                       // /path ve sondaki /
+    if ((v.match(/:/g) || []).length === 1) {         // host:port → portu ayır
+      const m = v.match(/^(.+):(\d+)$/);
+      if (m) { v = m[1]; document.getElementById('pmPort').value = m[2]; }
+    }
+    el.value = v;
+  },
+
+  _showError(el, msg) {
+    el.classList.add('is-invalid');
+    let fb = el.parentElement.querySelector('.invalid-feedback');
+    if (!fb) {
+      fb = document.createElement('div');
+      fb.className = 'invalid-feedback';
+      el.parentElement.appendChild(fb);
+    }
+    fb.textContent = msg;
+  },
+
+  _clearErrors() {
+    document.querySelectorAll('#platformModal .is-invalid')
+      .forEach(e => e.classList.remove('is-invalid'));
+  },
+
+  /** Zorunlu alan doğrulaması — boşsa alan altında uyarı gösterir. */
+  _validate() {
+    this._clearErrors();
+    let ok = true;
+    const isEdit = !!document.getElementById('pmId').value;
+    const type = document.getElementById('pmType').value;
+    const method = type === 'proxmox'
+      ? document.getElementById('pmAuthMethod').value : 'password';
+    const req = (id, msg) => {
+      const el = document.getElementById(id);
+      if (!el.value.trim()) { this._showError(el, msg); ok = false; }
+    };
+    req('pmName', 'Bu alanın doldurulması zorunludur');
+    req('pmHost', 'Bu alanın doldurulması zorunludur');
+    if (!isEdit) {   // yeni kayıtta kimlik bilgisi zorunlu (düzenlemede boş = değişme)
+      if (method === 'token') {
+        req('pmTokenName', 'Bu alanın doldurulması zorunludur');
+        req('pmTokenValue', 'Bu alanın doldurulması zorunludur');
+      } else {
+        req('pmUser', 'Bu alanın doldurulması zorunludur');
+        req('pmPass', 'Bu alanın doldurulması zorunludur');
+      }
+    }
+    return ok;
+  },
+
   /** Modal alanlarından API payload'u üret. */
   _payload() {
+    this.normalizeHost();
     return {
       name: document.getElementById('pmName').value.trim(),
       type: document.getElementById('pmType').value,
@@ -136,8 +195,9 @@ const Platforms = {
     try {
       const r = await App.api('/api/platforms/test', {method: 'POST', body: payload});
       out.innerHTML = r.ok
-        ? '<div class="alert alert-success mb-0"><i class="bi bi-check-circle"></i> ' +
-          App.esc(r.message || 'Bağlantı başarılı') + '</div>'
+        ? '<div class="alert alert-success mb-0 d-flex align-items-center gap-2">' +
+          '<span class="badge text-bg-success"><i class="bi bi-check-circle-fill"></i> Bağlantı Başarılı</span>' +
+          '<span class="small">' + App.esc(r.message || '') + '</span></div>'
         : '<div class="alert alert-danger mb-0"><i class="bi bi-x-circle"></i> ' +
           App.esc(r.message || 'Bağlantı başarısız') + '</div>';
     } catch (e) {
@@ -148,11 +208,11 @@ const Platforms = {
 
   async save() {
     const id = document.getElementById('pmId').value;
-    const payload = Platforms._payload();
-    if (!payload.name || !payload.host) {
-      App.toast('Görünen ad ve API adresi zorunludur', 'warning');
+    if (!this._validate()) {
+      App.toast('Lütfen zorunlu alanları doldurun', 'warning');
       return;
     }
+    const payload = Platforms._payload();
     try {
       if (id) await App.api('/api/platforms/' + id, {method: 'PUT', body: payload});
       else    await App.api('/api/platforms', {method: 'POST', body: payload});

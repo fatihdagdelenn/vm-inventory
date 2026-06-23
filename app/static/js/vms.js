@@ -11,6 +11,20 @@ const VMs = {
   currentId: null, includeHidden: false,
 
   /** Anlık kullanım için mini çubuk (veri yoksa boş döner). */
+  platformCell(ptype) {
+    if (ptype === 'vcenter') return '<i class="bi bi-cloud text-primary"></i> VMware';
+    if (ptype === 'proxmox') return '<i class="bi bi-box text-warning"></i> Proxmox';
+    return '<span class="text-muted">—</span>';
+  },
+
+  agentCell(state) {
+    const m = {running: ['Aktif', 'text-bg-success'],
+               stopped: ['Pasif', 'text-bg-warning text-dark'],
+               none: ['Yok', 'text-bg-secondary']};
+    const a = m[state] || ['—', 'text-bg-light text-dark border'];
+    return '<span class="badge ' + a[1] + '">' + a[0] + '</span>';
+  },
+
   usageMini(pct, usedMb, usedGb) {
     if (pct == null || isNaN(pct)) return '';
     if (!usedMb && !usedGb && pct === 0) return '';   // veri henüz yoksa çubuk çizme
@@ -72,6 +86,8 @@ const VMs = {
           '<td data-col="vmid" class="small text-muted text-nowrap">' + App.esc(v.vmid || '—') + '</td>' +
           '<td data-col="ip" class="text-nowrap small">' + App.esc(v.ip_addresses || '—').split(',').join('<br>') + '</td>' +
           '<td data-col="guest_os" class="small">' + App.esc(v.guest_os || '—') + '</td>' +
+          '<td data-col="platform" class="small text-nowrap">' + VMs.platformCell(v.platform_type) + '</td>' +
+          '<td data-col="agent" class="text-nowrap">' + VMs.agentCell(v.agent_state) + '</td>' +
           '<td data-col="cpu">' + (v.cpu_count || '—') + VMs.usageMini(v.cpu_usage_pct) + '</td>' +
           '<td data-col="ram">' + App.fmtRam(v.ram_mb) +
             VMs.usageMini(v.ram_mb ? 100 * (v.ram_usage_mb || 0) / v.ram_mb : null,

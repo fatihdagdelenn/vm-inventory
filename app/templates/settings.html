@@ -3,6 +3,7 @@
 <ul class="nav nav-tabs mb-3">
   <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tabUsers">Kullanıcılar</a></li>
   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabAudit">Audit Log</a></li>
+  <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabSync">Senkronizasyon</a></li>
 </ul>
 <div class="tab-content">
   <div class="tab-pane fade show active" id="tabUsers">
@@ -36,6 +37,29 @@
           <thead><tr><th>Zaman</th><th>Kullanıcı</th><th>İşlem</th><th>Hedef</th><th>Değişiklik</th><th>IP</th></tr></thead>
           <tbody id="auditBody"></tbody>
         </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-pane fade" id="tabSync">
+    <div class="card panel" style="max-width:560px">
+      <div class="card-header"><i class="bi bi-arrow-repeat"></i> Senkronizasyon Aralıkları</div>
+      <div class="card-body">
+        <p class="text-muted small">Arka plan senkronizasyonunun ne sıklıkta çalışacağını belirler.
+        Kaydedince yeniden başlatmadan hemen geçerli olur. (1–1440 dakika)</p>
+        <div class="mb-3">
+          <label class="form-label">Tam senkronizasyon aralığı (dakika)</label>
+          <input id="syncFull" type="number" min="1" max="1440" class="form-control" style="max-width:160px">
+          <div class="form-text">Tüm envanter + detaylar. Önerilen: 15.</div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Kullanım tazeleme aralığı (dakika)</label>
+          <input id="syncUsage" type="number" min="1" max="1440" class="form-control" style="max-width:160px">
+          <div class="form-text">Anlık CPU/RAM/disk kullanımı (hafif). Önerilen: 3.</div>
+        </div>
+        <button class="btn btn-primary" id="syncSaveBtn" onclick="Settings.saveSync()">
+          <i class="bi bi-check-lg"></i> Kaydet</button>
+        <span id="syncSaveMsg" class="ms-2 small"></span>
       </div>
     </div>
   </div>

@@ -31,15 +31,43 @@ def _scheduler_tz() -> str:
 scheduler = BackgroundScheduler(timezone=_scheduler_tz())
 
 
+def _db_intervals():
+    """Senkronizasyon aralıklarını DB'den oku; kayıt yoksa .env varsayılanına düş."""
+    settings = get_settings()
+    full, usage = settings.sync_interval_minutes, settings.usage_sync_interval_minutes
+    try:
+        from ..database import SessionLocal
+        from .app_settings import get_int_setting
+        db = SessionLocal()
+        try:
+            full = max(1, get_int_setting(db, "sync_interval_minutes", full))
+            usage = max(1, get_int_setting(db, "usage_sync_interval_minutes", usage))
+        finally:
+            db.close()
+    except Exception as exc:
+        logger.warning("Aralıklar DB'den okunamadı, varsayılan kullanılıyor: %s", exc)
+    return full, usage
+
+
+def reschedule_sync(full_min=None, usage_min=None):
+    """Aralık ayarı arayüzden değişince işleri yeniden zamanla (yeniden başlatmadan)."""
+    if full_min:
+        scheduler.reschedule_job("sync_all", trigger="interval", minutes=int(full_min))
+    if usage_min:
+        scheduler.reschedule_job("usage_sync", trigger="interval", minutes=int(usage_min))
+    logger.info("Senkronizasyon yeniden zamanlandı: tam=%s dk, kullanım=%s dk",
+                full_min, usage_min)
+
+
 def start_scheduler():
     """Uygulama açılışında çağrılır; periyodik senkronizasyon görevini kurar."""
     from ..services.sync_service import sync_all_platforms, sync_usage_all
 
-    settings = get_settings()
+    full_min, usage_min = _db_intervals()
     scheduler.add_job(
         sync_all_platforms,
         trigger="interval",
-        minutes=settings.sync_interval_minutes,
+        minutes=full_min,
         id="sync_all",
         max_instances=1,        # çakışan senkronizasyonları engelle
         coalesce=True,          # kaçırılan çalıştırmaları birleştir
@@ -50,7 +78,7 @@ def start_scheduler():
     scheduler.add_job(
         sync_usage_all,
         trigger="interval",
-        minutes=settings.usage_sync_interval_minutes,
+        minutes=usage_min,
         id="usage_sync",
         max_instances=1,
         coalesce=True,
@@ -77,7 +105,7 @@ def start_scheduler():
     except Exception as exc:
         logger.warning("Zamanlanmış raporlar yüklenemedi: %s", exc)
     logger.info("Zamanlayıcı başlatıldı: tam senkr. %s dk, kullanım tazeleme %s dk",
-                settings.sync_interval_minutes, settings.usage_sync_interval_minutes)
+                full_min, usage_min)
 
 
 def stop_scheduler():

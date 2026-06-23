@@ -260,6 +260,19 @@ class ClusterSetting(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class AppSetting(Base):
+    """Genel anahtar-değer uygulama ayarları (senkronizasyon aralıkları vb.).
+
+    Çalışma zamanında arayüzden değiştirilebilen, .env varsayılanlarını
+    geçersiz kılan ayarlar burada tutulur.
+    """
+    __tablename__ = "app_settings"
+
+    key = Column(String(64), primary_key=True)
+    value = Column(String(512))
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class ScheduledReport(Base):
     """
     Zamanlanmış rapor tanımı (KALICI).

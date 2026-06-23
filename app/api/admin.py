@@ -114,3 +114,48 @@ def change_history(entity: str = "", q: str = "", limit: int = 200,
                        "change_type": r.change_type, "field": r.field,
                        "old_value": r.old_value, "new_value": r.new_value}
                       for r in rows]}
+
+
+@router.get("/sync-settings")
+def get_sync_settings(db: Session = Depends(get_db),
+                      user: User = Depends(require_role("admin"))):
+    from ..config import get_settings
+    from ..core.app_settings import get_int_setting
+    env = get_settings()
+    return {
+        "sync_interval_minutes": get_int_setting(
+            db, "sync_interval_minutes", env.sync_interval_minutes),
+        "usage_sync_interval_minutes": get_int_setting(
+            db, "usage_sync_interval_minutes", env.usage_sync_interval_minutes),
+        "defaults": {"sync": env.sync_interval_minutes,
+                     "usage": env.usage_sync_interval_minutes},
+    }
+
+
+@router.put("/sync-settings")
+def update_sync_settings(request: Request, payload: dict = Body(...),
+                         db: Session = Depends(get_db),
+                         user: User = Depends(require_role("admin"))):
+    validate_csrf(request, payload.pop("csrf_token", None))
+    from ..core.app_settings import get_int_setting, set_setting
+    try:
+        full = int(payload.get("sync_interval_minutes"))
+        usage = int(payload.get("usage_sync_interval_minutes"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Geçersiz aralık değeri")
+    if not (1 <= full <= 1440) or not (1 <= usage <= 1440):
+        raise HTTPException(400, "Aralıklar 1–1440 dakika arasında olmalıdır")
+    old = f"{get_int_setting(db, 'sync_interval_minutes', 0)}/" \
+          f"{get_int_setting(db, 'usage_sync_interval_minutes', 0)} dk"
+    set_setting(db, "sync_interval_minutes", full)
+    set_setting(db, "usage_sync_interval_minutes", usage)
+    log_audit(db, user, "update", target="sync-settings",
+              old=old, new=f"{full}/{usage} dk", request=request)
+    db.commit()
+    try:
+        from ..core.scheduler import reschedule_sync
+        reschedule_sync(full, usage)
+    except Exception:
+        pass   # ayar kaydedildi; yeniden zamanlama olmazsa sonraki açılışta geçerli olur
+    return {"ok": True, "sync_interval_minutes": full,
+            "usage_sync_interval_minutes": usage}
