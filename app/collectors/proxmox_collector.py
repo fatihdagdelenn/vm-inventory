@@ -760,12 +760,33 @@ class ProxmoxCollector:
         kullanıcıya atfedilir. Boş kalanlar güç işlemleriyle doldurulur.
         """
         actors = {}
+        # Node bazlı /nodes/{node}/tasks 'limit' destekler ve çok daha fazla geçmiş
+        # verir; /cluster/tasks yalnızca son ~50 görevi döndürdüğü için bir VM'in
+        # config görevi kolayca pencereden düşebiliyor.
+        tasks = []
         try:
-            # /cluster/tasks 'limit' parametresini kabul etmez (varsayılan son görevler)
-            tasks = self.api.cluster.tasks.get()
+            nodes = [r["node"] for r in self.api.cluster.resources.get(type="node")
+                     if r.get("node")]
         except Exception as exc:
-            logger.warning("Görev kaydı alınamadı (Sys.Audit izni gerekebilir): %s", exc)
-            return actors
+            logger.warning("Node listesi alınamadı: %s", exc)
+            nodes = []
+        for node in nodes:
+            try:
+                nt = self.api.nodes(node).tasks.get(limit=500) or []
+            except Exception as exc:
+                logger.warning("Node %s görevleri alınamadı: %s", node, exc)
+                continue
+            for t in nt:
+                t.setdefault("node", node)
+            tasks.extend(nt)
+        if not tasks:   # geri dönüş: küme geneli son görevler (limit'siz)
+            try:
+                tasks = self.api.cluster.tasks.get() or []
+            except Exception as exc:
+                logger.warning("Görev kaydı alınamadı (Sys.Audit izni gerekebilir): %s", exc)
+                return actors
+        # En yeni görev önce (setdefault önceliği için)
+        tasks.sort(key=lambda t: t.get("starttime", 0) or 0, reverse=True)
 
         # İşlem yapılandırması (öncelikli) ve güç işlemleri (ikincil)
         cfg = {"qmcreate", "qmconfig", "qmdestroy", "qmrollback", "qmclone",
