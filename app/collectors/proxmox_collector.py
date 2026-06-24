@@ -379,12 +379,19 @@ class ProxmoxCollector:
                                      or entry["disk_total_gb"],
                 })
 
-                # Çalışan VM'lerde QEMU Guest Agent ile IP adresleri ve uptime
+                # Çalışan VM'lerde QEMU Guest Agent ile IP adresleri ve uptime.
+                # ÖNEMLİ: status/agent çağrıları AYRI try içinde — geçici hata
+                # verseler bile yukarıda config'ten okunan ram_mb/networks/vlans/disk
+                # KAYBOLMAZ (enrich_failed tetiklenmez). Aksi halde bir agent hatası
+                # tüm config değişikliklerini o senkronda gizler ("geç/eksik geldi").
                 if entry["power_state"] == "running":
-                    status = self.api.nodes(node).qemu(vmid).status.current.get()
-                    if status.get("uptime"):
-                        entry["last_boot"] = datetime.utcfromtimestamp(
-                            int(datetime.utcnow().timestamp()) - int(status["uptime"]))
+                    try:
+                        status = self.api.nodes(node).qemu(vmid).status.current.get()
+                        if status.get("uptime"):
+                            entry["last_boot"] = datetime.utcfromtimestamp(
+                                int(datetime.utcnow().timestamp()) - int(status["uptime"]))
+                    except Exception as exc:
+                        logger.debug("status.current alınamadı %s/%s: %s", node, vmid, exc)
                     agent_ok = False
                     try:
                         agent = self.api.nodes(node).qemu(vmid).agent(
@@ -798,7 +805,8 @@ class ProxmoxCollector:
         None döner. (Görev log'u Sys.Audit ile okunabilir.)"""
         try:
             lines = self.api.nodes(node).tasks(upid).log.get(limit=400) or []
-        except Exception:
+        except Exception as exc:
+            logger.warning("Klon görev log'u okunamadı (%s): %s", upid[:40], exc)
             return None
         pat = re.compile(r"\bto (?:vm|subvol|base)-(\d+)-disk")
         for ln in lines:

@@ -301,14 +301,14 @@ class VMwareCollector:
                 config = summary.config
                 guest = vm.guest
 
-                # IP ve MAC adresleri (VMware Tools üzerinden)
+                # IP'ler VMware Tools'tan; MAC'ler ise AŞAĞIDA cihaz YAPILANDIRMASINDAN
+                # toplanır (guest.net'teki canlı/sanal arayüzler değişim izlemede
+                # gürültü yapar — Docker/Hyper-V vb. arayüzler gelip gider).
                 ips, macs = [], []
                 if guest and guest.net:
                     for nic in guest.net:
                         if nic.ipAddress:
                             ips.extend(ip for ip in nic.ipAddress if ":" not in ip)  # IPv4 öncelik
-                        if nic.macAddress:
-                            macs.append(nic.macAddress)
                 if not ips and guest and guest.ipAddress:
                     ips.append(guest.ipAddress)
 

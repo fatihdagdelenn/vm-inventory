@@ -26,7 +26,8 @@ logger = logging.getLogger("sync")
 
 # Değişiklik geçmişinde izlenen VM alanları
 TRACKED_VM_FIELDS = ["name", "ip_addresses", "guest_os", "cpu_count", "ram_mb",
-                     "disk_total_gb", "power_state", "cluster", "datastore", "vlans"]
+                     "disk_total_gb", "power_state", "cluster", "datastore", "vlans",
+                     "networks", "mac_addresses"]
 TRACKED_HOST_FIELDS = ["name", "mgmt_ip", "cpu_cores", "ram_total_mb", "cluster", "status"]
 
 # Misafir agent'ı / config sorgusu geçici başarısız olunca bu alanlar "iyi" değerden
@@ -49,7 +50,8 @@ def _preserve_old(field, old, new) -> bool:
     """Geçici agent/enrich düşüşünde eski iyi değer korunmalı mı?"""
     if field == "guest_os":
         return new is not None and _is_generic_os(new) and old and not _is_generic_os(old)
-    if field in ("ip_addresses", "datastore", "vlans", "disk_total_gb"):
+    if field in ("ip_addresses", "datastore", "vlans", "disk_total_gb",
+                 "networks", "mac_addresses"):
         return (not new) and bool(old)   # eski doluyken yeni boş/0 → geçici düşüş
     return False
 
@@ -80,6 +82,8 @@ _FIELD_OP_CATEGORIES = {
     "disk_total_gb": ["disk", "config", "lifecycle"],
     "datastore":     ["migrate", "disk", "config"],
     "vlans":         ["config"],
+    "networks":      ["config"],
+    "mac_addresses": ["config"],
     "name":          ["config"],            # rename de 'config' kategorisinde
     "cluster":       ["migrate"],
     "power_state":   ["power"],
@@ -90,6 +94,7 @@ _FIELD_CATEGORY = {
     "cpu_count": "hardware", "ram_mb": "hardware", "guest_os": "os",
     "disk_total_gb": "disk", "datastore": "disk",
     "vlans": "network", "ip_addresses": "network",
+    "networks": "network", "mac_addresses": "network",
     "name": "other", "cluster": "migrate", "power_state": "power",
 }
 # Yeni power_state değeri → beklenen işlem yönü.
@@ -160,6 +165,23 @@ def _find_op_by_vid(vm_ops, vid, categories, directions=None, min_ts=0):
 # ASLA "destroy" ile (vmid yeniden kullanımında eski VM'in silme görevine bulaşmasın).
 _CREATE_DIRECTIONS = {"create", "clone", "restore", "register"}
 _DESTROY_DIRECTIONS = {"destroy"}
+
+
+def _nearest_clone_op(clone_ops, ctime, window=900):
+    """Zaman yakınlığıyla klon işlemini bul.
+
+    Proxmox klon görevinin UPID'i KAYNAK vmid'i taşır (yeni vmid'i değil), bu yüzden
+    yeni VM kendi klon işlemini vmid anahtarıyla bulamaz. Yeni VM'in oluşturulma
+    zamanı (ctime) ≈ klon görevinin zamanı olduğundan, ctime'a en yakın klon
+    işlemini (pencere içinde) eşleriz → klonu yapan kullanıcı doğru bulunur."""
+    if not ctime:
+        return None
+    best, best_d = None, None
+    for op in clone_ops:
+        d = abs((op.get("ts") or 0) - ctime)
+        if d <= window and (best_d is None or d < best_d):
+            best, best_d = op, d
+    return best
 
 
 def _record_console_ops(db, platform, vm, ops, ext_id, host_name, window=1800, cap=8):
@@ -294,6 +316,14 @@ def sync_platform(platform_id: int):
         ptype = platform.type
         from ..core.app_settings import get_bool_setting
         track_console = get_bool_setting(db, "track_console_access", False)
+        # Proxmox klon işlemleri (yön='clone') — klon görevi kaynak vmid'e yazıldığı
+        # için yeni VM'e zaman-yakınlığıyla eşlenir.
+        pmx_clone_ops = []
+        if ptype == "proxmox":
+            for _lst in vm_ops.values():
+                for _op in _lst:
+                    if _op.get("direction") == "clone" and _op.get("actor"):
+                        pmx_clone_ops.append(_op)
 
         def _meta(op):
             """Eşleşen işlemden aktör/IP/op meta sözlüğü (None-güvenli)."""
@@ -366,9 +396,12 @@ def sync_platform(platform_id: int):
                                    vm_external_id=ext_id, **_meta(op))
                 else:
                     # "Eklendi" yalnız oluşturma-yönlü işlemle (create/clone/restore);
-                    # klon işlemi farklı node/anahtarda olabileceğinden vmid bazlı ara.
+                    # klon işlemi farklı node/anahtarda olabileceğinden vmid bazlı ara,
+                    # bulunamazsa ctime'a en yakın klon işlemiyle eşle (klon görevi
+                    # kaynak vmid'e yazıldığından yeni VM kendi anahtarında bulamaz).
                     op = _find_op_by_vid(vm_ops, vid, ["lifecycle"],
                                          _CREATE_DIRECTIONS, min_ts) \
+                        or (_nearest_clone_op(pmx_clone_ops, ctime) if ptype == "proxmox" else None) \
                         or _match_op(ops, ["lifecycle"], None)
                     if op and op.get("direction") == "destroy":
                         op = None      # güvenlik: created'a destroy eşleşmesin
