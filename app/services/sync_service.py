@@ -55,12 +55,103 @@ def _preserve_old(field, old, new) -> bool:
 
 
 def _record_change(db, entity_type, entity_name, platform_id, change_type,
-                   field=None, old=None, new=None, actor=None):
-    db.add(ChangeHistory(entity_type=entity_type, entity_name=entity_name,
-                         platform_id=platform_id, change_type=change_type,
-                         field=field, old_value=str(old) if old is not None else None,
-                         new_value=str(new) if new is not None else None,
-                         actor=actor or None))
+                   field=None, old=None, new=None, actor=None, *,
+                   category=None, op_type=None, platform_type=None,
+                   cluster=None, host=None, vm_external_id=None,
+                   actor_ip=None, actor_agent=None):
+    db.add(ChangeHistory(
+        entity_type=entity_type, entity_name=entity_name,
+        platform_id=platform_id, change_type=change_type,
+        field=field, old_value=str(old) if old is not None else None,
+        new_value=str(new) if new is not None else None,
+        actor=actor or None, category=category, op_type=op_type,
+        platform_type=platform_type, cluster=cluster, host=host,
+        vm_external_id=vm_external_id, actor_ip=actor_ip, actor_agent=actor_agent))
+
+
+# Saptanan alan değişimi → kabul edilebilir işlem kategorileri (öncelik sırası).
+# Bir değişimi YALNIZ uygun kategorideki işlemle eşleriz; böylece bir kullanıcının
+# işlemi (ör. 'açtı') başka bir kullanıcının değişikliğine (ör. 'RAM artırdı')
+# atfedilmez. Uygun işlem yoksa aktör BOŞ bırakılır (yanlış kişi yazmaktansa).
+_FIELD_OP_CATEGORIES = {
+    "cpu_count":     ["config"],
+    "ram_mb":        ["config"],
+    "guest_os":      ["config"],            # zayıf; genelde agent kaynaklı → boş kalabilir
+    "disk_total_gb": ["disk", "config", "lifecycle"],
+    "datastore":     ["migrate", "disk", "config"],
+    "vlans":         ["config"],
+    "name":          ["config"],            # rename de 'config' kategorisinde
+    "cluster":       ["migrate"],
+    "power_state":   ["power"],
+    "ip_addresses":  [],                    # misafir içi (agent) → operatör işlemi değil
+}
+# Alanın görsel kategorisi (eşleşen işlem bulunamasa bile UI gruplaması için).
+_FIELD_CATEGORY = {
+    "cpu_count": "hardware", "ram_mb": "hardware", "guest_os": "os",
+    "disk_total_gb": "disk", "datastore": "disk",
+    "vlans": "network", "ip_addresses": "network",
+    "name": "other", "cluster": "migrate", "power_state": "power",
+}
+# Yeni power_state değeri → beklenen işlem yönü.
+_POWER_DIRECTION = {
+    "running": "on", "poweredOn": "on", "on": "on",
+    "stopped": "off", "poweredOff": "off", "off": "off",
+    "suspended": "suspend", "paused": "suspend",
+}
+
+
+def _match_op(ops, categories, direction=None):
+    """VM'in işlem listesinden (en yeni → en eski) kategoriye uyan ilk işlem.
+
+    direction verildiyse önce yön+kategori eşleşmesi aranır, bulunamazsa yalnız
+    kategori. Hiç uygun işlem yoksa None döner (aktör boş kalır)."""
+    if not ops or not categories:
+        return None
+    for op in ops:
+        if op.get("category") in categories and \
+                (direction is None or op.get("direction") == direction):
+            return op
+    if direction is not None:
+        for op in ops:
+            if op.get("category") in categories:
+                return op
+    return None
+
+
+def _record_console_ops(db, platform, vm, ops, ext_id, host_name, cap=20):
+    """VM konsoluna erişen kullanıcıları bilgi satırı olarak işle.
+
+    Konsol erişimi bir envanter DEĞİŞİMİ değildir; bu yüzden alan diff'inden
+    bağımsız, kendi satırı olarak (change_type='access') yazılır. Aynı erişim her
+    senkronizasyonda yeniden eklenmesin diye OLAY ZAMANINA göre tekilleştirilir:
+    new_value alanına olay zamanı (ISO) konur ve daha önce yazılmışsa atlanır."""
+    console = [o for o in ops if o.get("category") == "console" and o.get("actor")]
+    if not console:
+        return
+    seen = {r.new_value for r in db.query(ChangeHistory.new_value).filter(
+        ChangeHistory.vm_external_id == ext_id,
+        ChangeHistory.category == "console").order_by(
+        ChangeHistory.changed_at.desc()).limit(200)}
+    added = 0
+    for o in console:                     # en yeni → en eski
+        if added >= cap:
+            break
+        ts = o.get("ts") or 0
+        try:
+            iso = datetime.utcfromtimestamp(ts).isoformat(timespec="seconds") if ts else ""
+        except Exception:
+            iso = ""
+        if not iso or iso in seen:
+            continue
+        seen.add(iso)
+        added += 1
+        _record_change(db, "vm", vm.name, platform.id, "access",
+                       field="console", old=None, new=iso,
+                       actor=o.get("actor"), category="console",
+                       op_type=o.get("op"), platform_type=platform.type,
+                       cluster=vm.cluster, host=host_name or o.get("host"),
+                       vm_external_id=ext_id, actor_ip=o.get("actor_ip"),
+                       actor_agent=o.get("actor_agent"))
 
 
 def _build_collector(platform: Platform):
@@ -109,9 +200,9 @@ def sync_platform(platform_id: int):
             backups_data = []
             logger.warning("Yedek toplanamadı (%s): %s", platform.name, exc)
         try:
-            actors = collector.collect_recent_actors() or {}
+            vm_ops = collector.collect_recent_actors() or {}
         except Exception as exc:
-            actors = {}
+            vm_ops = {}
             logger.warning("İşlem yapan kullanıcılar alınamadı (%s): %s", platform.name, exc)
         if hasattr(collector, "disconnect"):
             collector.disconnect()
@@ -144,6 +235,16 @@ def sync_platform(platform_id: int):
         db.flush()
 
         # ---------- VM upsert ----------
+        # Göç tespiti için host id → ad eşlemesi (flush sonrası id'ler hazır).
+        host_name_by_id = {h.id: h.name for h in host_by_name.values() if h.id}
+        ptype = platform.type
+
+        def _meta(op):
+            """Eşleşen işlemden aktör/IP/op meta sözlüğü (None-güvenli)."""
+            op = op or {}
+            return dict(actor=op.get("actor"), op_type=op.get("op"),
+                        actor_ip=op.get("actor_ip"), actor_agent=op.get("actor_agent"))
+
         existing_vms = {v.external_id: v for v in
                         db.query(VirtualMachine).filter_by(platform_id=platform.id)}
         seen_vms = set()
@@ -155,13 +256,18 @@ def sync_platform(platform_id: int):
             os_from_agent = vd.pop("os_from_agent", True)   # vCenter/LXC için varsayılan: güven
             ip_from_agent = vd.pop("ip_from_agent", True)
             vm = existing_vms.get(vd["external_id"])
+            ext_id = vd["external_id"]
+            ops = vm_ops.get(ext_id) or []
             if vm is None:
                 vm = VirtualMachine(platform_id=platform.id,
                                     host_id=host_obj.id if host_obj else None,
                                     environment=platform.environment, **vd)
                 db.add(vm)
+                op = _match_op(ops, ["lifecycle"])   # create/clone/restore/register
                 _record_change(db, "vm", vd["name"], platform.id, "created",
-                               actor=actors.get(vd["external_id"]))
+                               category="lifecycle", platform_type=ptype,
+                               cluster=vd.get("cluster"), host=host_name,
+                               vm_external_id=ext_id, **_meta(op))
             else:
                 # Bu turda VM detay sorgusu tümden başarısızsa, enrich'e bağlı
                 # alanları eskiye sabitle (jenerik/boş değerlerle ezilmesin).
@@ -186,16 +292,46 @@ def sync_platform(platform_id: int):
                         vd[f] = old
                         continue
                     if old != new and new is not None:
-                        _record_change(db, "vm", vm.name, platform.id,
-                                       "updated", f, old, new,
-                                       actor=actors.get(vm.external_id))
+                        # Değişimi YALNIZ uygun kategorideki işlemle eşle (yanlış kişi engeli)
+                        cats = _FIELD_OP_CATEGORIES.get(f, [])
+                        direction = _POWER_DIRECTION.get(str(new)) if f == "power_state" else None
+                        op = _match_op(ops, cats, direction)
+                        # Görsel kategori ALANDAN gelir (op kategorisi yalnız eşleştirme
+                        # içindir; ör. RAM değişimi op'u 'qmconfig'/'config' olsa da
+                        # kullanıcıya 'Donanım' olarak gösterilir).
+                        cat = _FIELD_CATEGORY.get(f) or (op or {}).get("category") or "other"
+                        _record_change(db, "vm", vm.name, platform.id, "updated",
+                                       f, old, new, category=cat, platform_type=ptype,
+                                       cluster=vd.get("cluster") or vm.cluster,
+                                       host=host_name or host_name_by_id.get(vm.host_id),
+                                       vm_external_id=ext_id, **_meta(op))
+                # Göç (host değişimi): aynı external_id'de host değiştiyse — vMotion.
+                # Proxmox'ta external_id=node/vmid olduğundan göç create+delete görünür
+                # (bu yüzden burada yalnız host_id sabit kalan platformlarda tetiklenir).
+                old_host = host_name_by_id.get(vm.host_id)
+                new_host = host_name
+                if old_host and new_host and old_host != new_host:
+                    op = _match_op(ops, ["migrate"])
+                    detail = (op or {}).get("detail")
+                    _record_change(db, "vm", vm.name, platform.id, "migrated",
+                                   "host", old_host, detail or new_host,
+                                   category="migrate", platform_type=ptype,
+                                   cluster=vd.get("cluster") or vm.cluster,
+                                   host=f"{old_host} → {new_host}",
+                                   vm_external_id=ext_id, **_meta(op))
                 for k, v in vd.items():
                     setattr(vm, k, v)
                 vm.host_id = host_obj.id if host_obj else None
+            # Konsol erişimleri (state değişimi değil; ayrı bilgi satırları, tekilleştirilir)
+            _record_console_ops(db, platform, vm, ops, ext_id, host_name)
         for ext_id, vm in existing_vms.items():
             if ext_id not in seen_vms:
+                op = _match_op(vm_ops.get(ext_id) or [], ["lifecycle"])
                 _record_change(db, "vm", vm.name, platform.id, "deleted",
-                               actor=actors.get(ext_id))
+                               category="lifecycle", platform_type=ptype,
+                               cluster=vm.cluster,
+                               host=host_name_by_id.get(vm.host_id),
+                               vm_external_id=ext_id, **_meta(op))
                 db.delete(vm)
 
         # ---------- Ağ ve datastore: basit yenileme (sil-yaz) ----------

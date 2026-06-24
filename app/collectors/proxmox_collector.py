@@ -749,20 +749,46 @@ class ProxmoxCollector:
             out.append(info)
         return out
 
-    def collect_recent_actors(self) -> dict:
-        """Son görevlerden 'VM'i kim değiştirdi' eşlemesi: node/vmid → kullanıcı.
+    # Proxmox görev tipi → (kategori, yön). Yön yalnızca güç işlemleri için.
+    _TASK_CATEGORY = {
+        "qmcreate": ("lifecycle", "create"), "vzcreate": ("lifecycle", "create"),
+        "qmclone": ("lifecycle", "clone"),   "vzclone": ("lifecycle", "clone"),
+        "qmrestore": ("lifecycle", "restore"), "vzrestore": ("lifecycle", "restore"),
+        "qmdestroy": ("lifecycle", "destroy"), "vzdestroy": ("lifecycle", "destroy"),
+        "qmtemplate": ("lifecycle", "template"), "vztemplate": ("lifecycle", "template"),
+        "qmmigrate": ("migrate", "migrate"), "vzmigrate": ("migrate", "migrate"),
+        "qmconfig": ("config", None), "vzconfig": ("config", None),
+        "pctconfig": ("config", None),
+        "qmresize": ("disk", None),
+        "qmsnapshot": ("snapshot", "create"), "vzsnapshot": ("snapshot", "create"),
+        "qmdelsnapshot": ("snapshot", "delete"), "vzdelsnapshot": ("snapshot", "delete"),
+        "qmrollback": ("snapshot", "rollback"), "vzrollback": ("snapshot", "rollback"),
+        "qmstart": ("power", "on"),  "vzstart": ("power", "on"),  "qmresume": ("power", "on"),
+        "qmstop": ("power", "off"),  "vzstop": ("power", "off"),
+        "qmshutdown": ("power", "off"), "vzshutdown": ("power", "off"),
+        "qmsuspend": ("power", "suspend"),
+        "qmreboot": ("power", "reboot"), "qmreset": ("power", "reboot"),
+        "vzreboot": ("power", "reboot"),
+        "vncproxy": ("console", "open"), "qmvncproxy": ("console", "open"),
+        "vncshell": ("console", "open"), "termproxy": ("console", "open"),
+        "spiceproxy": ("console", "open"), "spiceshell": ("console", "open"),
+    }
 
-        Proxmox /cluster/tasks görev kaydını okur. Üst-seviye user/id/type/node
-        alanları bazı sürümlerde boş gelebildiğinden, asıl bilgi UPID dizgesinden
-        ayrıştırılır: UPID:node:pid:pstart:starttime:type:id:user:
-        Önce yapılandırma işlemleri (qmconfig/create/destroy…) eşlenir; böylece
-        bir RAM değişimi, sonradan gelen bir 'start' görevine değil doğru
-        kullanıcıya atfedilir. Boş kalanlar güç işlemleriyle doldurulur.
+    def collect_recent_actors(self) -> dict:
+        """'VM'i kim, neyi, ne zaman değiştirdi' — VM başına işlem listesi.
+
+        Geriye {external_id: [op, ...]} döner; her op:
+          {ts, op, category, direction, actor, actor_ip, host, detail}
+        Liste en yeniden eskiye sıralıdır. sync_service her saptanan alan
+        değişimini KATEGORİYE göre doğru işlemle eşler (örn. RAM değişimi yalnız
+        'config', power_state değişimi yalnız 'power' işlemiyle); böylece bir
+        kullanıcının işlemi başka bir kullanıcının işlemine atfedilmez.
+
+        Proxmox görev kaydı istemci IP / User-Agent tutmaz → actor_ip boş kalır.
+        UPID: UPID:node:pid:pstart:starttime:type:id:user:
         """
-        actors = {}
-        # Node bazlı /nodes/{node}/tasks 'limit' destekler ve çok daha fazla geçmiş
-        # verir; /cluster/tasks yalnızca son ~50 görevi döndürdüğü için bir VM'in
-        # config görevi kolayca pencereden düşebiliyor.
+        ops: dict[str, list] = {}
+        # /nodes/{node}/tasks 'limit' destekler (geniş geçmiş); /cluster/tasks ~50 ile sınırlı.
         tasks = []
         try:
             nodes = [r["node"] for r in self.api.cluster.resources.get(type="node")
@@ -784,17 +810,8 @@ class ProxmoxCollector:
                 tasks = self.api.cluster.tasks.get() or []
             except Exception as exc:
                 logger.warning("Görev kaydı alınamadı (Sys.Audit izni gerekebilir): %s", exc)
-                return actors
-        # En yeni görev önce (setdefault önceliği için)
-        tasks.sort(key=lambda t: t.get("starttime", 0) or 0, reverse=True)
-
-        # İşlem yapılandırması (öncelikli) ve güç işlemleri (ikincil)
-        cfg = {"qmcreate", "qmconfig", "qmdestroy", "qmrollback", "qmclone",
-               "qmmigrate", "qmresize", "qmrestore", "qmsnapshot", "qmdelsnapshot",
-               "vzcreate", "vzconfig", "vzdestroy", "vzrollback", "vzclone",
-               "vzmigrate", "vzrestore", "vzsnapshot", "vzdelsnapshot", "pctconfig"}
-        power = {"qmstart", "qmstop", "qmshutdown", "qmreset", "qmreboot", "qmsuspend",
-                 "qmresume", "vzstart", "vzstop", "vzshutdown", "vzreboot"}
+                return ops
+        tasks.sort(key=lambda t: t.get("starttime", 0) or 0, reverse=True)  # en yeni önce
 
         def parse(t):
             node = t.get("node") or ""
@@ -811,15 +828,31 @@ class ProxmoxCollector:
                     user = user or p[7]
             return node, ttype, vmid.split(":")[0], user
 
-        for tier in (cfg, power):                 # önce config, sonra güç
-            for t in tasks:                       # liste en yeniden eskiye
-                node, ttype, vmid, user = parse(t)
-                if not (node and vmid and user) or ttype not in tier:
-                    continue
-                actors.setdefault(f"{node}/{vmid}", user)
-        logger.info("İşlem yapan kullanıcılar: %d VM eşlendi (%d görev tarandı)",
-                    len(actors), len(tasks))
-        return actors
+        scanned = 0
+        for t in tasks:                           # en yeniden eskiye
+            node, ttype, vmid, user = parse(t)
+            if not (node and vmid):
+                continue
+            cat = self._TASK_CATEGORY.get(ttype)
+            if not cat:
+                continue
+            category, direction = cat
+            scanned += 1
+            ext = f"{node}/{vmid}"
+            ops.setdefault(ext, []).append({
+                "ts": t.get("starttime") or 0,
+                "op": ttype,
+                "category": category,
+                "direction": direction,
+                "actor": user or None,
+                "actor_ip": None,     # Proxmox görev kaydı istemci IP tutmaz
+                "actor_agent": None,
+                "host": node,         # VM'in bulunduğu node
+                "detail": None,
+            })
+        logger.info("Proxmox islem yapan kullanicilar: %d VM eslendi (%d gorev tarandi)",
+                    len(ops), scanned)
+        return ops
 
     # ---------- Hafif kullanım senkronizasyonu ----------
     def collect_usage(self) -> dict:

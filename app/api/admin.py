@@ -99,13 +99,16 @@ def audit_logs(limit: int = 200, q: str = "", action: str = "",
 
 
 @router.get("/changes")
-def change_history(entity: str = "", q: str = "", limit: int = 200,
+def change_history(entity: str = "", q: str = "", category: str = "",
+                   limit: int = 200,
                    db: Session = Depends(get_db),
                    user: User = Depends(get_current_user)):
     """Envanter değişiklik geçmişi (tüm roller görebilir)."""
     query = db.query(ChangeHistory)
     if entity in ("vm", "host"):
         query = query.filter_by(entity_type=entity)
+    if category:
+        query = query.filter(ChangeHistory.category == category)
     if q:
         query = query.filter(ChangeHistory.entity_name.ilike(f"%{q}%"))
     rows = query.order_by(ChangeHistory.changed_at.desc()).limit(min(limit, 1000)).all()
@@ -113,7 +116,11 @@ def change_history(entity: str = "", q: str = "", limit: int = 200,
                        "entity_type": r.entity_type, "entity_name": r.entity_name,
                        "change_type": r.change_type, "field": r.field,
                        "old_value": r.old_value, "new_value": r.new_value,
-                       "actor": r.actor or ""}
+                       "actor": r.actor or "", "category": r.category or "",
+                       "op_type": r.op_type or "", "platform_type": r.platform_type or "",
+                       "cluster": r.cluster or "", "host": r.host or "",
+                       "vm_external_id": r.vm_external_id or "",
+                       "actor_ip": r.actor_ip or "", "actor_agent": r.actor_agent or ""}
                       for r in rows]}
 
 

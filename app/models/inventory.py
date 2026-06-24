@@ -236,12 +236,23 @@ class ChangeHistory(Base):
     entity_type = Column(String(16), index=True)    # vm | host
     entity_name = Column(String(255), index=True)
     platform_id = Column(Integer, ForeignKey("platforms.id"))
-    change_type = Column(String(16))                # created | updated | deleted
+    change_type = Column(String(24))                # created|updated|deleted|migrated|access
     field = Column(String(64))                      # Değişen alan adı
     old_value = Column(Text)
     new_value = Column(Text)
     actor = Column(String(128))                     # Platformda işlemi yapan kullanıcı (görev/olay kaydından)
     changed_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    # --- faz35: zenginleştirilmiş köken / kaynak / aktör bilgisi ---
+    # Bu kolonlar ensure_schema ile mevcut kurulumlara otomatik eklenir.
+    category = Column(String(24), index=True)       # hardware|disk|network|power|migrate|lifecycle|console|os|other
+    op_type = Column(String(64))                    # Platform işleminin ham tipi (qmconfig / VmReconfiguredEvent…)
+    platform_type = Column(String(16), index=True)  # vcenter | proxmox
+    cluster = Column(String(128))                   # Değişikliğin yapıldığı cluster
+    host = Column(String(255))                       # VM'in bulunduğu host/node (göç için: kaynak→hedef)
+    vm_external_id = Column(String(128), index=True)  # moId veya node/vmid
+    actor_ip = Column(String(64))                    # İşlemi yapan istemci IP (varsa; çoğu platform vermez)
+    actor_agent = Column(String(255))                # İşlemi yapan istemci User-Agent (varsa)
 
 
 class ClusterSetting(Base):

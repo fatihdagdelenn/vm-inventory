@@ -503,33 +503,60 @@ class VMwareCollector:
         # vCenter'ın yedek yönetimi API'si yoktur; yedekler yalnızca Proxmox'tadır.
         return []
 
-    def collect_recent_actors(self) -> dict:
-        """vCenter olay yöneticisinden 'VM'i kim değiştirdi' eşlemesi: moId → kullanıcı.
+    # vCenter olay tipi → (kategori, yön).
+    _EVENT_CATEGORY = {
+        "VmReconfiguredEvent": ("config", None),
+        "VmCreatedEvent": ("lifecycle", "create"),
+        "VmBeingDeployedEvent": ("lifecycle", "create"),
+        "VmDeployedEvent": ("lifecycle", "create"),
+        "VmClonedEvent": ("lifecycle", "clone"),
+        "VmBeingClonedEvent": ("lifecycle", "clone"),
+        "VmRegisteredEvent": ("lifecycle", "register"),
+        "VmRemovedEvent": ("lifecycle", "destroy"),
+        "MarkAsTemplateEvent": ("lifecycle", "template"),
+        "MarkAsVirtualMachineEvent": ("lifecycle", "untemplate"),
+        "VmRenamedEvent": ("config", "rename"),
+        "VmMigratedEvent": ("migrate", "migrate"),
+        "VmRelocatedEvent": ("migrate", "migrate"),
+        "DrsVmMigratedEvent": ("migrate", "migrate"),
+        "VmResourcePoolMovedEvent": ("migrate", "move"),
+        "VmPoweredOnEvent": ("power", "on"),
+        "DrsVmPoweredOnEvent": ("power", "on"),
+        "VmPoweredOffEvent": ("power", "off"),
+        "VmGuestShutdownEvent": ("power", "off"),
+        "VmSuspendedEvent": ("power", "suspend"),
+        "VmResettingEvent": ("power", "reboot"),
+        "VmGuestRebootEvent": ("power", "reboot"),
+        "VmAcquiredTicketEvent": ("console", "open"),
+        "VmAcquiredMksTicketEvent": ("console", "open"),
+        "VmRemoteConsoleConnectedEvent": ("console", "open"),
+    }
 
-        Yapılandırma/oluşturma olayları (VmReconfiguredEvent, VmCreatedEvent…) güç
-        olaylarına (PoweredOn/Off) göre önceliklidir; böylece bir RAM değişimi,
+    def collect_recent_actors(self) -> dict:
+        """'VM'i kim, neyi, ne zaman değiştirdi' — VM başına işlem listesi.
+
+        Geriye {moId: [op, ...]} döner; her op:
+          {ts, op, category, direction, actor, actor_ip, host, detail}
+        Liste en yeniden eskiye sıralıdır. sync_service her saptanan alan
+        değişimini KATEGORİYE göre doğru olayla eşler; böylece bir RAM değişimi
         sonradan gelen bir 'açıldı' olayına değil doğru kullanıcıya atfedilir.
-        Hata olursa boş döner (senkronizasyonu bozmaz).
+
+        vCenter olayları genelde istemci IP / User-Agent taşımaz → actor_ip boş.
+        Göç olaylarında kaynak→hedef host detaya yazılır.
         """
         from datetime import datetime, timedelta, timezone
-        cfg_types = {"VmReconfiguredEvent", "VmCreatedEvent", "VmBeingDeployedEvent",
-                     "VmDeployedEvent", "VmClonedEvent", "VmRegisteredEvent",
-                     "VmRemovedEvent", "VmRenamedEvent", "VmMigratedEvent",
-                     "VmRelocatedEvent", "VmResourcePoolMovedEvent"}
-        power_types = {"VmPoweredOnEvent", "VmPoweredOffEvent", "VmSuspendedEvent",
-                       "DrsVmPoweredOnEvent", "VmResettingEvent", "VmGuestRebootEvent",
-                       "VmGuestShutdownEvent"}
-        actors = {}
+        ops: dict[str, list] = {}
+        wanted = list(self._EVENT_CATEGORY.keys())
         try:
             em = self.si.content.eventManager
             spec = vim.event.EventFilterSpec()
             spec.time = vim.event.EventFilterSpec.ByTime()
             spec.time.beginTime = datetime.now(timezone.utc) - timedelta(days=3)
-            spec.eventTypeId = list(cfg_types | power_types)
+            spec.eventTypeId = wanted
             events = em.QueryEvents(spec) or []
         except Exception as exc:
             logger.warning("vCenter olayları alınamadı: %s", exc)
-            return actors
+            return ops
 
         def moid(e):
             vmarg = getattr(e, "vm", None)
@@ -539,23 +566,54 @@ class VMwareCollector:
         def etype(e):
             return type(e).__name__.split(".")[-1]
 
+        def host_name(ref):
+            h = getattr(ref, "name", None) if ref else None
+            return h or ""
+
         try:    # en yeni olay önce
             events = sorted(events, key=lambda e: getattr(e, "createdTime", None)
                             or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
         except Exception:
             pass
 
-        for want_cfg in (True, False):       # önce yapılandırma, sonra güç
-            for e in events:
-                mo, user = moid(e), getattr(e, "userName", "") or ""
-                if not mo or not user:
-                    continue
-                if (etype(e) in cfg_types) != want_cfg:
-                    continue
-                actors.setdefault(mo, user)
-        logger.info("vCenter işlem yapan kullanıcılar: %d VM eşlendi (%d olay)",
-                    len(actors), len(events))
-        return actors
+        scanned = 0
+        for e in events:
+            mo = moid(e)
+            user = getattr(e, "userName", "") or ""
+            et = etype(e)
+            cat = self._EVENT_CATEGORY.get(et)
+            if not mo or not cat:
+                continue
+            category, direction = cat
+            scanned += 1
+            ts = getattr(e, "createdTime", None)
+            try:
+                ts = ts.timestamp() if ts else 0
+            except Exception:
+                ts = 0
+            # Üzerinde gerçekleştiği host; göçte kaynak→hedef
+            host = host_name(getattr(getattr(e, "host", None), "host", None)) \
+                or host_name(getattr(e, "host", None))
+            detail = None
+            if category == "migrate":
+                src = host_name(getattr(getattr(e, "sourceHost", None), "host", None)) \
+                    or host_name(getattr(e, "sourceHost", None))
+                if src and host and src != host:
+                    detail = f"{src} → {host}"
+            ops.setdefault(mo, []).append({
+                "ts": ts,
+                "op": et,
+                "category": category,
+                "direction": direction,
+                "actor": user or None,
+                "actor_ip": None,    # vCenter olayları istemci IP'si vermez
+                "actor_agent": None,
+                "host": host or None,
+                "detail": detail,
+            })
+        logger.info("vCenter islem yapan kullanicilar: %d VM eslendi (%d olay)",
+                    len(ops), scanned)
+        return ops
 
     # ---------- Hafif kullanım senkronizasyonu ----------
     def collect_usage(self) -> dict:
