@@ -761,7 +761,8 @@ class ProxmoxCollector:
         """
         actors = {}
         try:
-            tasks = self.api.cluster.tasks.get(limit=1000)
+            # /cluster/tasks 'limit' parametresini kabul etmez (varsayılan son görevler)
+            tasks = self.api.cluster.tasks.get()
         except Exception as exc:
             logger.warning("Görev kaydı alınamadı (Sys.Audit izni gerekebilir): %s", exc)
             return actors
