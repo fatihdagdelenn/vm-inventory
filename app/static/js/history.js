@@ -81,8 +81,8 @@ const History = {
   valueCell(r) {
     const label = History.FIELD_LABELS[r.field] || App.esc(r.field || '');
     if (r.category === 'console')
-      return '<strong>Konsol erişimi</strong><div class="small text-muted">' +
-             App.fmtDate(r.new_value) + '</div>';
+      return '<strong>Konsol erişimi</strong><div class="small text-muted">~ ' +
+             App.fmtDate(r.new_value) + ' <span class="text-muted">(30 dk pencere)</span></div>';
     if (r.change_type === 'migrated')
       return '<strong>' + label + '</strong><div class="small">' +
              '<span class="text-muted">' + History.fmtVal(r.field, r.old_value) + '</span>' +

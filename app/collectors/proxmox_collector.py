@@ -7,6 +7,7 @@ QEMU Guest Agent kuruluysa VM içi IP adresleri de alınır.
 """
 import json
 import logging
+import re
 from datetime import datetime
 
 from proxmoxer import ProxmoxAPI
@@ -850,8 +851,49 @@ class ProxmoxCollector:
                 "host": node,         # VM'in bulunduğu node
                 "detail": None,
             })
-        logger.info("Proxmox islem yapan kullanicilar: %d VM eslendi (%d gorev tarandi)",
-                    len(ops), scanned)
+
+        # --- faz36: /cluster/log'dan config işlemleri ---
+        # Proxmox'ta web arayüzü/API ile yapılan yapılandırma değişiklikleri (RAM,
+        # CPU, ağ, disk ekleme…) çoğu zaman /nodes/{node}/tasks listesine GÖREV
+        # olarak düşmez; yalnız cluster log'a "update VM <id>: …" satırı olarak
+        # yazılır. Bu satırlardan config-aktör çıkarırız (RAM '—' kalmasın).
+        log_scanned = 0
+        try:
+            logs = self.api.cluster.log.get(max=1500) or []
+        except Exception as exc:
+            logger.warning("Cluster log alınamadı (Sys.Audit izni gerekebilir): %s", exc)
+            logs = []
+        # "update VM 109: …", "update CT 110: …" → vmid; node satırda mevcut.
+        log_re = re.compile(r"\bupdate\s+(?:VM|CT)\s+(\d+)\b", re.IGNORECASE)
+        for entry in logs:
+            msg = str(entry.get("msg") or "")
+            m = log_re.search(msg)
+            if not m:
+                continue
+            node = entry.get("node") or ""
+            user = entry.get("user") or ""
+            if not node or not user:
+                continue
+            vmid = m.group(1)
+            log_scanned += 1
+            ops.setdefault(f"{node}/{vmid}", []).append({
+                "ts": entry.get("time") or 0,
+                "op": "update (cluster log)",
+                "category": "config",
+                "direction": None,
+                "actor": user,
+                "actor_ip": None,
+                "actor_agent": None,
+                "host": node,
+                "detail": msg[:200],
+            })
+
+        # Her VM'in işlem listesini en yeni → en eski sırala (task + log birleşik)
+        for lst in ops.values():
+            lst.sort(key=lambda o: o.get("ts") or 0, reverse=True)
+
+        logger.info("Proxmox islem yapan kullanicilar: %d VM eslendi "
+                    "(%d gorev + %d log satiri tarandi)", len(ops), scanned, log_scanned)
         return ops
 
     # ---------- Hafif kullanım senkronizasyonu ----------

@@ -118,36 +118,46 @@ def _match_op(ops, categories, direction=None):
     return None
 
 
-def _record_console_ops(db, platform, vm, ops, ext_id, host_name, cap=20):
+def _record_console_ops(db, platform, vm, ops, ext_id, host_name, window=1800, cap=8):
     """VM konsoluna erişen kullanıcıları bilgi satırı olarak işle.
 
-    Konsol erişimi bir envanter DEĞİŞİMİ değildir; bu yüzden alan diff'inden
-    bağımsız, kendi satırı olarak (change_type='access') yazılır. Aynı erişim her
-    senkronizasyonda yeniden eklenmesin diye OLAY ZAMANINA göre tekilleştirilir:
-    new_value alanına olay zamanı (ISO) konur ve daha önce yazılmışsa atlanır."""
+    Konsol erişimi bir envanter DEĞİŞİMİ değildir; ayrı satır (change_type='access')
+    olarak yazılır. Proxmox'ta her noVNC açılışı/yeniden bağlanışı ayrı bir
+    'vncproxy' görevi ürettiğinden geçmiş bunlarla dolabilir. Bu yüzden aynı
+    kullanıcının erişimleri 'window' saniyelik pencerelere (varsayılan 30 dk)
+    toplanır: kullanıcı başına pencere başına EN FAZLA bir satır. Pencere başlangıcı
+    new_value'ya yazılır → hem deterministik tekilleştirme hem sade görünüm.
+    """
     console = [o for o in ops if o.get("category") == "console" and o.get("actor")]
     if not console:
         return
-    seen = {r.new_value for r in db.query(ChangeHistory.new_value).filter(
-        ChangeHistory.vm_external_id == ext_id,
-        ChangeHistory.category == "console").order_by(
-        ChangeHistory.changed_at.desc()).limit(200)}
+    # Mevcut konsol satırlarının (aktör, pencere-ISO) anahtarları
+    seen = set()
+    for r in db.query(ChangeHistory.actor, ChangeHistory.new_value).filter(
+            ChangeHistory.vm_external_id == ext_id,
+            ChangeHistory.category == "console").order_by(
+            ChangeHistory.changed_at.desc()).limit(500):
+        seen.add((r.actor, r.new_value))
     added = 0
     for o in console:                     # en yeni → en eski
         if added >= cap:
             break
         ts = o.get("ts") or 0
-        try:
-            iso = datetime.utcfromtimestamp(ts).isoformat(timespec="seconds") if ts else ""
-        except Exception:
-            iso = ""
-        if not iso or iso in seen:
+        if not ts:
             continue
-        seen.add(iso)
+        bucket = int(ts) - (int(ts) % window)   # pencere başlangıcı (epoch)
+        try:
+            iso = datetime.utcfromtimestamp(bucket).isoformat(timespec="seconds")
+        except Exception:
+            continue
+        actor = o.get("actor")
+        if (actor, iso) in seen:
+            continue
+        seen.add((actor, iso))
         added += 1
         _record_change(db, "vm", vm.name, platform.id, "access",
                        field="console", old=None, new=iso,
-                       actor=o.get("actor"), category="console",
+                       actor=actor, category="console",
                        op_type=o.get("op"), platform_type=platform.type,
                        cluster=vm.cluster, host=host_name or o.get("host"),
                        vm_external_id=ext_id, actor_ip=o.get("actor_ip"),
@@ -247,6 +257,26 @@ def sync_platform(platform_id: int):
 
         existing_vms = {v.external_id: v for v in
                         db.query(VirtualMachine).filter_by(platform_id=platform.id)}
+
+        # --- faz36: Proxmox node-arası göç tespiti ---
+        # Proxmox'ta external_id = node/vmid olduğundan, bir VM başka node'a göç
+        # edince eski external_id "silindi", yeni external_id "eklendi" görünür.
+        # Aynı vmid'in farklı node'a taşınmasını TEK bir göç olayı olarak tanırız.
+        migrated_pmx = {}   # vmid -> (old_ext, old_node, new_ext, new_node)
+        if ptype == "proxmox":
+            def _vid(ext): return ext.split("/", 1)[1] if "/" in ext else ext
+            def _nod(ext): return ext.split("/", 1)[0] if "/" in ext else ""
+            incoming_exts = {vd["external_id"] for vd in vms_data}
+            existing_by_vid = {}
+            for ext in existing_vms:
+                existing_by_vid.setdefault(_vid(ext), ext)
+            for vd in vms_data:
+                ext = vd["external_id"]
+                old_ext = existing_by_vid.get(_vid(ext))
+                if old_ext and old_ext != ext and old_ext not in incoming_exts:
+                    migrated_pmx[_vid(ext)] = (old_ext, _nod(old_ext), ext, _nod(ext))
+        migrated_old_exts = {m[0] for m in migrated_pmx.values()}
+
         seen_vms = set()
         for vd in vms_data:
             seen_vms.add(vd["external_id"])
@@ -263,11 +293,24 @@ def sync_platform(platform_id: int):
                                     host_id=host_obj.id if host_obj else None,
                                     environment=platform.environment, **vd)
                 db.add(vm)
-                op = _match_op(ops, ["lifecycle"])   # create/clone/restore/register
-                _record_change(db, "vm", vd["name"], platform.id, "created",
-                               category="lifecycle", platform_type=ptype,
-                               cluster=vd.get("cluster"), host=host_name,
-                               vm_external_id=ext_id, **_meta(op))
+                mig = migrated_pmx.get(ext_id.split("/", 1)[1]) \
+                    if (ptype == "proxmox" and "/" in ext_id) else None
+                if mig and mig[2] == ext_id:
+                    # Bu "yeni" kayıt aslında bir göçün hedef tarafı (node değişti).
+                    old_ext, old_node, _new_ext, new_node = mig
+                    # qmigrate görevi KAYNAK node'un ext'inde kayıtlıdır.
+                    op = _match_op(vm_ops.get(old_ext) or [], ["migrate"])
+                    _record_change(db, "vm", vd["name"], platform.id, "migrated",
+                                   "host", old_node, new_node, category="migrate",
+                                   platform_type=ptype, cluster=vd.get("cluster"),
+                                   host=f"{old_node} → {new_node}",
+                                   vm_external_id=ext_id, **_meta(op))
+                else:
+                    op = _match_op(ops, ["lifecycle"])   # create/clone/restore/register
+                    _record_change(db, "vm", vd["name"], platform.id, "created",
+                                   category="lifecycle", platform_type=ptype,
+                                   cluster=vd.get("cluster"), host=host_name,
+                                   vm_external_id=ext_id, **_meta(op))
             else:
                 # Bu turda VM detay sorgusu tümden başarısızsa, enrich'e bağlı
                 # alanları eskiye sabitle (jenerik/boş değerlerle ezilmesin).
@@ -326,6 +369,9 @@ def sync_platform(platform_id: int):
             _record_console_ops(db, platform, vm, ops, ext_id, host_name)
         for ext_id, vm in existing_vms.items():
             if ext_id not in seen_vms:
+                if ext_id in migrated_old_exts:
+                    db.delete(vm)   # göçün kaynak tarafı; "Göç" satırı zaten yazıldı
+                    continue
                 op = _match_op(vm_ops.get(ext_id) or [], ["lifecycle"])
                 _record_change(db, "vm", vm.name, platform.id, "deleted",
                                category="lifecycle", platform_type=ptype,
