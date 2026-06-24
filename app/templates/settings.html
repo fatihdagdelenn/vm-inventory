@@ -57,6 +57,14 @@
           <input id="syncUsage" type="number" min="1" max="1440" class="form-control" style="max-width:160px">
           <div class="form-text">Anlık CPU/RAM/disk kullanımı (hafif). Önerilen: 3.</div>
         </div>
+        <hr>
+        <div class="form-check form-switch mb-3">
+          <input class="form-check-input" type="checkbox" id="trackConsole">
+          <label class="form-check-label" for="trackConsole">Konsol erişimlerini geçmişe kaydet</label>
+          <div class="form-text">Açıksa, VM konsoluna (noVNC/SPICE) erişen kullanıcılar
+          Değişiklik Geçmişi'ne "Erişim" satırı olarak yazılır (30 dk pencereyle toplanır).
+          Kapalıyken konsol satırı üretilmez. Varsayılan: kapalı.</div>
+        </div>
         <button class="btn btn-primary" id="syncSaveBtn" onclick="Settings.saveSync()">
           <i class="bi bi-check-lg"></i> Kaydet</button>
         <span id="syncSaveMsg" class="ms-2 small"></span>

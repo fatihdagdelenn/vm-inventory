@@ -890,8 +890,24 @@ class ProxmoxCollector:
                            "'—' kalir.")
         # "update VM 109: …", "update CT 110: …" → vmid; node satırda mevcut.
         log_re = re.compile(r"\bupdate\s+(?:VM|CT)\s+(\d+)\b", re.IGNORECASE)
+        # Cluster log'daki görev satırlarındaki UPID'den göç işlemleri (qmigrate):
+        # UPID:node:pid:pstart:start:type:id:user:  → görev penceresinden düşmüş
+        # ya da user'ı boş gelmiş göçler için bağımsız/geniş kaynak.
+        upid_re = re.compile(
+            r"UPID:([^:\s]+):[^:]+:[^:]+:[^:]+:(qmigrate|vzmigrate):(\d+):([^:\s]+):")
         for entry in logs:
             msg = str(entry.get("msg") or "")
+            mu = upid_re.search(msg)
+            if mu:
+                m_node, m_type, m_vmid, m_user = mu.groups()
+                if m_node and m_vmid and m_user:
+                    log_scanned += 1
+                    ops.setdefault(f"{m_node}/{m_vmid}", []).append({
+                        "ts": entry.get("time") or 0,
+                        "op": m_type, "category": "migrate", "direction": "migrate",
+                        "actor": m_user, "actor_ip": None, "actor_agent": None,
+                        "host": m_node, "detail": None,
+                    })
             m = log_re.search(msg)
             if not m:
                 continue

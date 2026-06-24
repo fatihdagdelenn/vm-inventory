@@ -117,11 +117,14 @@ const Settings = {
     try { d = await App.api('/api/admin/sync-settings'); } catch (e) { return; }
     document.getElementById('syncFull').value = d.sync_interval_minutes;
     document.getElementById('syncUsage').value = d.usage_sync_interval_minutes;
+    const tc = document.getElementById('trackConsole');
+    if (tc) tc.checked = !!d.track_console_access;
   },
 
   async saveSync() {
     const full = parseInt(document.getElementById('syncFull').value, 10);
     const usage = parseInt(document.getElementById('syncUsage').value, 10);
+    const console_ = !!(document.getElementById('trackConsole') || {}).checked;
     const msg = document.getElementById('syncSaveMsg');
     const okRange = n => Number.isInteger(n) && n >= 1 && n <= 1440;
     if (!okRange(full) || !okRange(usage)) {
@@ -131,7 +134,8 @@ const Settings = {
     }
     try {
       await App.api('/api/admin/sync-settings', {method: 'PUT',
-        body: {sync_interval_minutes: full, usage_sync_interval_minutes: usage}});
+        body: {sync_interval_minutes: full, usage_sync_interval_minutes: usage,
+               track_console_access: console_}});
       msg.className = 'ms-2 small text-success';
       msg.textContent = '✓ Kaydedildi — yeniden başlatmadan geçerli';
     } catch (e) {

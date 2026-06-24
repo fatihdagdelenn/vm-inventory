@@ -118,6 +118,24 @@ def _match_op(ops, categories, direction=None):
     return None
 
 
+def _find_migrate_op(vm_ops, vid):
+    """Proxmox göç işlemini vmid'e göre TÜM op listelerinde ara (node bağımsız).
+
+    qmigrate görevi KAYNAK node'un ext'inde (node/vmid) kayıtlıdır; bazı durumlarda
+    node-anahtarı tam tutmayabilir. Bu yüzden '/{vid}' ile biten tüm anahtarlardaki
+    migrate işlemlerini tarayıp en yenisini döneriz (aktör daha güvenilir bulunur)."""
+    best = None
+    suffix = "/" + str(vid)
+    for ext, ops in vm_ops.items():
+        if not ext.endswith(suffix):
+            continue
+        for op in ops:
+            if op.get("category") == "migrate" and op.get("actor"):
+                if best is None or (op.get("ts") or 0) > (best.get("ts") or 0):
+                    best = op
+    return best
+
+
 def _record_console_ops(db, platform, vm, ops, ext_id, host_name, window=1800, cap=8):
     """VM konsoluna erişen kullanıcıları bilgi satırı olarak işle.
 
@@ -248,6 +266,8 @@ def sync_platform(platform_id: int):
         # Göç tespiti için host id → ad eşlemesi (flush sonrası id'ler hazır).
         host_name_by_id = {h.id: h.name for h in host_by_name.values() if h.id}
         ptype = platform.type
+        from ..core.app_settings import get_bool_setting
+        track_console = get_bool_setting(db, "track_console_access", False)
 
         def _meta(op):
             """Eşleşen işlemden aktör/IP/op meta sözlüğü (None-güvenli)."""
@@ -298,8 +318,10 @@ def sync_platform(platform_id: int):
                 if mig and mig[2] == ext_id:
                     # Bu "yeni" kayıt aslında bir göçün hedef tarafı (node değişti).
                     old_ext, old_node, _new_ext, new_node = mig
-                    # qmigrate görevi KAYNAK node'un ext'inde kayıtlıdır.
-                    op = _match_op(vm_ops.get(old_ext) or [], ["migrate"])
+                    # qmigrate görevini vmid'e göre tüm op listelerinde ara
+                    # (kaynak/hedef node anahtarından bağımsız → aktör boş kalmasın).
+                    op = _find_migrate_op(vm_ops, ext_id.split("/", 1)[1]) \
+                        or _match_op(vm_ops.get(old_ext) or [], ["migrate"])
                     _record_change(db, "vm", vd["name"], platform.id, "migrated",
                                    "host", old_node, new_node, category="migrate",
                                    platform_type=ptype, cluster=vd.get("cluster"),
@@ -365,8 +387,9 @@ def sync_platform(platform_id: int):
                 for k, v in vd.items():
                     setattr(vm, k, v)
                 vm.host_id = host_obj.id if host_obj else None
-            # Konsol erişimleri (state değişimi değil; ayrı bilgi satırları, tekilleştirilir)
-            _record_console_ops(db, platform, vm, ops, ext_id, host_name)
+            # Konsol erişimleri: yalnız ayar açıksa (varsayılan kapalı; gürültülü).
+            if track_console:
+                _record_console_ops(db, platform, vm, ops, ext_id, host_name)
         for ext_id, vm in existing_vms.items():
             if ext_id not in seen_vms:
                 if ext_id in migrated_old_exts:

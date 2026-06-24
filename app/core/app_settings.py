@@ -16,6 +16,13 @@ def get_int_setting(db, key: str, default: int) -> int:
     return default
 
 
+def get_bool_setting(db, key: str, default: bool) -> bool:
+    row = db.query(AppSetting).filter_by(key=key).first()
+    if row and row.value not in (None, ""):
+        return str(row.value).strip().lower() in ("1", "true", "yes", "on", "evet")
+    return default
+
+
 def set_setting(db, key: str, value) -> None:
     row = db.query(AppSetting).filter_by(key=key).first()
     if row:

@@ -128,13 +128,14 @@ def change_history(entity: str = "", q: str = "", category: str = "",
 def get_sync_settings(db: Session = Depends(get_db),
                       user: User = Depends(require_role("admin"))):
     from ..config import get_settings
-    from ..core.app_settings import get_int_setting
+    from ..core.app_settings import get_int_setting, get_bool_setting
     env = get_settings()
     return {
         "sync_interval_minutes": get_int_setting(
             db, "sync_interval_minutes", env.sync_interval_minutes),
         "usage_sync_interval_minutes": get_int_setting(
             db, "usage_sync_interval_minutes", env.usage_sync_interval_minutes),
+        "track_console_access": get_bool_setting(db, "track_console_access", False),
         "defaults": {"sync": env.sync_interval_minutes,
                      "usage": env.usage_sync_interval_minutes},
     }
@@ -157,8 +158,10 @@ def update_sync_settings(request: Request, payload: dict = Body(...),
           f"{get_int_setting(db, 'usage_sync_interval_minutes', 0)} dk"
     set_setting(db, "sync_interval_minutes", full)
     set_setting(db, "usage_sync_interval_minutes", usage)
+    console = bool(payload.get("track_console_access"))
+    set_setting(db, "track_console_access", "1" if console else "0")
     log_audit(db, user, "update", target="sync-settings",
-              old=old, new=f"{full}/{usage} dk", request=request)
+              old=old, new=f"{full}/{usage} dk, konsol={console}", request=request)
     db.commit()
     try:
         from ..core.scheduler import reschedule_sync
@@ -166,4 +169,5 @@ def update_sync_settings(request: Request, payload: dict = Body(...),
     except Exception:
         pass   # ayar kaydedildi; yeniden zamanlama olmazsa sonraki açılışta geçerli olur
     return {"ok": True, "sync_interval_minutes": full,
-            "usage_sync_interval_minutes": usage}
+            "usage_sync_interval_minutes": usage,
+            "track_console_access": console}
