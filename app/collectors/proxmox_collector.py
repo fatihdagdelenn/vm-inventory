@@ -752,30 +752,51 @@ class ProxmoxCollector:
     def collect_recent_actors(self) -> dict:
         """Son görevlerden 'VM'i kim değiştirdi' eşlemesi: node/vmid → kullanıcı.
 
-        Proxmox /cluster/tasks görev kaydını okur (qmcreate, qmconfig, qmdestroy…).
-        Görevler en yeniden eskiye gelir; her VM için ilk (en yeni) ilgili görevin
-        kullanıcısı alınır. Değişiklik Geçmişi'nde "kim yaptı" için kullanılır.
+        Proxmox /cluster/tasks görev kaydını okur. Üst-seviye user/id/type/node
+        alanları bazı sürümlerde boş gelebildiğinden, asıl bilgi UPID dizgesinden
+        ayrıştırılır: UPID:node:pid:pstart:starttime:type:id:user:
+        Önce yapılandırma işlemleri (qmconfig/create/destroy…) eşlenir; böylece
+        bir RAM değişimi, sonradan gelen bir 'start' görevine değil doğru
+        kullanıcıya atfedilir. Boş kalanlar güç işlemleriyle doldurulur.
         """
         actors = {}
         try:
-            tasks = self.api.cluster.tasks.get(limit=500)
+            tasks = self.api.cluster.tasks.get(limit=1000)
         except Exception as exc:
-            logger.warning("Görev kaydı alınamadı: %s", exc)
+            logger.warning("Görev kaydı alınamadı (Sys.Audit izni gerekebilir): %s", exc)
             return actors
-        relevant = {"qmcreate", "qmconfig", "qmstart", "qmstop", "qmshutdown",
-                    "qmreset", "qmdestroy", "qmrollback", "qmmigrate", "qmclone",
-                    "vzcreate", "vzconfig", "vzdestroy", "vzstart", "vzstop"}
-        for t in tasks:
-            ttype = t.get("type", "")
-            vmid = str(t.get("id", "") or "")
-            node = t.get("node", "")
-            user = t.get("user", "")
-            if not (user and vmid and node) or ttype not in relevant:
-                continue
-            # id "100" gibi olmalı; bazı görevlerde "100:..." olabilir → ilk parça
-            vmid = vmid.split(":")[0]
-            key = f"{node}/{vmid}"
-            actors.setdefault(key, user)   # en yeni görev önce → ilk gören kalır
+
+        # İşlem yapılandırması (öncelikli) ve güç işlemleri (ikincil)
+        cfg = {"qmcreate", "qmconfig", "qmdestroy", "qmrollback", "qmclone",
+               "qmmigrate", "qmresize", "qmrestore", "qmsnapshot", "qmdelsnapshot",
+               "vzcreate", "vzconfig", "vzdestroy", "vzrollback", "vzclone",
+               "vzmigrate", "vzrestore", "vzsnapshot", "vzdelsnapshot", "pctconfig"}
+        power = {"qmstart", "qmstop", "qmshutdown", "qmreset", "qmreboot", "qmsuspend",
+                 "qmresume", "vzstart", "vzstop", "vzshutdown", "vzreboot"}
+
+        def parse(t):
+            node = t.get("node") or ""
+            ttype = t.get("type") or ""
+            vmid = str(t.get("id") or "")
+            user = t.get("user") or ""
+            upid = t.get("upid") or ""
+            if upid and not (node and ttype and vmid and user):
+                p = upid.split(":")               # UPID:node:pid:pstart:start:type:id:user:
+                if len(p) >= 8:
+                    node = node or p[1]
+                    ttype = ttype or p[5]
+                    vmid = vmid or p[6]
+                    user = user or p[7]
+            return node, ttype, vmid.split(":")[0], user
+
+        for tier in (cfg, power):                 # önce config, sonra güç
+            for t in tasks:                       # liste en yeniden eskiye
+                node, ttype, vmid, user = parse(t)
+                if not (node and vmid and user) or ttype not in tier:
+                    continue
+                actors.setdefault(f"{node}/{vmid}", user)
+        logger.info("İşlem yapan kullanıcılar: %d VM eşlendi (%d görev tarandı)",
+                    len(actors), len(tasks))
         return actors
 
     # ---------- Hafif kullanım senkronizasyonu ----------

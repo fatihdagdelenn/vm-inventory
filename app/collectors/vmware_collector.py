@@ -504,8 +504,58 @@ class VMwareCollector:
         return []
 
     def collect_recent_actors(self) -> dict:
-        # vCenter olay (eventManager) korelasyonu ileride eklenebilir; şimdilik boş.
-        return {}
+        """vCenter olay yöneticisinden 'VM'i kim değiştirdi' eşlemesi: moId → kullanıcı.
+
+        Yapılandırma/oluşturma olayları (VmReconfiguredEvent, VmCreatedEvent…) güç
+        olaylarına (PoweredOn/Off) göre önceliklidir; böylece bir RAM değişimi,
+        sonradan gelen bir 'açıldı' olayına değil doğru kullanıcıya atfedilir.
+        Hata olursa boş döner (senkronizasyonu bozmaz).
+        """
+        from datetime import datetime, timedelta, timezone
+        cfg_types = {"VmReconfiguredEvent", "VmCreatedEvent", "VmBeingDeployedEvent",
+                     "VmDeployedEvent", "VmClonedEvent", "VmRegisteredEvent",
+                     "VmRemovedEvent", "VmRenamedEvent", "VmMigratedEvent",
+                     "VmRelocatedEvent", "VmResourcePoolMovedEvent"}
+        power_types = {"VmPoweredOnEvent", "VmPoweredOffEvent", "VmSuspendedEvent",
+                       "DrsVmPoweredOnEvent", "VmResettingEvent", "VmGuestRebootEvent",
+                       "VmGuestShutdownEvent"}
+        actors = {}
+        try:
+            em = self.si.content.eventManager
+            spec = vim.event.EventFilterSpec()
+            spec.time = vim.event.EventFilterSpec.ByTime()
+            spec.time.beginTime = datetime.now(timezone.utc) - timedelta(days=3)
+            spec.eventTypeId = list(cfg_types | power_types)
+            events = em.QueryEvents(spec) or []
+        except Exception as exc:
+            logger.warning("vCenter olayları alınamadı: %s", exc)
+            return actors
+
+        def moid(e):
+            vmarg = getattr(e, "vm", None)
+            ref = getattr(vmarg, "vm", None) if vmarg else None
+            return getattr(ref, "_moId", None) if ref else None
+
+        def etype(e):
+            return type(e).__name__.split(".")[-1]
+
+        try:    # en yeni olay önce
+            events = sorted(events, key=lambda e: getattr(e, "createdTime", None)
+                            or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+        except Exception:
+            pass
+
+        for want_cfg in (True, False):       # önce yapılandırma, sonra güç
+            for e in events:
+                mo, user = moid(e), getattr(e, "userName", "") or ""
+                if not mo or not user:
+                    continue
+                if (etype(e) in cfg_types) != want_cfg:
+                    continue
+                actors.setdefault(mo, user)
+        logger.info("vCenter işlem yapan kullanıcılar: %d VM eşlendi (%d olay)",
+                    len(actors), len(events))
+        return actors
 
     # ---------- Hafif kullanım senkronizasyonu ----------
     def collect_usage(self) -> dict:
