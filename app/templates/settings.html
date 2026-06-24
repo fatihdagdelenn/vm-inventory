@@ -64,6 +64,9 @@
           <div class="form-text">Açıksa, VM konsoluna (noVNC/SPICE) erişen kullanıcılar
           Değişiklik Geçmişi'ne "Erişim" satırı olarak yazılır (30 dk pencereyle toplanır).
           Kapalıyken konsol satırı üretilmez. Varsayılan: kapalı.</div>
+          <button class="btn btn-sm btn-outline-danger mt-2" id="clearConsoleBtn" onclick="Settings.clearConsole()">
+            <i class="bi bi-trash"></i> Mevcut konsol geçmişini temizle</button>
+          <span id="clearConsoleMsg" class="ms-2 small"></span>
         </div>
         <button class="btn btn-primary" id="syncSaveBtn" onclick="Settings.saveSync()">
           <i class="bi bi-check-lg"></i> Kaydet</button>

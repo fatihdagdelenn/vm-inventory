@@ -171,3 +171,16 @@ def update_sync_settings(request: Request, payload: dict = Body(...),
     return {"ok": True, "sync_interval_minutes": full,
             "usage_sync_interval_minutes": usage,
             "track_console_access": console}
+
+
+@router.post("/changes/clear-console")
+def clear_console_history(request: Request, payload: dict = Body(default={}),
+                          db: Session = Depends(get_db),
+                          user: User = Depends(require_role("admin"))):
+    """Konsol erişimi (category='console') geçmiş satırlarını topluca siler."""
+    validate_csrf(request, (payload or {}).pop("csrf_token", None))
+    n = db.query(ChangeHistory).filter(ChangeHistory.category == "console").delete()
+    log_audit(db, user, "delete", target="change-history",
+              detail=f"{n} konsol erisim satiri silindi", request=request)
+    db.commit()
+    return {"ok": True, "deleted": n}

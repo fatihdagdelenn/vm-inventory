@@ -790,6 +790,24 @@ class ProxmoxCollector:
         "spiceproxy": ("console", "open"), "spiceshell": ("console", "open"),
     }
 
+    def _clone_newid_from_log(self, node, upid):
+        """Klon görevinin log'undan YENİ vmid'i çıkar.
+
+        qmclone/vzclone görev log'u "… to vm-<NNN>-disk-X" (ya da subvol-<NNN>-…)
+        satırları içerir; buradan klonun oluşturduğu yeni vmid okunur. Bulunamazsa
+        None döner. (Görev log'u Sys.Audit ile okunabilir.)"""
+        try:
+            lines = self.api.nodes(node).tasks(upid).log.get(limit=400) or []
+        except Exception:
+            return None
+        pat = re.compile(r"\bto (?:vm|subvol|base)-(\d+)-disk")
+        for ln in lines:
+            txt = ln.get("t") if isinstance(ln, dict) else None
+            m = pat.search(txt or "")
+            if m:
+                return m.group(1)
+        return None
+
     def collect_recent_actors(self) -> dict:
         """'VM'i kim, neyi, ne zaman değiştirdi' — VM başına işlem listesi.
 
@@ -845,6 +863,7 @@ class ProxmoxCollector:
             return node, ttype, vmid.split(":")[0], user
 
         scanned = 0
+        clone_tasks = []   # (node, upid, ttype, src_vmid, user, ts) — yeni vmid log'dan
         for t in tasks:                           # en yeniden eskiye
             node, ttype, vmid, user = parse(t)
             if not (node and vmid):
@@ -855,8 +874,9 @@ class ProxmoxCollector:
             category, direction = cat
             scanned += 1
             ext = f"{node}/{vmid}"
+            ts = t.get("starttime") or 0
             ops.setdefault(ext, []).append({
-                "ts": t.get("starttime") or 0,
+                "ts": ts,
                 "op": ttype,
                 "category": category,
                 "direction": direction,
@@ -865,6 +885,24 @@ class ProxmoxCollector:
                 "actor_agent": None,
                 "host": node,         # VM'in bulunduğu node
                 "detail": None,
+            })
+            # Klon görevinin UPID'i KAYNAK vmid'i taşır, yeni vmid'i DEĞİL.
+            # Yeni vmid yalnız görev LOG'unda ("... to vm-<NNN>-disk") geçer.
+            if direction == "clone" and user and t.get("upid"):
+                clone_tasks.append((node, t["upid"], ttype, vmid, user, ts))
+
+        # Klonlar için yeni vmid'i görev log'undan çöz → klon op'unu YENİ vm'e
+        # (node/newid) iliştir; böylece yeni VM kendi klon kaydını/cloner'ını bulur.
+        clone_resolved = 0
+        for node, upid, ttype, src, user, ts in clone_tasks[:40]:   # son 40 klonla sınırla
+            newid = self._clone_newid_from_log(node, upid)
+            if not newid or newid == src:
+                continue
+            clone_resolved += 1
+            ops.setdefault(f"{node}/{newid}", []).append({
+                "ts": ts, "op": ttype, "category": "lifecycle", "direction": "clone",
+                "actor": user, "actor_ip": None, "actor_agent": None,
+                "host": node, "detail": f"kaynak vmid {src}",
             })
 
         # --- faz36: /cluster/log'dan config işlemleri ---
@@ -934,7 +972,8 @@ class ProxmoxCollector:
             lst.sort(key=lambda o: o.get("ts") or 0, reverse=True)
 
         logger.info("Proxmox islem yapan kullanicilar: %d VM eslendi "
-                    "(%d gorev + %d log satiri tarandi)", len(ops), scanned, log_scanned)
+                    "(%d gorev + %d log satiri + %d klon cozuldu)",
+                    len(ops), scanned, log_scanned, clone_resolved)
         return ops
 
     # ---------- Hafif kullanım senkronizasyonu ----------

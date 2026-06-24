@@ -121,6 +121,19 @@ const Settings = {
     if (tc) tc.checked = !!d.track_console_access;
   },
 
+  async clearConsole() {
+    const msg = document.getElementById('clearConsoleMsg');
+    if (!confirm('Tüm konsol erişimi geçmiş satırları silinecek. Emin misiniz?')) return;
+    try {
+      const r = await App.api('/api/admin/changes/clear-console', {method: 'POST', body: {}});
+      msg.className = 'ms-2 small text-success';
+      msg.textContent = '✓ ' + (r.deleted || 0) + ' satır silindi';
+    } catch (e) {
+      msg.className = 'ms-2 small text-danger';
+      msg.textContent = 'Silinemedi';
+    }
+  },
+
   async saveSync() {
     const full = parseInt(document.getElementById('syncFull').value, 10);
     const usage = parseInt(document.getElementById('syncUsage').value, 10);

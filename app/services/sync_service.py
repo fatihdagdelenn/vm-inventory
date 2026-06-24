@@ -118,22 +118,48 @@ def _match_op(ops, categories, direction=None):
     return None
 
 
-def _find_migrate_op(vm_ops, vid):
-    """Proxmox göç işlemini vmid'e göre TÜM op listelerinde ara (node bağımsız).
+def _epoch(dt):
+    """Naive-UTC datetime (collector utcfromtimestamp ile üretir) → epoch saniye."""
+    if not dt:
+        return 0
+    try:
+        from datetime import timezone
+        return int(dt.replace(tzinfo=timezone.utc).timestamp())
+    except Exception:
+        return 0
 
-    qmigrate görevi KAYNAK node'un ext'inde (node/vmid) kayıtlıdır; bazı durumlarda
-    node-anahtarı tam tutmayabilir. Bu yüzden '/{vid}' ile biten tüm anahtarlardaki
-    migrate işlemlerini tarayıp en yenisini döneriz (aktör daha güvenilir bulunur)."""
+
+def _find_op_by_vid(vm_ops, vid, categories, directions=None, min_ts=0):
+    """vmid'e göre TÜM op listelerinde (node bağımsız) en yeni uygun işlemi bul.
+
+    Proxmox'ta bazı görevler beklenmedik node/anahtarda olabilir (ör. klon işlemi
+    kaynak node'a yazılır, qmigrate kaynak node'da kayıtlıdır). '/{vid}' ile biten
+    tüm anahtarları tarar; kategori (+ varsa yön) eşleşen, aktörü dolu ve min_ts'ten
+    yeni işlemlerden en yenisini döner. min_ts genelde VM'in oluşturulma zamanıdır
+    (vmid yeniden kullanıldığında eski VM'in işlemleri elensin diye)."""
     best = None
     suffix = "/" + str(vid)
     for ext, ops in vm_ops.items():
         if not ext.endswith(suffix):
             continue
         for op in ops:
-            if op.get("category") == "migrate" and op.get("actor"):
-                if best is None or (op.get("ts") or 0) > (best.get("ts") or 0):
-                    best = op
+            if op.get("category") not in categories:
+                continue
+            if directions and op.get("direction") not in directions:
+                continue
+            if (op.get("ts") or 0) < min_ts:
+                continue
+            if not op.get("actor"):
+                continue
+            if best is None or (op.get("ts") or 0) > (best.get("ts") or 0):
+                best = op
     return best
+
+
+# Yaşam döngüsü yönleri: "Eklendi" yalnız oluşturma-yönlü işlemlerle eşleşmeli,
+# ASLA "destroy" ile (vmid yeniden kullanımında eski VM'in silme görevine bulaşmasın).
+_CREATE_DIRECTIONS = {"create", "clone", "restore", "register"}
+_DESTROY_DIRECTIONS = {"destroy"}
 
 
 def _record_console_ops(db, platform, vm, ops, ext_id, host_name, window=1800, cap=8):
@@ -307,28 +333,49 @@ def sync_platform(platform_id: int):
             ip_from_agent = vd.pop("ip_from_agent", True)
             vm = existing_vms.get(vd["external_id"])
             ext_id = vd["external_id"]
-            ops = vm_ops.get(ext_id) or []
+            vid = ext_id.split("/", 1)[1] if "/" in ext_id else ext_id
+            # ctime filtresi: VM'in oluşturulma zamanından ÖNCEKİ işlemleri ele.
+            # vmid yeniden kullanıldığında (eski VM silinip aynı id ile yeni VM)
+            # eski VM'in görevleri (destroy/konsol/config) yeni VM'e bulaşmasın.
+            ctime = _epoch(vd.get("created_date"))
+            min_ts = (ctime - 300) if ctime else 0      # 5 dk pay
+            ops = [o for o in (vm_ops.get(ext_id) or [])
+                   if (o.get("ts") or 0) >= min_ts]
             if vm is None:
                 vm = VirtualMachine(platform_id=platform.id,
                                     host_id=host_obj.id if host_obj else None,
                                     environment=platform.environment, **vd)
                 db.add(vm)
-                mig = migrated_pmx.get(ext_id.split("/", 1)[1]) \
+                mig = migrated_pmx.get(vid) \
                     if (ptype == "proxmox" and "/" in ext_id) else None
                 if mig and mig[2] == ext_id:
                     # Bu "yeni" kayıt aslında bir göçün hedef tarafı (node değişti).
                     old_ext, old_node, _new_ext, new_node = mig
                     # qmigrate görevini vmid'e göre tüm op listelerinde ara
                     # (kaynak/hedef node anahtarından bağımsız → aktör boş kalmasın).
-                    op = _find_migrate_op(vm_ops, ext_id.split("/", 1)[1]) \
+                    op = _find_op_by_vid(vm_ops, vid, ["migrate"]) \
                         or _match_op(vm_ops.get(old_ext) or [], ["migrate"])
+                    if not (op and op.get("actor")):
+                        logger.info("Goc aktoru bulunamadi vmid=%s; ops=%s", vid,
+                                    [(o.get("op"), o.get("actor")) for o in
+                                     (vm_ops.get(old_ext) or []) + (vm_ops.get(ext_id) or [])])
                     _record_change(db, "vm", vd["name"], platform.id, "migrated",
                                    "host", old_node, new_node, category="migrate",
                                    platform_type=ptype, cluster=vd.get("cluster"),
                                    host=f"{old_node} → {new_node}",
                                    vm_external_id=ext_id, **_meta(op))
                 else:
-                    op = _match_op(ops, ["lifecycle"])   # create/clone/restore/register
+                    # "Eklendi" yalnız oluşturma-yönlü işlemle (create/clone/restore);
+                    # klon işlemi farklı node/anahtarda olabileceğinden vmid bazlı ara.
+                    op = _find_op_by_vid(vm_ops, vid, ["lifecycle"],
+                                         _CREATE_DIRECTIONS, min_ts) \
+                        or _match_op(ops, ["lifecycle"], None)
+                    if op and op.get("direction") == "destroy":
+                        op = None      # güvenlik: created'a destroy eşleşmesin
+                    if not (op and op.get("actor")):
+                        logger.info("Olusturma aktoru bulunamadi vmid=%s; ops=%s", vid,
+                                    [(o.get("op"), o.get("actor"), o.get("direction"))
+                                     for o in ops])
                     _record_change(db, "vm", vd["name"], platform.id, "created",
                                    category="lifecycle", platform_type=ptype,
                                    cluster=vd.get("cluster"), host=host_name,
@@ -395,7 +442,10 @@ def sync_platform(platform_id: int):
                 if ext_id in migrated_old_exts:
                     db.delete(vm)   # göçün kaynak tarafı; "Göç" satırı zaten yazıldı
                     continue
-                op = _match_op(vm_ops.get(ext_id) or [], ["lifecycle"])
+                vid = ext_id.split("/", 1)[1] if "/" in ext_id else ext_id
+                op = _find_op_by_vid(vm_ops, vid, ["lifecycle"], _DESTROY_DIRECTIONS) \
+                    or _match_op([o for o in (vm_ops.get(ext_id) or [])
+                                  if o.get("direction") == "destroy"], ["lifecycle"])
                 _record_change(db, "vm", vm.name, platform.id, "deleted",
                                category="lifecycle", platform_type=ptype,
                                cluster=vm.cluster,
