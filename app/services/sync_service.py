@@ -33,7 +33,7 @@ TRACKED_HOST_FIELDS = ["name", "mgmt_ip", "cpu_cores", "ram_total_mb", "cluster"
 # jenerik/boş değere düşebilir. Geçmiş'i (ChangeHistory) gürültüden korumak için
 # bu düşüşlerde eski (iyi) değeri koruruz.
 _ENRICH_FIELDS = ("guest_os", "ip_addresses", "datastore", "vlans", "networks",
-                  "mac_addresses", "kernel", "arch", "disk_total_gb",
+                  "mac_addresses", "kernel", "arch", "disk_total_gb", "ram_mb",
                   "guest_notes", "platform_tags")
 # Jenerik / belirsiz OS adları (agent yokken ostype/guestFullName'den gelir)
 _GENERIC_OS_RE = re.compile(

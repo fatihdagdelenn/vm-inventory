@@ -302,6 +302,15 @@ class ProxmoxCollector:
                 cfg = self.api.nodes(node).qemu(vmid).config.get()
                 ostype = cfg.get("ostype", "")
                 entry["guest_os"] = OSTYPE_MAP.get(ostype, ostype)
+                # Yapılandırılmış RAM: config 'memory' (MB) STABİL kaynaktır.
+                # cluster/resources.maxmem, ballooning açık çalışan VM'lerde host
+                # baskısına göre YÜZER (ör. 12188↔10035) → her senkronda sahte
+                # "RAM değişti" kaydı üretir. Onun yerine config 'memory' kullan.
+                if cfg.get("memory") not in (None, ""):
+                    try:
+                        entry["ram_mb"] = int(cfg["memory"])
+                    except (TypeError, ValueError):
+                        pass
                 # Proxmox "Notlar" alanı (Notes); URL-encode'lu gelebilir
                 desc = cfg.get("description", "") or ""
                 if desc:
@@ -439,6 +448,12 @@ class ProxmoxCollector:
         cfg = self.api.nodes(node).lxc(vmid).config.get()
         ostype = cfg.get("ostype", "") or ""
         entry["guest_os"] = OSTYPE_MAP.get(ostype, ostype.capitalize()) or "Linux"
+        # Yapılandırılmış RAM: LXC config 'memory' (MB) — stabil kaynak.
+        if cfg.get("memory") not in (None, ""):
+            try:
+                entry["ram_mb"] = int(cfg["memory"])
+            except (TypeError, ValueError):
+                pass
         desc = cfg.get("description", "") or ""
         if desc:
             try:
@@ -858,11 +873,21 @@ class ProxmoxCollector:
         # olarak düşmez; yalnız cluster log'a "update VM <id>: …" satırı olarak
         # yazılır. Bu satırlardan config-aktör çıkarırız (RAM '—' kalmasın).
         log_scanned = 0
+        log_err = False
         try:
             logs = self.api.cluster.log.get(max=1500) or []
         except Exception as exc:
-            logger.warning("Cluster log alınamadı (Sys.Audit izni gerekebilir): %s", exc)
+            log_err = True
+            logger.warning("Cluster log alınamadı: %s", exc)
             logs = []
+        if not logs and not log_err:
+            # Boş dizi (hata değil) → token rolünde Sys.Syslog yok demektir.
+            # /cluster/log, PVEAuditor/Sys.Audit ile BOŞ döner; Sys.Syslog ('/')
+            # gerekir. Config (RAM/CPU/ağ) değişiklikleri GÖREV üretmediğinden
+            # bunların kullanıcısı YALNIZCA bu kaynaktan okunabilir.
+            logger.warning("Cluster log BOS dondu — token rolune 'Sys.Syslog' (/) "
+                           "ekleyin; aksi halde config degisikliklerinin kullanicisi "
+                           "'—' kalir.")
         # "update VM 109: …", "update CT 110: …" → vmid; node satırda mevcut.
         log_re = re.compile(r"\bupdate\s+(?:VM|CT)\s+(\d+)\b", re.IGNORECASE)
         for entry in logs:
