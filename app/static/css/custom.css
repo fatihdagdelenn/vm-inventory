@@ -394,3 +394,26 @@ th.sorted-desc::after { content: " ▼"; color: var(--accent); font-size: .65rem
 .res-top { font-size: .88rem; white-space: nowrap; }
 .res-pct { color: var(--text-muted); font-weight: 600; font-size: .78rem; margin-left: .15rem; }
 .res-cell .usage-mini { width: 100%; max-width: 170px; height: 6px; margin-top: 5px; }
+
+/* Host tablosu: VM sayısı tıklanabilir bağlantısı (modal açar) */
+.vm-count-link {
+  border: 1px solid var(--border, #d7d7e0);
+  background: var(--surface-2, #f4f4fb);
+  color: var(--accent, #4c44c6);
+  border-radius: 999px;
+  padding: 1px 10px;
+  font-size: .82rem;
+  font-weight: 700;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.vm-count-link:hover { background: var(--accent, #4c44c6); color: #fff; border-color: var(--accent, #4c44c6); }
+.vm-count-link i { font-size: .72rem; }
+
+/* Deep-link ile gelinen VM satırını kısa süreli vurgula */
+tr.row-focus > td { animation: rowFocusPulse 2.6s ease-out; }
+@keyframes rowFocusPulse {
+  0%, 35% { background: rgba(120, 110, 230, .22); }
+  100%    { background: transparent; }
+}

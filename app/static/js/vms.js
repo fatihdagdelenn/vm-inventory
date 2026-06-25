@@ -8,7 +8,7 @@
  */
 const VMs = {
   q: '', page: 1, perPage: 50, sort: 'name', order: 'asc', total: 0,
-  currentId: null, includeHidden: false,
+  currentId: null, includeHidden: false, focusId: null,
 
   /** Anlık kullanım için mini çubuk (veri yoksa boş döner). */
   platformCell(ptype) {
@@ -79,7 +79,7 @@ const VMs = {
         const pIcon = v.platform_type === 'vcenter'
           ? '<i class="bi bi-cloud text-primary" title="vCenter"></i>'
           : '<i class="bi bi-box text-warning" title="Proxmox"></i>';
-        return '<tr class="vm-row" onclick="VMs.detail(' + v.id + ')">' +
+        return '<tr class="vm-row" data-id="' + v.id + '" onclick="VMs.detail(' + v.id + ')">' +
           '<td data-col="name">' + pIcon + ' <strong>' + App.esc(v.name) + '</strong>' +
             (v.tags.length ? '<br><small>' + v.tags.map(t =>
               '<span class="badge text-bg-light border me-1">' + App.esc(t.name) + '</span>').join('') + '</small>' : '') + '</td>' +
@@ -112,6 +112,22 @@ const VMs = {
     document.getElementById('vmCount').textContent =
       VMs.total + ' VM — sayfa ' + data.page + '/' + Math.max(1, Math.ceil(VMs.total / VMs.perPage));
     VMs.renderPager(data.page);
+    VMs.applyFocus();
+  },
+
+  /** Deep-link: ?focus=<id> ile gelindiyse o VM'in detayını aç ve satırını
+   *  vurgula. Yalnızca bir kez çalışır (sonraki yükleme/sıralamada tekrarlamaz). */
+  applyFocus() {
+    if (!VMs.focusId) return;
+    const id = VMs.focusId;
+    VMs.focusId = null;
+    const row = document.querySelector('#vmBody tr[data-id="' + id + '"]');
+    if (row) {
+      row.classList.add('row-focus');
+      row.scrollIntoView({behavior: 'smooth', block: 'center'});
+      setTimeout(() => row.classList.remove('row-focus'), 2600);
+    }
+    VMs.detail(id);   // detay panelini (offcanvas) doğrudan id ile aç
   },
 
   /** Sayfalama bağlantılarını çiz (en fazla 7 sayfa numarası göster). */
@@ -465,6 +481,11 @@ const VMs = {
   // paylaşılan linkler ve sayfa yenileme için)
   const urlQ = new URLSearchParams(location.search).get('q');
   if (urlQ) { input.value = urlQ; VMs.q = urlQ; }
+
+  // ?focus=<id> ile gelindiyse (örn. Host modalından deep-link) ilk yüklemeden
+  // sonra o VM'in detayını aç. Sorgu adres çubuğuna yazılırken focus düşürülür.
+  const urlFocus = parseInt(new URLSearchParams(location.search).get('focus'), 10);
+  if (urlFocus) VMs.focusId = urlFocus;
 
   // Debounce'lu arama: her tuş vuruşunda değil, 350 ms duraksamada sorgula
   input.addEventListener('input', App.debounce(() => {

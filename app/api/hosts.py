@@ -21,7 +21,8 @@ def _host_to_dict(h: Host) -> dict:
             "last_boot": to_iso(h.last_boot),
             "platform": h.platform.name if h.platform else "",
             "platform_type": h.platform.type if h.platform else "",
-            "vm_count": len(h.vms)}
+            "vm_count": len(h.vms),
+            "vm_running": sum(1 for v in h.vms if v.power_state == "running")}
 
 
 @router.get("")
@@ -42,6 +43,14 @@ def get_host(host_id: int, db: Session = Depends(get_db),
     if not h:
         raise HTTPException(404, "Host bulunamadı")
     data = _host_to_dict(h)
-    data["vms"] = [{"id": v.id, "name": v.name, "power_state": v.power_state}
-                   for v in h.vms]
+    # Modal mini tablosu için zengin VM listesi: ad, IP, güç durumu,
+    # anlık CPU/RAM kullanımı + deep-link için id. Çalışanlar önce, sonra ada göre.
+    vms = sorted(h.vms, key=lambda v: (v.power_state != "running",
+                                       (v.name or "").lower()))
+    data["vms"] = [{
+        "id": v.id, "name": v.name, "vmid": v.vmid,
+        "ip_addresses": v.ip_addresses, "power_state": v.power_state,
+        "cpu_count": v.cpu_count, "cpu_usage_pct": v.cpu_usage_pct,
+        "ram_mb": v.ram_mb, "ram_usage_mb": v.ram_usage_mb,
+    } for v in vms]
     return data

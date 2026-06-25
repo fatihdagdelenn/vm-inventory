@@ -13,11 +13,46 @@
   <div class="table-responsive">
     <table class="table table-hover align-middle mb-0" id="hostTable">
       <thead><tr>
-        <th>Host Adı</th><th>Yönetim IP</th><th>İşletim Sistemi</th><th>CPU Modeli</th>
-        <th>Çekirdek</th><th>RAM</th><th>Disk</th><th>Cluster</th><th>VM</th><th>Uptime</th><th>Durum</th>
+        <th data-sort="name" class="sortable">Host Adı</th>
+        <th data-sort="mgmt_ip" class="sortable">Yönetim IP</th>
+        <th data-sort="os_version" class="sortable">İşletim Sistemi</th>
+        <th data-sort="cpu_model" class="sortable">CPU Modeli</th>
+        <th data-sort="cpu_cores" class="sortable">Çekirdek</th>
+        <th data-sort="ram" class="sortable">RAM</th>
+        <th data-sort="disk" class="sortable">Disk</th>
+        <th data-sort="cluster" class="sortable">Cluster</th>
+        <th data-sort="vm_count" class="sortable">VM</th>
+        <th data-sort="uptime" class="sortable">Uptime</th>
+        <th data-sort="status" class="sortable">Durum</th>
       </tr></thead>
-      <tbody id="hostBody"><tr><td colspan="10" class="text-center text-muted p-4">Yükleniyor…</td></tr></tbody>
+      <tbody id="hostBody"><tr><td colspan="11" class="text-center text-muted p-4">Yükleniyor…</td></tr></tbody>
     </table>
+  </div>
+</div>
+
+<!-- Host'a ait VM'ler modalı: VM sayısına tıklanınca açılır -->
+<div class="modal fade" id="hostVmsModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-pc-display"></i> <span id="hostVmsTitle">Sanal Makineler</span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover table-sm align-middle mb-0" id="hostVmsTable">
+            <thead><tr>
+              <th>VM Adı</th><th>IP Adresi</th><th>Durum</th><th>CPU</th><th>RAM</th>
+            </tr></thead>
+            <tbody id="hostVmsBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer py-2">
+        <span class="small text-muted me-auto" id="hostVmsHint">
+          <i class="bi bi-info-circle"></i> Satıra tıklayarak VM detayına gidin.</span>
+      </div>
+    </div>
   </div>
 </div>
 {% endblock %}
