@@ -155,8 +155,7 @@ const Hosts = {
                   (v.cpu_usage_pct != null ? ' <span class="text-muted">%' + Math.round(v.cpu_usage_pct) + '</span>' : '');
       const ram = App.fmtRam(v.ram_mb) +
                   (ramPct != null ? ' <span class="text-muted">%' + ramPct + '</span>' : '');
-      return '<tr class="vm-row" onclick="Hosts.openVm(' + v.id + ',\'' +
-               App.esc(v.name).replace(/'/g, "\\'") + '\')">' +
+      return '<tr class="vm-row" onclick="Hosts.openVm(' + v.id + ')">' +
         '<td><strong>' + App.esc(v.name) + '</strong>' +
           (v.vmid ? ' <small class="text-muted">#' + App.esc(v.vmid) + '</small>' : '') + '</td>' +
         '<td class="small text-nowrap">' + App.esc((v.ip_addresses || '—').split(',')[0] || '—') + '</td>' +
@@ -166,10 +165,11 @@ const Hosts = {
     }).join('');
   },
 
-  /** Modal'daki VM'e tıklanınca: modalı kapat, VM sayfasında detayına yönlendir. */
-  openVm(vmId, vmName) {
+  /** Modal'daki VM'e tıklanınca: host modalını kapat, VM detayını AYNI sayfada
+   *  ortak offcanvas panelinde göster (Sanal Makineler sayfasına gitmeden). */
+  openVm(vmId) {
     bootstrap.Modal.getOrCreateInstance(document.getElementById('hostVmsModal')).hide();
-    location.href = '/vms?q=' + encodeURIComponent(vmName) + '&focus=' + vmId;
+    App.vmDetail(vmId);
   },
 };
 
