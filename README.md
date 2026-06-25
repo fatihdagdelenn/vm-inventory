@@ -57,6 +57,7 @@ Bu soruların hepsi tek arama kutusundan, saniyeden kısa sürede yanıtlanır. 
 | ⚡ **Anlık kullanım oranları** | VM ve host CPU/RAM kullanımı + gerçek disk doluluğu (thin-provision farkındalıklı); hafif görevle ~3 dk'da bir ve her açılışta tazelenir |
 | 🐧 **Tam OS sürümü** | VMware'de ayrıntılı misafir OS verisi (ör. *"Ubuntu 24.04.1 LTS"*) — vSphere 8.0 U2+ ve VMware Tools 11.2+ ile; Proxmox'ta QEMU Guest Agent ile |
 | 🆔 **VM ID & çalışma süresi** | VM ID (Proxmox sayısal / VMware MoRef) ve host+VM **uptime** kolonları; host'larda CPU/RAM/Disk kullanım çubukları |
+| 🖧 **Host detayı & sıralama** | Host tablosunda tüm kolonlar tıklanabilir sıralanır (metin/sayı/IP/durum); VM sayısına tıklayınca host'un VM listesi açılır, oradan VM detayı **aynı sayfada** görüntülenir |
 | 🗂️ **Pool / klasör / etiket** | vCenter resource pool & klasör, Proxmox pool; platform etiketleri (vCenter REST tag / Proxmox tags) — hepsi aranır, filtrelenir ve gösterilir |
 | 🧰 **Kolon seçici** | VM listesinde görünür kolonları tek menüden seçme (tercih tarayıcıda hatırlanır) |
 | 👥 **Rol bazlı yetki** | Admin / Operatör / Görüntüleyici + opsiyonel LDAP/AD girişi |
@@ -250,7 +251,7 @@ Dashboard'daki **"Dikkat Gerektirenler"** kartından *"Agent/Tools kurulu olmaya
 |---|---|
 | **Dashboard** | Genel durum: sayılar, kaynak toplamları, grafikler (dilime tıklayınca filtreli liste açılır), son değişiklikler, platform sağlığı. Cluster grafiğindeki **Yönet** butonu görünürlük ayarlarını açar |
 | **Sanal Makineler** | Arama + gelişmiş filtre + gruplama. CPU/RAM/disk kolonlarında anlık kullanım çubukları (sarı %75+, kırmızı %90+); ayrıca VM ID, Pool, Klasör, Tags ve Uptime kolonları. **Kolonlar** menüsünden görünür sütunları seçebilirsiniz (tercih tarayıcıda saklanır). Satıra tıklayınca detay paneli; not/sahip/etiket buradan düzenlenir. Host/cluster/VLAN/pool/klasör hücreleri tıklanabilir filtredir |
-| **Host'lar** | ESXi/PVE node'ları: CPU modeli, CPU/RAM/Disk kullanım çubukları, çalışma süresi (uptime), VM sayısı |
+| **Host'lar** | ESXi/PVE node'ları tek tabloda: Host adı, Yönetim IP, OS/hipervizör sürümü, CPU modeli, çekirdek sayısı, CPU/RAM/Disk kullanım çubukları, cluster, VM sayısı, çalışma süresi (uptime) ve durum. **Tüm sütun başlıkları tıklanabilir** — metin (A-Z), sayısal, IP ve durum bazlı sıralama. **VM sayısına tıklayınca** o host'taki VM'leri (ad, IP, güç durumu, anlık CPU/RAM) listeleyen bir pencere açılır; listedeki bir VM'e tıklayınca **aynı sayfada** VM detay paneli açılır (Sanal Makineler ekranındaki panelle aynı) |
 | **Ağlar** | Port group / bridge / SDN vnet ve host fiziksel kartları (NIC). Açılır-kapanır gruplama: Host'a göre, Cluster'a göre, VLAN'a göre veya Fiziksel Kartlar; ad/VLAN/vSwitch/subnet/MAC araması |
 | **Raporlar** | Anlık Excel/CSV/PDF (filtre destekler) + her gün belirli saatte çalışan zamanlanmış raporlar (`data/reports/` klasörüne yazılır) |
 | **Geçmiş** | Envanter değişiklikleri: eklenen/silinen VM'ler, alan bazında eski→yeni değerler |
