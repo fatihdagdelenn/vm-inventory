@@ -244,52 +244,73 @@ def insights(db: Session = Depends(get_db), user: User = Depends(get_current_use
         return q.filter(host_cond) if host_cond is not None else q
 
     now = _dt.utcnow()
-    WINDOW = 30  # gün — büyüme penceresi
+    from ..models import CapacitySnapshot, VmUsageDaily
 
-    # Sistemin yaşı: pencereyi gerçekte geçen süreyle sınırla (genç kurulumda
-    # 30'a bölüp hızı küçültmeyelim).
-    oldest = db.query(func.min(VirtualMachine.first_seen)).scalar()
-    age_days = max(1, (now - oldest).days) if oldest else 1
-    eff_days = min(WINDOW, max(7, age_days)) if age_days >= 7 else age_days
-    win_start = now - _td(days=WINDOW)
-
-    # ---- Mevcut tahsis (allocated) ----
-    alloc = vm_q().with_entities(
+    # ===== Kapasite Öngörüsü =====
+    # Tüm ortam geneli tahsis + fiziksel kapasite (snapshot ile aynı kapsam).
+    g_alloc = db.query(
         func.coalesce(func.sum(VirtualMachine.ram_mb), 0),
-        func.coalesce(func.sum(VirtualMachine.disk_total_gb), 0)).one()
-    alloc_ram_gb = round((alloc[0] or 0) / 1024, 1)
-    alloc_disk_gb = round(alloc[1] or 0, 1)
+        func.coalesce(func.sum(VirtualMachine.disk_total_gb), 0)).filter(
+        VirtualMachine.is_template == False).one()  # noqa: E712
+    alloc_ram_gb = round((g_alloc[0] or 0) / 1024, 1)
+    alloc_disk_gb = round(g_alloc[1] or 0, 1)
+    ram_cap_gb = round((db.query(func.coalesce(func.sum(Host.ram_total_mb), 0)).scalar() or 0) / 1024, 1)
+    disk_cap_gb = round(db.query(func.coalesce(func.sum(Datastore.capacity_gb), 0)).scalar() or 0, 1)
 
-    # ---- Fiziksel kapasite (tavan) ----
-    ram_cap_mb = host_q().with_entities(
-        func.coalesce(func.sum(Host.ram_total_mb), 0)).scalar() or 0
-    ram_cap_gb = round(ram_cap_mb / 1024, 1)
-    disk_cap_gb = round(db.query(
-        func.coalesce(func.sum(Datastore.capacity_gb), 0)).scalar() or 0, 1)
+    snaps = db.query(CapacitySnapshot).filter(
+        CapacitySnapshot.snap_date >= (now.date() - _td(days=30))).order_by(
+        CapacitySnapshot.snap_date).all()
 
-    # ---- Pencere içi büyüme: yeni VM tahsisi + (RAM/disk) büyütme deltaları ----
-    new_vm = vm_q().filter(VirtualMachine.first_seen >= win_start).with_entities(
-        func.coalesce(func.sum(VirtualMachine.ram_mb), 0),
-        func.coalesce(func.sum(VirtualMachine.disk_total_gb), 0)).one()
-    grow_ram_mb = float(new_vm[0] or 0)
-    grow_disk_gb = float(new_vm[1] or 0)
+    def _slope(points):
+        """En küçük kareler eğimi (birim: y / gün). points=[(gun_index, y)]."""
+        n = len(points)
+        if n < 2:
+            return None
+        sx = sum(p[0] for p in points); sy = sum(p[1] for p in points)
+        sxx = sum(p[0] ** 2 for p in points); sxy = sum(p[0] * p[1] for p in points)
+        denom = n * sxx - sx * sx
+        return (n * sxy - sx * sy) / denom if denom else None
 
-    deltas = db.query(ChangeHistory.field, ChangeHistory.old_value,
-                      ChangeHistory.new_value).filter(
-        ChangeHistory.change_type == "updated",
-        ChangeHistory.changed_at >= win_start,
-        ChangeHistory.field.in_(["ram_mb", "disk_total_gb"])).all()
-    for field, ov, nv in deltas:
-        o, n = _to_float(ov), _to_float(nv)
-        if o is None or n is None or n <= o:
-            continue
-        if field == "ram_mb":
-            grow_ram_mb += (n - o)
-        else:
-            grow_disk_gb += (n - o)
+    # Tercih: tarihsel DOĞRUSAL REGRESYON (>=3 nokta, >=2 gün yayılım).
+    reg_ok = False
+    if len(snaps) >= 3 and (snaps[-1].snap_date - snaps[0].snap_date).days >= 2:
+        base = snaps[0].snap_date
+        slope_disk = _slope([((s.snap_date - base).days, s.alloc_disk_gb or 0) for s in snaps])
+        slope_ram = _slope([((s.snap_date - base).days, (s.alloc_ram_mb or 0) / 1024) for s in snaps])
+        per_day_disk_gb = max(0.0, slope_disk or 0)
+        per_day_ram_gb = max(0.0, slope_ram or 0)
+        fc_method = "trend"
+        fc_window = (snaps[-1].snap_date - snaps[0].snap_date).days
+        reg_ok = True
 
-    per_day_ram_gb = (grow_ram_mb / 1024) / eff_days
-    per_day_disk_gb = grow_disk_gb / eff_days
+    if not reg_ok:
+        # Fallback (yeni kurulum): first_seen + ChangeHistory büyütme deltaları (sezgisel).
+        oldest = db.query(func.min(VirtualMachine.first_seen)).scalar()
+        age_days = max(1, (now - oldest).days) if oldest else 1
+        eff = min(30, max(7, age_days)) if age_days >= 7 else age_days
+        win_start = now - _td(days=30)
+        nv = db.query(
+            func.coalesce(func.sum(VirtualMachine.ram_mb), 0),
+            func.coalesce(func.sum(VirtualMachine.disk_total_gb), 0)).filter(
+            VirtualMachine.is_template == False,                       # noqa: E712
+            VirtualMachine.first_seen >= win_start).one()
+        grow_ram_mb = float(nv[0] or 0); grow_disk_gb = float(nv[1] or 0)
+        for field, ov, nvv in db.query(
+                ChangeHistory.field, ChangeHistory.old_value, ChangeHistory.new_value).filter(
+                ChangeHistory.change_type == "updated",
+                ChangeHistory.changed_at >= win_start,
+                ChangeHistory.field.in_(["ram_mb", "disk_total_gb"])).all():
+            o, n = _to_float(ov), _to_float(nvv)
+            if o is None or n is None or n <= o:
+                continue
+            if field == "ram_mb":
+                grow_ram_mb += (n - o)
+            else:
+                grow_disk_gb += (n - o)
+        per_day_ram_gb = (grow_ram_mb / 1024) / eff
+        per_day_disk_gb = grow_disk_gb / eff
+        fc_method = "estimate"
+        fc_window = eff
 
     def _forecast(cap_gb, alloc_gb, per_day_gb):
         remaining = round(cap_gb - alloc_gb, 1)
@@ -302,30 +323,39 @@ def insights(db: Session = Depends(get_db), user: User = Depends(get_current_use
             status = "crit" if days < 30 else "warn" if days < 90 else "ok"
         elif cap_gb > 0 and remaining <= 0:
             status = "crit"
-        return {"capacity_gb": cap_gb, "allocated_gb": alloc_gb,
-                "remaining_gb": remaining, "usage_pct": usage_pct,
-                "per_day_gb": round(per_day_gb, 2), "days_left": days,
-                "status": status}
+        return {"capacity_gb": cap_gb, "allocated_gb": alloc_gb, "remaining_gb": remaining,
+                "usage_pct": usage_pct, "per_day_gb": round(per_day_gb, 2),
+                "days_left": days, "status": status}
 
-    forecast = {
-        "window_days": eff_days,
-        "disk": _forecast(disk_cap_gb, alloc_disk_gb, per_day_disk_gb),
-        "ram": _forecast(ram_cap_gb, alloc_ram_gb, per_day_ram_gb),
-    }
+    forecast = {"window_days": fc_window, "method": fc_method,
+                "disk": _forecast(disk_cap_gb, alloc_disk_gb, per_day_disk_gb),
+                "ram": _forecast(ram_cap_gb, alloc_ram_gb, per_day_ram_gb)}
 
-    # ---- Zombi (boşta) VM'ler: çalışan + son kullanım örneğinde CPU < %2 ----
-    # NOT: Anlık (son örnek) kullanıma dayanır; 7 günlük ortalama için ayrı bir
-    # örnekleme tablosu gerekir (henüz yok) — bu yüzden eşik anlık örnektir.
+    # ===== Zombi (boşta) VM'ler =====
+    # Tercih: son 7 GÜN VmUsageDaily — tüm günlerde tepe CPU < %2 (>=3 günlük veri).
+    # Yeterli günlük veri yoksa anlık (son örnek) kullanıma düşer.
     IDLE_CPU = 2.0
-    zrows = vm_q().filter(
-        VirtualMachine.power_state == "running",
-        VirtualMachine.cpu_usage_pct.isnot(None),
-        VirtualMachine.cpu_usage_pct < IDLE_CPU).outerjoin(
-        Host, VirtualMachine.host_id == Host.id).with_entities(
-        VirtualMachine.name, Host.name, VirtualMachine.cpu_count,
-        VirtualMachine.ram_mb, VirtualMachine.disk_total_gb,
-        VirtualMachine.cpu_usage_pct).order_by(
-        func.coalesce(VirtualMachine.ram_mb, 0).desc()).all()
+    since = now.date() - _td(days=7)
+    daily = db.query(VmUsageDaily.vm_id, func.max(VmUsageDaily.cpu_max),
+                     func.count(VmUsageDaily.id)).filter(
+        VmUsageDaily.day >= since).group_by(VmUsageDaily.vm_id).all()
+    zombie_basis = "7d" if daily else "instant"
+    idle_ids = [vid for vid, cmax, cnt in daily if (cmax or 0) < IDLE_CPU and (cnt or 0) >= 3]
+
+    if zombie_basis == "7d":
+        zq = (vm_q().filter(VirtualMachine.power_state == "running",
+                            VirtualMachine.id.in_(idle_ids)) if idle_ids else None)
+    else:
+        zq = vm_q().filter(VirtualMachine.power_state == "running",
+                           VirtualMachine.cpu_usage_pct.isnot(None),
+                           VirtualMachine.cpu_usage_pct < IDLE_CPU)
+    zrows = []
+    if zq is not None:
+        zrows = zq.outerjoin(Host, VirtualMachine.host_id == Host.id).with_entities(
+            VirtualMachine.name, Host.name, VirtualMachine.cpu_count,
+            VirtualMachine.ram_mb, VirtualMachine.disk_total_gb,
+            VirtualMachine.cpu_usage_pct).order_by(
+            func.coalesce(VirtualMachine.ram_mb, 0).desc()).all()
     zombies = [{"name": r[0], "host": r[1] or "", "vcpu": r[2] or 0,
                 "ram_gb": round((r[3] or 0) / 1024, 1),
                 "disk_gb": round(r[4] or 0, 1),
@@ -362,5 +392,6 @@ def insights(db: Session = Depends(get_db), user: User = Depends(get_current_use
 
     return {"forecast": forecast,
             "zombies": zombies[:10], "zombie_savings": zombie_savings,
+            "zombie_basis": zombie_basis,
             "spark": {"vms": spark_vms, "activity": spark_activity},
             "live": {"last_sync": last_sync, "interval_minutes": sync_interval}}

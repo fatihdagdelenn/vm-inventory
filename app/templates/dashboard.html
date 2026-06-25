@@ -2,31 +2,29 @@
 {% block content %}
 <div class="dash-premium" id="dashPremium">
 
-  <!-- Üst araç çubuğu: canlılık göstergesi + yenile + düzenleme kontrolleri -->
-  <div class="dash-toolbar">
+  <!-- Bu kontroller JS ile üst çubuğa (topbar) taşınır → tek satır, beyaz/çift yok -->
+  <div id="dashControls" class="dash-controls">
     <div class="live-indicator" id="liveWrap" title="Arka planda otomatik senkronizasyon">
       <span class="live-dot"></span>
       <span class="live-text" id="liveText">Canlı</span>
     </div>
-    <div class="ms-auto d-flex align-items-center gap-2">
-      <div class="dropdown d-none" id="hiddenCardsWrap">
-        <button class="btn btn-sm btn-edit-ghost dropdown-toggle" data-bs-toggle="dropdown">
-          <i class="bi bi-eye-slash"></i> Gizli Kartlar <span class="badge bg-secondary" id="hiddenCount">0</span>
-        </button>
-        <ul class="dropdown-menu dropdown-menu-end dash-hidden-menu" id="hiddenCardsMenu">
-          <li><span class="dropdown-item-text text-muted small">Gizli kart yok</span></li>
-        </ul>
-      </div>
-      <button class="btn btn-sm btn-edit-ghost d-none" id="btnResetDash" title="Varsayılan yerleşime dön">
-        <i class="bi bi-arrow-counterclockwise"></i> Sıfırla
+    <button class="btn btn-sm btn-edit-ghost" id="btnTheme" title="Açık / Koyu tema">
+      <i class="bi bi-moon-stars"></i>
+    </button>
+    <div class="dropdown d-none" id="hiddenCardsWrap">
+      <button class="btn btn-sm btn-edit-ghost dropdown-toggle" data-bs-toggle="dropdown">
+        <i class="bi bi-eye-slash"></i> Gizli Kartlar <span class="badge bg-secondary" id="hiddenCount">0</span>
       </button>
-      <button class="btn btn-sm btn-edit-ghost" id="btnRefreshDash" title="Verileri yeniden yükle">
-        <i class="bi bi-arrow-repeat"></i> Tümünü Yenile
-      </button>
-      <button class="btn btn-sm btn-edit-primary" id="btnEditDash">
-        <i class="bi bi-grid-1x2"></i> <span>Dashboard'u Düzenle</span>
-      </button>
+      <ul class="dropdown-menu dropdown-menu-end dash-hidden-menu" id="hiddenCardsMenu">
+        <li><span class="dropdown-item-text text-muted small">Gizli kart yok</span></li>
+      </ul>
     </div>
+    <button class="btn btn-sm btn-edit-ghost d-none" id="btnResetDash" title="Varsayılan yerleşime dön">
+      <i class="bi bi-arrow-counterclockwise"></i> Sıfırla
+    </button>
+    <button class="btn btn-sm btn-edit-primary" id="btnEditDash">
+      <i class="bi bi-grid-1x2"></i> <span>Dashboard'u Düzenle</span>
+    </button>
   </div>
 
   <!-- 12 kolonlu esnek grid — her kart bir "widget"; sürükle / genişlik / gizle -->

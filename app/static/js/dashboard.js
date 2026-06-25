@@ -53,14 +53,15 @@ function barGrad(chart, base, horizontal) {
   if (uf) uf.textContent = d.usage_updated ? 'kullanım: ' + App.fmtDate(d.usage_updated)
                                            : 'kullanım: ilk senkronizasyon bekleniyor';
 
-  /* ---- Premium grafik ortak ayarları (koyu tema) ---- */
+  /* ---- Premium grafik ortak ayarları (tema-duyarlı) ---- */
+  const LIGHT = localStorage.getItem('vmi-dash-theme') === 'light';
   Chart.defaults.font.family = "'Inter','Segoe UI',system-ui,sans-serif";
-  Chart.defaults.color = '#94a8c4';
+  Chart.defaults.color = LIGHT ? '#475569' : '#94a8c4';
   Chart.defaults.maintainAspectRatio = false;
-  Chart.defaults.scale.grid.color = 'rgba(148,163,184,.10)';
+  Chart.defaults.scale.grid.color = LIGHT ? 'rgba(15,29,46,.07)' : 'rgba(148,163,184,.10)';
   Chart.defaults.scale.grid.drawBorder = false;
-  Chart.defaults.scale.ticks.color = '#7e93b3';
-  Chart.defaults.plugins.legend.labels.color = '#aebfd6';
+  Chart.defaults.scale.ticks.color = LIGHT ? '#64748b' : '#7e93b3';
+  Chart.defaults.plugins.legend.labels.color = LIGHT ? '#334155' : '#aebfd6';
 
   // Neon glow eklentisi (yalnız options.plugins.glow tanımlı grafiklerde)
   Chart.register({
@@ -72,7 +73,7 @@ function barGrad(chart, base, horizontal) {
     afterDatasetsDraw(chart, _a, opts) { if (opts && opts.color) chart.ctx.restore(); },
   });
 
-  const CARD = '#151f32';                  // kart arka planı (halka ayraç rengi)
+  const CARD = LIGHT ? '#ffffff' : '#151f32';   // halka ayraç = kart arka planı
   const PALETTE = ['#3b9bff','#3fdc8f','#a371ff','#ffc24b','#ff6b6b','#39d3df','#ff7ac0','#8ea3c0'];
   const BLUE='#3b9bff', GREEN='#3fdc8f', ORANGE='#ffc24b', RED='#ff6b6b', PURPLE='#a371ff';
   const critColor = pct => pct >= 90 ? RED : pct >= 75 ? ORANGE : BLUE;
@@ -221,7 +222,9 @@ function barGrad(chart, base, horizontal) {
                   crit: ['text-danger', 'bi-exclamation-octagon', 'Kritik'],
                   none: ['text-muted', 'bi-dash-circle', 'Yetersiz veri']};
     const fcWin = document.getElementById('fc-window');
-    if (fcWin) fcWin.textContent = ins.forecast.window_days + ' günlük trend';
+    if (fcWin) fcWin.innerHTML = ins.forecast.method === 'trend'
+      ? `<i class="bi bi-activity"></i> ${ins.forecast.window_days} günlük gerçek trend`
+      : `<i class="bi bi-hourglass-split"></i> ön tahmin · veri birikiyor`;
 
     const fcRow = (title, icon, f) => {
       const [cls, bi, txt] = STAT[f.status];
@@ -255,7 +258,9 @@ function barGrad(chart, base, horizontal) {
     if (zb) {
       if (!ins.zombies.length) {
         zb.innerHTML = '<div class="text-success small p-2"><i class="bi bi-check-circle"></i> ' +
-          'Boşta görünen çalışan VM yok. (Son kullanım örneğine göre)</div>';
+          (ins.zombie_basis === '7d'
+            ? 'Son 7 günde sürekli boşta kalan çalışan VM yok.'
+            : 'Boşta görünen çalışan VM yok. (Anlık örneğe göre)') + '</div>';
       } else {
         zb.innerHTML =
           `<div class="zombie-savings mb-2"><i class="bi bi-piggy-bank"></i>
@@ -267,8 +272,11 @@ function barGrad(chart, base, horizontal) {
               `<tr><td><strong>${App.esc(z.name)}</strong></td><td class="small text-muted">${App.esc(z.host||'—')}</td>
                <td class="text-end small">%${z.cpu_pct}</td><td class="text-end small">${z.ram_gb} GB</td></tr>`).join('') +
           `</tbody></table></div>
-          <div class="text-muted fst-italic" style="font-size:.72rem">Son kullanım örneğinde CPU < %2 olan
-           çalışan VM'ler. 7 günlük ortalama için periyodik örnekleme gerekir.</div>`;
+          <div class="text-muted fst-italic" style="font-size:.72rem">` +
+          (ins.zombie_basis === '7d'
+            ? `Son 7 günde tepe CPU %2'nin altında kalan çalışan VM'ler (günlük örnekleme).`
+            : `Anlık kullanım örneğinde CPU < %2. 7 günlük ortalama için veri birikiyor.`) +
+          `</div>`;
       }
     }
 
@@ -411,6 +419,7 @@ const DashGrid = {
 
   init() {
     if (!document.getElementById('dashGrid')) return;
+    DashGrid.mountChrome();
     // Her karta düzenleme araçlarını (sürükle / genişlik / kapat) enjekte et
     document.querySelectorAll('#dashGrid .dash-widget').forEach(w => {
       const tools = document.createElement('div');
@@ -425,13 +434,35 @@ const DashGrid = {
     DashGrid.initDnD();
     document.getElementById('btnEditDash').addEventListener('click', DashGrid.toggleEdit);
     document.getElementById('btnResetDash').addEventListener('click', DashGrid.reset);
-    document.getElementById('btnRefreshDash').addEventListener('click', () => location.reload());
+    const bt = document.getElementById('btnTheme');
+    if (bt) bt.addEventListener('click', DashGrid.toggleTheme);
     // Kart araç düğmeleri (event delegation)
     document.getElementById('dashGrid').addEventListener('click', e => {
       const w = e.target.closest('.dash-widget'); if (!w || !DashGrid.editing) return;
       if (e.target.closest('.wt-hide')) { e.preventDefault(); DashGrid.hide(w); }
       else if (e.target.closest('.wt-size')) { e.preventDefault(); DashGrid.cycleWidth(w); }
     });
+  },
+
+  /* Dashboard kontrollerini paylaşılan üst çubuğa (topbar) taşı → tek satır,
+     beyaz/çift buton yok. Ayrıca sayfayı koyu/açık temaya hazırla. */
+  mountChrome() {
+    const light = localStorage.getItem('vmi-dash-theme') === 'light';
+    document.body.classList.add('dash-page');
+    document.body.classList.toggle('dash-light', light);
+    const prem = document.getElementById('dashPremium');
+    if (prem) prem.classList.toggle('theme-light', light);
+    const ti = document.querySelector('#btnTheme i');
+    if (ti) ti.className = light ? 'bi bi-sun' : 'bi bi-moon-stars';
+    const controls = document.getElementById('dashControls');
+    const topRight = document.querySelector('.topbar .ms-auto');
+    if (controls && topRight) topRight.insertBefore(controls, topRight.firstChild);
+  },
+
+  toggleTheme() {
+    const light = localStorage.getItem('vmi-dash-theme') === 'light';
+    localStorage.setItem('vmi-dash-theme', light ? 'dark' : 'light');
+    location.reload();   // grafikler yeni tema renkleriyle yeniden çizilsin
   },
 };
 DashGrid.init();

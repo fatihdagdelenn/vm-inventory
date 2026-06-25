@@ -550,3 +550,68 @@ tr.row-focus > td { animation: rowFocusPulse 2.6s ease-out; }
 .dash-hidden-menu { background: #151f32; border: 1px solid rgba(148,163,184,.2); }
 .dash-hidden-menu .dropdown-item { color: #cdd9ea; }
 .dash-hidden-menu .dropdown-item:hover { background: rgba(59,155,255,.15); color: #fff; }
+
+/* ======================================================================
+   PREMIUM DASHBOARD — faz44: topbar entegrasyonu + LIGHT TEMA
+   ====================================================================== */
+/* Kontroller artık topbar'a taşınıyor (tek satır; çift "Tümünü Yenile" yok) */
+.dash-controls { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+
+/* Dashboard'da üst çubuğu koyu temaya uydur (üstte beyaz kopukluk olmasın) */
+body.dash-page .topbar {
+  background: rgba(11,17,30,.92); border-bottom: 1px solid rgba(148,163,184,.12); backdrop-filter: blur(12px);
+}
+body.dash-page .page-title { color: #eaf1fb; }
+body.dash-page .content { background: #0b111e; }
+/* Açık temada topbar yine aydınlık */
+body.dash-page.dash-light .topbar { background: rgba(255,255,255,.85); border-bottom-color: var(--border); }
+body.dash-page.dash-light .page-title { color: var(--ink); }
+body.dash-page.dash-light .content { background: #eef2f8; }
+body.dash-page.dash-light .btn-edit-ghost { background: #fff; border-color: #d7dde6; color: #33425a; }
+body.dash-page.dash-light .btn-edit-ghost:hover { background: #f0f4fa; color: #1c2b3a; }
+
+/* ---- LIGHT TEMA (.dash-premium.theme-light) ---- */
+.dash-premium.theme-light {
+  color: #28344a;
+  background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(47,129,247,.10), transparent 60%),
+    radial-gradient(900px 520px at 8% 0%, rgba(163,113,255,.07), transparent 55%),
+    #eef2f8;
+}
+.dash-premium.theme-light .panel { background: #fff; border-color: #e4e9f0; box-shadow: 0 8px 24px rgba(15,29,46,.07); }
+.dash-premium.theme-light .panel:hover { box-shadow: 0 14px 34px rgba(15,29,46,.12); border-color: rgba(47,129,247,.35); }
+.dash-premium.theme-light .card-header { color: #1c2b3a; border-bottom-color: #eef1f6; }
+.dash-premium.theme-light .card-body { color: #36465c; }
+.dash-premium.theme-light .text-muted { color: #7387a3 !important; }
+.dash-premium.theme-light a.small, .dash-premium.theme-light .card-header a { color: #2f6fe0; }
+.dash-premium.theme-light .table { --bs-table-color: #33425a; color: #33425a; }
+.dash-premium.theme-light .table thead th { color: #64748b; border-color: #e9edf3; }
+.dash-premium.theme-light .table td, .dash-premium.theme-light .table th { border-color: #eef1f6; }
+.dash-premium.theme-light .table-hover tbody tr:hover { --bs-table-hover-bg: rgba(47,129,247,.06); --bs-table-hover-color: #1c2b3a; }
+.dash-premium.theme-light .list-group-item { color: #33425a; border-color: #eef1f6; }
+.dash-premium.theme-light .attention-item:hover { background: rgba(47,129,247,.08); }
+.dash-premium.theme-light .attention-item .badge { background: var(--ink-3); }
+.dash-premium.theme-light .progress { background: rgba(15,29,46,.08); }
+.dash-premium.theme-light .stat-card {
+  background: linear-gradient(150deg, #ffffff, #f4f8fd); border-color: #e4e9f0;
+  box-shadow: 0 8px 22px rgba(15,29,46,.07); color: #1c2b3a;
+}
+.dash-premium.theme-light .stat-card:hover { border-color: rgba(47,129,247,.4); box-shadow: 0 12px 28px rgba(15,29,46,.12); color: var(--ink); }
+.dash-premium.theme-light .stat-value { color: var(--ink); }
+.dash-premium.theme-light .stat-label { color: #64748b; }
+.dash-premium.theme-light .mini-stat {
+  background: linear-gradient(150deg, #ffffff, #f4f8fd); border-color: #e4e9f0; color: #1c2b3a;
+  box-shadow: 0 6px 16px rgba(15,29,46,.06);
+}
+.dash-premium.theme-light .mini-stat span { color: var(--ink); }
+.dash-premium.theme-light .mini-stat small { color: #64748b; }
+.dash-premium.theme-light .mini-stat i { color: var(--accent); }
+.dash-premium.theme-light .zombie-savings { background: rgba(232,161,60,.12); border-color: rgba(232,161,60,.3); color: #8a5a12; }
+.dash-premium.theme-light .zombie-savings i { color: #e8a13c; }
+.dash-premium.theme-light .forecast-row { border-bottom-color: #eef1f6; }
+.dash-premium.theme-light .wt { background: rgba(255,255,255,.95); border-color: #d7dde6; color: #33425a; }
+.dash-premium.theme-light .wt:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+.dash-premium.theme-light .dash-grid.editing .dash-widget { outline-color: rgba(47,129,247,.4); }
+.dash-premium.theme-light .dash-hidden-menu { background: #fff; border-color: #e4e9f0; }
+.dash-premium.theme-light .dash-hidden-menu .dropdown-item { color: #33425a; }
+.dash-premium.theme-light .dash-hidden-menu .dropdown-item:hover { background: rgba(47,129,247,.1); color: var(--ink); }

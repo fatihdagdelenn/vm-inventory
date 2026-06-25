@@ -13,11 +13,13 @@ Bu sayede kullanıcı aramaları her zaman hızlı lokal verilerle çalışır.
 """
 import re
 import logging
-from datetime import datetime
+from datetime import datetime, date, timedelta
 
+from sqlalchemy import func
 from ..database import SessionLocal
 from ..models import (Platform, SyncLog, Host, VirtualMachine,
-                      Network, Datastore, Snapshot, Backup, ChangeHistory)
+                      Network, Datastore, Snapshot, Backup, ChangeHistory,
+                      CapacitySnapshot, VmUsageDaily)
 from ..core.security import decrypt_secret
 from ..collectors.vmware_collector import VMwareCollector
 from ..collectors.proxmox_collector import ProxmoxCollector
@@ -646,5 +648,73 @@ def sync_usage_all():
                 db.rollback()
                 logger.warning("Kullanım senkronizasyonu başarısız [%s]: %s",
                                platform.name, exc)
+        # Tarihsel örnekleme (kapasite öngörüsü + zombi tespiti). Asla
+        # usage sync'i düşürmesin diye ayrı try; hata yalnız loglanır.
+        try:
+            record_samples(db)
+            db.commit()
+        except Exception as exc:
+            db.rollback()
+            logger.warning("Ornekleme (snapshot/usage-daily) basarisiz: %s", exc)
     finally:
         db.close()
+
+
+def record_samples(db):
+    """
+    Günlük tarihsel örnekleme — sync_usage_all her çalıştığında çağrılır.
+    1) VmUsageDaily: her çalışan VM için bugünün gün içi CPU ortalaması/tepesi
+       ve RAM ortalaması (running average ile güncellenir).
+    2) CapacitySnapshot: tüm ortam geneli tahsisli/kullanılan/kapasite toplamları
+       (günde bir satır, upsert).
+    Eski kayıtlar budanır. Bu veriler insights endpoint'inde DOĞRUSAL REGRESYON
+    (forecast) ve 7 GÜNLÜK pencere (zombi) için kullanılır.
+    """
+    today = date.today()
+
+    # 1) VM günlük kullanım toplulaştırma (yalnız kullanım örneği olanlar)
+    vms = db.query(VirtualMachine.id, VirtualMachine.cpu_usage_pct,
+                   VirtualMachine.ram_usage_mb).filter_by(is_template=False).all()
+    existing = {r.vm_id: r for r in db.query(VmUsageDaily).filter_by(day=today).all()}
+    for vm_id, cpu, ram in vms:
+        if cpu is None:
+            continue                      # kullanım örneği yok → atla
+        ram = ram or 0
+        row = existing.get(vm_id)
+        if row is None:
+            db.add(VmUsageDaily(vm_id=vm_id, day=today, cpu_avg=cpu,
+                                cpu_max=cpu, ram_avg_mb=ram, samples=1))
+        else:
+            n = row.samples or 0
+            row.cpu_avg = (((row.cpu_avg or 0) * n) + cpu) / (n + 1)
+            row.ram_avg_mb = int((((row.ram_avg_mb or 0) * n) + ram) / (n + 1))
+            row.cpu_max = max(row.cpu_max or 0, cpu)
+            row.samples = n + 1
+
+    # 2) Kapasite snapshot (tüm ortam geneli; gizli cluster filtresi yok)
+    t = db.query(
+        func.coalesce(func.sum(VirtualMachine.disk_total_gb), 0),
+        func.coalesce(func.sum(VirtualMachine.ram_mb), 0),
+        func.coalesce(func.sum(VirtualMachine.disk_used_gb), 0),
+        func.coalesce(func.sum(VirtualMachine.ram_usage_mb), 0),
+        func.count(VirtualMachine.id)).filter(
+        VirtualMachine.is_template == False).one()  # noqa: E712
+    ds_cap = db.query(func.coalesce(func.sum(Datastore.capacity_gb), 0)).scalar() or 0
+    host_ram = db.query(func.coalesce(func.sum(Host.ram_total_mb), 0)).scalar() or 0
+
+    snap = db.query(CapacitySnapshot).filter_by(snap_date=today).first()
+    if snap is None:
+        snap = CapacitySnapshot(snap_date=today)
+        db.add(snap)
+    snap.alloc_disk_gb = float(t[0] or 0)
+    snap.alloc_ram_mb = int(t[1] or 0)
+    snap.used_disk_gb = float(t[2] or 0)
+    snap.used_ram_mb = int(t[3] or 0)
+    snap.datastore_capacity_gb = float(ds_cap)
+    snap.host_ram_mb = int(host_ram)
+    snap.vm_count = int(t[4] or 0)
+
+    # 3) Budama (depo şişmesin)
+    db.query(VmUsageDaily).filter(VmUsageDaily.day < today - timedelta(days=35)).delete()
+    db.query(CapacitySnapshot).filter(
+        CapacitySnapshot.snap_date < today - timedelta(days=120)).delete()

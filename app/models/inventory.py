@@ -7,8 +7,8 @@ hiçbir kullanıcı isteği canlı vCenter/Proxmox API çağrısı tetiklemez.
 500+ VM için kritik alanlar indekslidir.
 """
 from datetime import datetime
-from sqlalchemy import (Column, Integer, String, Boolean, DateTime, Text,
-                        Float, BigInteger, ForeignKey, Table, Index)
+from sqlalchemy import (Column, Integer, String, Boolean, DateTime, Date, Text,
+                        Float, BigInteger, ForeignKey, Table, Index, UniqueConstraint)
 from sqlalchemy.orm import relationship
 from ..database import Base
 
@@ -315,3 +315,46 @@ class ScheduledReport(Base):
     @property
     def job_id(self) -> str:
         return f"report_{self.id}"
+
+
+class CapacitySnapshot(Base):
+    """
+    Günlük kapasite anlık görüntüsü (kapasite öngörüsü için).
+    sync_usage_all her çalıştığında bugünün satırı upsert edilir; böylece
+    günler içinde tahsisli/kullanılan kaynak serisi birikir ve forecast
+    DOĞRUSAL REGRESYONLA (sezgisel deltalar yerine) hesaplanır.
+    Tüm ortam geneli (gizli cluster filtresi UYGULANMAZ — fiziksel kapasite global).
+    """
+    __tablename__ = "capacity_snapshots"
+
+    id = Column(Integer, primary_key=True)
+    snap_date = Column(Date, unique=True, index=True)   # günde bir satır
+    alloc_disk_gb = Column(Float)        # tahsisli toplam (sum VM disk_total_gb)
+    alloc_ram_mb = Column(BigInteger)    # tahsisli toplam (sum VM ram_mb)
+    used_disk_gb = Column(Float)         # gerçek kullanım (sum VM disk_used_gb)
+    used_ram_mb = Column(BigInteger)     # gerçek kullanım (sum VM ram_usage_mb)
+    datastore_capacity_gb = Column(Float)  # fiziksel disk tavanı
+    host_ram_mb = Column(BigInteger)       # fiziksel RAM tavanı
+    vm_count = Column(Integer)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class VmUsageDaily(Base):
+    """
+    VM başına GÜNLÜK kullanım toplulaştırması (zombi/boşta tespiti için).
+    sync_usage_all her çalıştığında bugünün satırı güncellenir (gün içi
+    ortalama + tepe). 7 günlük pencerede tepe CPU < %2 olan çalışan VM'ler
+    'zombi' kabul edilir — tek anlık örnek yerine GERÇEK 7 günlük veri.
+    35 günden eski satırlar otomatik budanır.
+    """
+    __tablename__ = "vm_usage_daily"
+
+    id = Column(Integer, primary_key=True)
+    vm_id = Column(Integer, ForeignKey("virtual_machines.id", ondelete="CASCADE"), index=True)
+    day = Column(Date, index=True)
+    cpu_avg = Column(Float)              # gün içi ortalama CPU %
+    cpu_max = Column(Float)              # gün içi tepe CPU %
+    ram_avg_mb = Column(BigInteger)      # gün içi ortalama RAM kullanımı (MB)
+    samples = Column(Integer, default=0)
+
+    __table_args__ = (UniqueConstraint("vm_id", "day", name="uq_vm_usage_day"),)
