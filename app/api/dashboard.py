@@ -252,10 +252,10 @@ def insights(db: Session = Depends(get_db), user: User = Depends(get_current_use
         func.coalesce(func.sum(VirtualMachine.ram_mb), 0),
         func.coalesce(func.sum(VirtualMachine.disk_total_gb), 0)).filter(
         VirtualMachine.is_template == False).one()  # noqa: E712
-    alloc_ram_gb = round((g_alloc[0] or 0) / 1024, 1)
-    alloc_disk_gb = round(g_alloc[1] or 0, 1)
-    ram_cap_gb = round((db.query(func.coalesce(func.sum(Host.ram_total_mb), 0)).scalar() or 0) / 1024, 1)
-    disk_cap_gb = round(db.query(func.coalesce(func.sum(Datastore.capacity_gb), 0)).scalar() or 0, 1)
+    alloc_ram_gb = round(float(g_alloc[0] or 0) / 1024, 1)
+    alloc_disk_gb = round(float(g_alloc[1] or 0), 1)
+    ram_cap_gb = round(float(db.query(func.coalesce(func.sum(Host.ram_total_mb), 0)).scalar() or 0) / 1024, 1)
+    disk_cap_gb = round(float(db.query(func.coalesce(func.sum(Datastore.capacity_gb), 0)).scalar() or 0), 1)
 
     try:
         snaps = db.query(CapacitySnapshot).filter(
@@ -278,8 +278,8 @@ def insights(db: Session = Depends(get_db), user: User = Depends(get_current_use
     reg_ok = False
     if len(snaps) >= 3 and (snaps[-1].snap_date - snaps[0].snap_date).days >= 2:
         base = snaps[0].snap_date
-        slope_disk = _slope([((s.snap_date - base).days, s.alloc_disk_gb or 0) for s in snaps])
-        slope_ram = _slope([((s.snap_date - base).days, (s.alloc_ram_mb or 0) / 1024) for s in snaps])
+        slope_disk = _slope([((s.snap_date - base).days, float(s.alloc_disk_gb or 0)) for s in snaps])
+        slope_ram = _slope([((s.snap_date - base).days, float(s.alloc_ram_mb or 0) / 1024) for s in snaps])
         per_day_disk_gb = max(0.0, slope_disk or 0)
         per_day_ram_gb = max(0.0, slope_ram or 0)
         fc_method = "trend"
@@ -316,6 +316,7 @@ def insights(db: Session = Depends(get_db), user: User = Depends(get_current_use
         fc_window = eff
 
     def _forecast(cap_gb, alloc_gb, per_day_gb):
+        cap_gb = float(cap_gb); alloc_gb = float(alloc_gb); per_day_gb = float(per_day_gb)
         remaining = round(cap_gb - alloc_gb, 1)
         usage_pct = round(100 * alloc_gb / cap_gb, 1) if cap_gb > 0 else None
         days = None
