@@ -417,3 +417,136 @@ tr.row-focus > td { animation: rowFocusPulse 2.6s ease-out; }
   0%, 35% { background: rgba(120, 110, 230, .22); }
   100%    { background: transparent; }
 }
+
+/* ======================================================================
+   PREMIUM DASHBOARD (faz43) — koyu lacivert tema + modüler grid
+   Tümü .dash-premium altında kapsanır; diğer sayfalar etkilenmez.
+   ====================================================================== */
+.dash-premium {
+  margin: -1.4rem -1.7rem;
+  padding: 1.4rem 1.7rem 2.4rem;
+  min-height: calc(100vh - 56px);
+  color: #cdd9ea;
+  background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(59,155,255,.10), transparent 60%),
+    radial-gradient(900px 520px at 8% 0%, rgba(163,113,255,.08), transparent 55%),
+    #0b111e;
+}
+@media (max-width: 768px) { .dash-premium { margin: -1rem; padding: 1rem 1rem 2rem; } }
+
+/* ---- Üst araç çubuğu + canlılık ---- */
+.dash-toolbar { display: flex; align-items: center; gap: .6rem; margin-bottom: 1.1rem; flex-wrap: wrap; }
+.live-indicator {
+  display: flex; align-items: center; gap: .55rem; font-size: .82rem; color: #aebfd6;
+  background: rgba(63,220,143,.08); border: 1px solid rgba(63,220,143,.25);
+  padding: .38rem .8rem; border-radius: 999px;
+}
+.live-dot {
+  width: 9px; height: 9px; border-radius: 50%; background: #3fdc8f; flex-shrink: 0;
+  box-shadow: 0 0 0 0 rgba(63,220,143,.6); animation: livePulse 2.2s infinite;
+}
+@keyframes livePulse {
+  0%   { box-shadow: 0 0 0 0 rgba(63,220,143,.55); }
+  70%  { box-shadow: 0 0 0 9px rgba(63,220,143,0); }
+  100% { box-shadow: 0 0 0 0 rgba(63,220,143,0); }
+}
+.btn-edit-ghost { background: rgba(255,255,255,.05); border: 1px solid rgba(148,163,184,.25); color: #bcd0e6; }
+.btn-edit-ghost:hover { background: rgba(255,255,255,.1); color: #fff; border-color: rgba(148,163,184,.4); }
+.btn-edit-primary {
+  background: linear-gradient(135deg, #3b9bff, #6db1ff); border: none; color: #fff;
+  box-shadow: 0 4px 14px rgba(59,155,255,.4);
+}
+.btn-edit-primary:hover { filter: brightness(1.08); color: #fff; }
+
+/* ---- 12-kolon esnek grid ---- */
+.dash-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 1rem; align-items: start; }
+.dash-widget { grid-column: span var(--w, 4); position: relative; min-width: 0; }
+.dash-widget.is-hidden { display: none; }
+@media (max-width: 1100px) { .dash-widget { grid-column: span 6; } }
+@media (max-width: 640px)  { .dash-widget { grid-column: span 12 !important; } }
+
+/* ---- Premium paneller ---- */
+.dash-premium .panel {
+  background: #151f32; border: 1px solid rgba(148,163,184,.12); border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.35);
+}
+.dash-premium .panel:hover { box-shadow: 0 14px 42px rgba(0,0,0,.5); border-color: rgba(59,155,255,.3); }
+.dash-premium .card-header {
+  background: transparent; border-bottom: 1px solid rgba(148,163,184,.1);
+  color: #dce6f4; font-weight: 600;
+}
+.dash-premium .card-body { color: #cdd9ea; }
+.dash-premium .text-muted { color: #7e93b3 !important; }
+.dash-premium a.small, .dash-premium .card-header a { color: #6db1ff; }
+.dash-premium .table { --bs-table-bg: transparent; --bs-table-color: #cdd9ea; color: #cdd9ea; }
+.dash-premium .table thead th { color: #8aa0bd; background: transparent; border-color: rgba(148,163,184,.14); }
+.dash-premium .table td, .dash-premium .table th { border-color: rgba(148,163,184,.08); }
+.dash-premium .table-hover tbody tr:hover { --bs-table-hover-bg: rgba(255,255,255,.04); --bs-table-hover-color: #fff; }
+.dash-premium .list-group-item { background: transparent; color: #cdd9ea; border-color: rgba(148,163,184,.08); }
+.dash-premium .attention-item:hover { background: rgba(59,155,255,.12); }
+.dash-premium .attention-item .badge { background: rgba(59,155,255,.25); }
+.dash-premium .progress { background: rgba(148,163,184,.15); }
+
+/* ---- Özet mikro kartlar ---- */
+.dash-premium .stat-card {
+  background: linear-gradient(150deg, #172238, #121a2c); border: 1px solid rgba(148,163,184,.14);
+  border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,.3); color: #dce6f4;
+  position: relative; overflow: hidden; height: 100%;
+}
+.dash-premium .stat-card::after { display: none; }
+.dash-premium .stat-card:hover {
+  transform: translateY(-3px); border-color: rgba(59,155,255,.4); box-shadow: 0 12px 32px rgba(0,0,0,.45); color: #fff;
+}
+.dash-premium .stat-value { color: #fff; }
+.dash-premium .stat-label { color: #8aa0bd; }
+.dash-premium .mini-stat {
+  background: linear-gradient(150deg, #172238, #121a2c); border: 1px solid rgba(148,163,184,.12);
+  border-radius: 14px; color: #dce6f4; height: 100%; box-shadow: 0 6px 18px rgba(0,0,0,.25);
+}
+.dash-premium .mini-stat span { color: #fff; }
+.dash-premium .mini-stat small { color: #8aa0bd; }
+.dash-premium .mini-stat i { color: #6db1ff; }
+
+/* Sparkline arka planı (Toplam VM kartı) */
+.stat-card-spark { isolation: isolate; }
+.stat-spark { position: absolute; left: 0; right: 0; bottom: 0; top: auto;
+  width: 100% !important; height: 58% !important; opacity: .5; pointer-events: none; z-index: 0; }
+.stat-card-spark > *:not(.stat-spark) { position: relative; z-index: 1; }
+
+/* ---- Grafik kutusu (sabit yükseklik → maintainAspectRatio:false) ---- */
+.dash-premium .chart-box { position: relative; height: 244px; }
+.dash-premium .chart-box canvas { max-height: 100%; }
+
+/* ---- Kapasite Öngörüsü ---- */
+.forecast-row { padding: .55rem 0; border-bottom: 1px solid rgba(148,163,184,.08); }
+.forecast-row:last-of-type { border-bottom: none; }
+.forecast-bar { height: 8px; border-radius: 6px; overflow: hidden; }
+
+/* ---- Zombi VM'ler ---- */
+.zombie-savings {
+  background: rgba(255,194,75,.1); border: 1px solid rgba(255,194,75,.28);
+  border-radius: 10px; padding: .5rem .8rem; font-size: .82rem; color: #ecd9a6;
+}
+.zombie-savings i { color: #ffc24b; }
+
+/* ---- Düzenleme modu: kart araçları ---- */
+.widget-tools { position: absolute; top: 7px; right: 7px; display: none; gap: 4px; z-index: 6; }
+.dash-grid.editing .widget-tools { display: flex; }
+.dash-grid.editing .dash-widget {
+  outline: 1px dashed rgba(59,155,255,.45); outline-offset: 3px; border-radius: 16px;
+}
+.dash-grid.editing .dash-widget .stat-card,
+.dash-grid.editing .dash-widget > a { pointer-events: none; }
+.wt {
+  width: 27px; height: 27px; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 7px; background: rgba(11,17,30,.88); border: 1px solid rgba(148,163,184,.3);
+  color: #cdd9ea; font-size: .78rem; cursor: pointer; backdrop-filter: blur(4px); padding: 0;
+}
+.wt:hover { background: #3b9bff; color: #fff; border-color: #3b9bff; }
+.wt-drag { cursor: grab; }
+.dash-widget.dragging { opacity: .45; }
+
+/* ---- Gizli kartlar menüsü ---- */
+.dash-hidden-menu { background: #151f32; border: 1px solid rgba(148,163,184,.2); }
+.dash-hidden-menu .dropdown-item { color: #cdd9ea; }
+.dash-hidden-menu .dropdown-item:hover { background: rgba(59,155,255,.15); color: #fff; }

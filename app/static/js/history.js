@@ -9,7 +9,7 @@ const History = {
     ram_mb: 'Bellek (RAM)', cpu_count: 'vCPU', guest_os: 'İşletim Sistemi',
     disk_total_gb: 'Disk Boyutu', datastore: 'Depolama (Datastore)',
     vlans: 'VLAN / Ağ', ip_addresses: 'IP Adresi', name: 'Ad',
-    networks: 'Ağ (Köprü/Portgrup)', mac_addresses: 'MAC Adresi',
+    networks: 'Ağ (Köprü/Portgrup)', mac_addresses: 'Mac Adresi'
     cluster: 'Cluster', power_state: 'Güç Durumu', host: 'Host (Göç)',
     console: 'Konsol Erişimi',
   },

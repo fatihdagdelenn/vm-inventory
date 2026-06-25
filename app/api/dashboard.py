@@ -209,3 +209,158 @@ def summary(db: Session = Depends(get_db), user: User = Depends(get_current_user
             "os_distribution": os_dist, "platforms": last_syncs,
             "hidden_clusters": len(hidden),
             "usage_updated": usage_updated}
+
+
+def _to_float(v):
+    """ChangeHistory old/new değeri ham sayı (ram_mb=MB, disk_total_gb=GB) olarak
+    saklanır; metinden ilk sayıyı güvenle ayrıştırır."""
+    try:
+        return float(str(v).strip().split()[0].replace(",", "."))
+    except (TypeError, ValueError, IndexError):
+        return None
+
+
+@router.get("/insights")
+def insights(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """
+    Premium 'akıllı' metrikler: kapasite öngörüsü, zombi (boşta) VM'ler,
+    küçük trend serileri (sparkline) ve canlılık/senkron bilgisi.
+    Hepsi lokal DB'den; tahminler sezgisel (gerçek geçmiş veriye dayanır).
+    """
+    from datetime import datetime as _dt, timedelta as _td
+    from .clusters import hidden_cluster_names, hidden_vm_filter
+    from ..models import ChangeHistory
+    from ..core.app_settings import get_int_setting
+
+    vm_cond = hidden_vm_filter(db, VirtualMachine)
+    host_cond = hidden_vm_filter(db, Host)
+
+    def vm_q():
+        q = db.query(VirtualMachine).filter_by(is_template=False)
+        return q.filter(vm_cond) if vm_cond is not None else q
+
+    def host_q():
+        q = db.query(Host)
+        return q.filter(host_cond) if host_cond is not None else q
+
+    now = _dt.utcnow()
+    WINDOW = 30  # gün — büyüme penceresi
+
+    # Sistemin yaşı: pencereyi gerçekte geçen süreyle sınırla (genç kurulumda
+    # 30'a bölüp hızı küçültmeyelim).
+    oldest = db.query(func.min(VirtualMachine.first_seen)).scalar()
+    age_days = max(1, (now - oldest).days) if oldest else 1
+    eff_days = min(WINDOW, max(7, age_days)) if age_days >= 7 else age_days
+    win_start = now - _td(days=WINDOW)
+
+    # ---- Mevcut tahsis (allocated) ----
+    alloc = vm_q().with_entities(
+        func.coalesce(func.sum(VirtualMachine.ram_mb), 0),
+        func.coalesce(func.sum(VirtualMachine.disk_total_gb), 0)).one()
+    alloc_ram_gb = round((alloc[0] or 0) / 1024, 1)
+    alloc_disk_gb = round(alloc[1] or 0, 1)
+
+    # ---- Fiziksel kapasite (tavan) ----
+    ram_cap_mb = host_q().with_entities(
+        func.coalesce(func.sum(Host.ram_total_mb), 0)).scalar() or 0
+    ram_cap_gb = round(ram_cap_mb / 1024, 1)
+    disk_cap_gb = round(db.query(
+        func.coalesce(func.sum(Datastore.capacity_gb), 0)).scalar() or 0, 1)
+
+    # ---- Pencere içi büyüme: yeni VM tahsisi + (RAM/disk) büyütme deltaları ----
+    new_vm = vm_q().filter(VirtualMachine.first_seen >= win_start).with_entities(
+        func.coalesce(func.sum(VirtualMachine.ram_mb), 0),
+        func.coalesce(func.sum(VirtualMachine.disk_total_gb), 0)).one()
+    grow_ram_mb = float(new_vm[0] or 0)
+    grow_disk_gb = float(new_vm[1] or 0)
+
+    deltas = db.query(ChangeHistory.field, ChangeHistory.old_value,
+                      ChangeHistory.new_value).filter(
+        ChangeHistory.change_type == "updated",
+        ChangeHistory.changed_at >= win_start,
+        ChangeHistory.field.in_(["ram_mb", "disk_total_gb"])).all()
+    for field, ov, nv in deltas:
+        o, n = _to_float(ov), _to_float(nv)
+        if o is None or n is None or n <= o:
+            continue
+        if field == "ram_mb":
+            grow_ram_mb += (n - o)
+        else:
+            grow_disk_gb += (n - o)
+
+    per_day_ram_gb = (grow_ram_mb / 1024) / eff_days
+    per_day_disk_gb = grow_disk_gb / eff_days
+
+    def _forecast(cap_gb, alloc_gb, per_day_gb):
+        remaining = round(cap_gb - alloc_gb, 1)
+        usage_pct = round(100 * alloc_gb / cap_gb, 1) if cap_gb > 0 else None
+        days = None
+        if cap_gb > 0 and per_day_gb > 0.001 and remaining > 0:
+            days = int(remaining / per_day_gb)
+        status = "none"
+        if days is not None:
+            status = "crit" if days < 30 else "warn" if days < 90 else "ok"
+        elif cap_gb > 0 and remaining <= 0:
+            status = "crit"
+        return {"capacity_gb": cap_gb, "allocated_gb": alloc_gb,
+                "remaining_gb": remaining, "usage_pct": usage_pct,
+                "per_day_gb": round(per_day_gb, 2), "days_left": days,
+                "status": status}
+
+    forecast = {
+        "window_days": eff_days,
+        "disk": _forecast(disk_cap_gb, alloc_disk_gb, per_day_disk_gb),
+        "ram": _forecast(ram_cap_gb, alloc_ram_gb, per_day_ram_gb),
+    }
+
+    # ---- Zombi (boşta) VM'ler: çalışan + son kullanım örneğinde CPU < %2 ----
+    # NOT: Anlık (son örnek) kullanıma dayanır; 7 günlük ortalama için ayrı bir
+    # örnekleme tablosu gerekir (henüz yok) — bu yüzden eşik anlık örnektir.
+    IDLE_CPU = 2.0
+    zrows = vm_q().filter(
+        VirtualMachine.power_state == "running",
+        VirtualMachine.cpu_usage_pct.isnot(None),
+        VirtualMachine.cpu_usage_pct < IDLE_CPU).outerjoin(
+        Host, VirtualMachine.host_id == Host.id).with_entities(
+        VirtualMachine.name, Host.name, VirtualMachine.cpu_count,
+        VirtualMachine.ram_mb, VirtualMachine.disk_total_gb,
+        VirtualMachine.cpu_usage_pct).order_by(
+        func.coalesce(VirtualMachine.ram_mb, 0).desc()).all()
+    zombies = [{"name": r[0], "host": r[1] or "", "vcpu": r[2] or 0,
+                "ram_gb": round((r[3] or 0) / 1024, 1),
+                "disk_gb": round(r[4] or 0, 1),
+                "cpu_pct": round(r[5] or 0, 1)} for r in zrows]
+    zombie_savings = {
+        "count": len(zombies),
+        "vcpu": sum(z["vcpu"] for z in zombies),
+        "ram_gb": round(sum(z["ram_gb"] for z in zombies), 1),
+        "disk_gb": round(sum(z["disk_gb"] for z in zombies), 1),
+    }
+
+    # ---- Sparkline serileri (son 14 gün) ----
+    DAYS = 14
+    # Günlük yeni VM (first_seen) → kümülatif VM sayısı
+    fs = [r[0] for r in vm_q().with_entities(VirtualMachine.first_seen).all() if r[0]]
+    total_vms = vm_q().count()
+    spark_vms = []
+    for i in range(DAYS - 1, -1, -1):
+        day_end = (now - _td(days=i)).replace(hour=23, minute=59, second=59)
+        created_after = sum(1 for d in fs if d > day_end)
+        spark_vms.append(max(0, total_vms - created_after))
+    # Günlük değişiklik aktivitesi
+    spark_activity = []
+    for i in range(DAYS - 1, -1, -1):
+        d0 = (now - _td(days=i)).replace(hour=0, minute=0, second=0, microsecond=0)
+        d1 = d0 + _td(days=1)
+        spark_activity.append(db.query(ChangeHistory).filter(
+            ChangeHistory.changed_at >= d0, ChangeHistory.changed_at < d1).count())
+
+    # ---- Canlılık / senkron bilgisi ----
+    last_syncs = [p.last_sync for p in db.query(Platform).all() if p.last_sync]
+    last_sync = to_iso(max(last_syncs)) if last_syncs else None
+    sync_interval = get_int_setting(db, "sync_interval_minutes", 15)
+
+    return {"forecast": forecast,
+            "zombies": zombies[:10], "zombie_savings": zombie_savings,
+            "spark": {"vms": spark_vms, "activity": spark_activity},
+            "live": {"last_sync": last_sync, "interval_minutes": sync_interval}}
