@@ -29,7 +29,10 @@ logger = logging.getLogger("sync")
 # Değişiklik geçmişinde izlenen VM alanları
 TRACKED_VM_FIELDS = ["name", "ip_addresses", "guest_os", "cpu_count", "ram_mb",
                      "disk_total_gb", "power_state", "cluster", "datastore", "vlans",
-                     "networks", "mac_addresses"]
+                     "networks"]
+# NOT: mac_addresses bilerek İZLENMEZ — sık MAC oynaması (geçici/otomatik MAC,
+# guest.net gürültüsü) Değişiklik Geçmişi'ni kirletiyordu. MAC değeri VM kaydında
+# saklanmaya/gösterilmeye devam eder; yalnızca değişiklik kaydı tutulmaz.
 TRACKED_HOST_FIELDS = ["name", "mgmt_ip", "cpu_cores", "ram_total_mb", "cluster", "status"]
 
 # Misafir agent'ı / config sorgusu geçici başarısız olunca bu alanlar "iyi" değerden

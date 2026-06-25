@@ -9,7 +9,7 @@ const History = {
     ram_mb: 'Bellek (RAM)', cpu_count: 'vCPU', guest_os: 'İşletim Sistemi',
     disk_total_gb: 'Disk Boyutu', datastore: 'Depolama (Datastore)',
     vlans: 'VLAN / Ağ', ip_addresses: 'IP Adresi', name: 'Ad',
-    networks: 'Ağ (Köprü/Portgrup)', mac_addresses: 'Mac Adresi'
+    networks: 'Ağ (Köprü/Portgrup)',
     cluster: 'Cluster', power_state: 'Güç Durumu', host: 'Host (Göç)',
     console: 'Konsol Erişimi',
   },
@@ -140,13 +140,30 @@ const History = {
         '<div class="small text-muted">' + (r.entity_type === 'vm' ? 'VM' : 'Host') + '</div></td>' +
       '<td>' + History.categoryCell(r) + '</td>' +
       '<td>' + History.opCell(r) + '</td>' +
-      '<td>' + History.valueCell(r) + '</td>' +
-      '<td class="small">' + History.userCell(r) + '</td>' +
+      '<td class="val-cell">' + History.valueCell(r) + '</td>' +
+      '<td class="small usr-cell">' + History.userCell(r) + '</td>' +
       '</tr>').join('');
   },
 };
 
 (function () {
+  // Premium tema — Dashboard ile aynı tercihi paylaşır (vmi-dash-theme).
+  const light = localStorage.getItem('vmi-dash-theme') === 'light';
+  document.body.classList.add('dash-page');
+  document.body.classList.toggle('dash-light', light);
+  const w = document.getElementById('histPremium');
+  if (w) w.classList.toggle('theme-light', light);
+  const ti = document.querySelector('#btnTheme i');
+  if (ti) ti.className = light ? 'bi bi-sun' : 'bi bi-moon-stars';
+  const bt = document.getElementById('btnTheme');
+  if (bt) bt.addEventListener('click', () => {
+    localStorage.setItem('vmi-dash-theme', light ? 'dark' : 'light');
+    location.reload();
+  });
+  const controls = document.getElementById('dashControls');
+  const topRight = document.querySelector('.topbar .ms-auto');
+  if (controls && topRight) topRight.insertBefore(controls, topRight.firstChild);
+
   document.getElementById('histSearch')
     .addEventListener('input', App.debounce(History.load, 300));
   document.getElementById('histEntity').addEventListener('change', History.load);

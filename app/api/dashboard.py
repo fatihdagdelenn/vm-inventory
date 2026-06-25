@@ -257,9 +257,12 @@ def insights(db: Session = Depends(get_db), user: User = Depends(get_current_use
     ram_cap_gb = round((db.query(func.coalesce(func.sum(Host.ram_total_mb), 0)).scalar() or 0) / 1024, 1)
     disk_cap_gb = round(db.query(func.coalesce(func.sum(Datastore.capacity_gb), 0)).scalar() or 0, 1)
 
-    snaps = db.query(CapacitySnapshot).filter(
-        CapacitySnapshot.snap_date >= (now.date() - _td(days=30))).order_by(
-        CapacitySnapshot.snap_date).all()
+    try:
+        snaps = db.query(CapacitySnapshot).filter(
+            CapacitySnapshot.snap_date >= (now.date() - _td(days=30))).order_by(
+            CapacitySnapshot.snap_date).all()
+    except Exception:
+        snaps = []     # tablo/şema sorunu → sezgisel fallback'e düş (500 verme)
 
     def _slope(points):
         """En küçük kareler eğimi (birim: y / gün). points=[(gun_index, y)]."""
@@ -336,9 +339,12 @@ def insights(db: Session = Depends(get_db), user: User = Depends(get_current_use
     # Yeterli günlük veri yoksa anlık (son örnek) kullanıma düşer.
     IDLE_CPU = 2.0
     since = now.date() - _td(days=7)
-    daily = db.query(VmUsageDaily.vm_id, func.max(VmUsageDaily.cpu_max),
-                     func.count(VmUsageDaily.id)).filter(
-        VmUsageDaily.day >= since).group_by(VmUsageDaily.vm_id).all()
+    try:
+        daily = db.query(VmUsageDaily.vm_id, func.max(VmUsageDaily.cpu_max),
+                         func.count(VmUsageDaily.id)).filter(
+            VmUsageDaily.day >= since).group_by(VmUsageDaily.vm_id).all()
+    except Exception:
+        daily = []     # tablo/şema sorunu → anlık örneğe düş (500 verme)
     zombie_basis = "7d" if daily else "instant"
     idle_ids = [vid for vid, cmax, cnt in daily if (cmax or 0) < IDLE_CPU and (cnt or 0) >= 3]
 

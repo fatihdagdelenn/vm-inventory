@@ -615,3 +615,36 @@ body.dash-page.dash-light .btn-edit-ghost:hover { background: #f0f4fa; color: #1
 .dash-premium.theme-light .dash-hidden-menu { background: #fff; border-color: #e4e9f0; }
 .dash-premium.theme-light .dash-hidden-menu .dropdown-item { color: #33425a; }
 .dash-premium.theme-light .dash-hidden-menu .dropdown-item:hover { background: rgba(47,129,247,.1); color: var(--ink); }
+
+/* ======================================================================
+   DEĞİŞİKLİK GEÇMİŞİ — faz45: premium + sütun sarma
+   ====================================================================== */
+/* "Alan / Değer" uzun değerlerde sağa taşıp "Kullanıcı"yı itmesin → sar */
+.hist-table td.val-cell {
+  max-width: 340px; white-space: normal; word-break: break-word; overflow-wrap: anywhere;
+}
+.hist-table td.usr-cell {
+  white-space: normal; min-width: 150px; max-width: 230px;
+  word-break: break-word; overflow-wrap: anywhere;
+}
+.hist-table td.val-cell .small { line-height: 1.35; }
+
+/* Koyu temada form girişleri (geçmiş sayfası filtreleri) */
+.dash-premium:not(.theme-light) .form-control,
+.dash-premium:not(.theme-light) .form-select {
+  background: #0f1828; border-color: rgba(148,163,184,.2); color: #dce6f4;
+}
+.dash-premium:not(.theme-light) .form-control:focus,
+.dash-premium:not(.theme-light) .form-select:focus {
+  background: #0f1828; border-color: rgba(59,155,255,.55); color: #fff;
+  box-shadow: 0 0 0 .2rem rgba(59,155,255,.18);
+}
+.dash-premium:not(.theme-light) .form-control::placeholder { color: #6f84a3; }
+.dash-premium:not(.theme-light) .search-box i { color: #6f84a3; }
+/* Geçmiş tablosundaki açık-zeminli rozetler koyu temada okunur kalsın */
+.dash-premium:not(.theme-light) .hist-table .badge.text-bg-light {
+  background: #1d293f !important; color: #cdd9ea !important; border-color: rgba(148,163,184,.25) !important;
+}
+.dash-premium:not(.theme-light) .hist-table code {
+  background: rgba(148,163,184,.12); color: #aebfd6;
+}

@@ -1,47 +1,59 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="d-flex flex-wrap mb-3 gap-2 align-items-center">
-  <div class="search-box flex-grow-1" style="max-width:360px">
-    <i class="bi bi-search"></i>
-    <input type="text" id="histSearch" class="form-control" placeholder="VM veya host adı ara…">
+<div class="dash-premium" id="histPremium">
+
+  <!-- JS ile topbar'a taşınır (tema toggle) -->
+  <div id="dashControls" class="dash-controls">
+    <button class="btn btn-sm btn-edit-ghost" id="btnTheme" title="Açık / Koyu tema">
+      <i class="bi bi-moon-stars"></i>
+    </button>
   </div>
-  <select id="histEntity" class="form-select form-select-sm w-auto">
-    <option value="">Tüm Varlıklar</option><option value="vm">VM</option><option value="host">Host</option>
-  </select>
-  <select id="histCategory" class="form-select form-select-sm w-auto">
-    <option value="">Tüm Kategoriler</option>
-    <option value="hardware">Donanım (vCPU/RAM)</option>
-    <option value="disk">Disk &amp; Depolama</option>
-    <option value="network">Ağ</option>
-    <option value="power">Güç</option>
-    <option value="migrate">Göç (Migrate)</option>
-    <option value="lifecycle">Yaşam Döngüsü</option>
-    <option value="os">İşletim Sistemi</option>
-    <option value="console">Konsol Erişimi</option>
-  </select>
-  <span id="histCount" class="text-muted small ms-auto"></span>
-</div>
-<div class="card panel">
-  <div class="table-responsive">
-    <table class="table table-sm table-hover align-middle mb-0">
-      <thead><tr>
-        <th>Tarih</th>
-        <th>Kaynak</th>
-        <th>Varlık</th>
-        <th>Kategori</th>
-        <th>İşlem</th>
-        <th>Alan / Değer</th>
-        <th>Kullanıcı</th>
-      </tr></thead>
-      <tbody id="histBody"><tr><td colspan="7" class="text-center text-muted p-4">Yükleniyor…</td></tr></tbody>
-    </table>
+
+  <div class="d-flex flex-wrap mb-3 gap-2 align-items-center">
+    <div class="search-box flex-grow-1" style="max-width:360px">
+      <i class="bi bi-search"></i>
+      <input type="text" id="histSearch" class="form-control" placeholder="VM veya host adı ara…">
+    </div>
+    <select id="histEntity" class="form-select form-select-sm w-auto">
+      <option value="">Tüm Varlıklar</option><option value="vm">VM</option><option value="host">Host</option>
+    </select>
+    <select id="histCategory" class="form-select form-select-sm w-auto">
+      <option value="">Tüm Kategoriler</option>
+      <option value="hardware">Donanım (vCPU/RAM)</option>
+      <option value="disk">Disk &amp; Depolama</option>
+      <option value="network">Ağ</option>
+      <option value="power">Güç</option>
+      <option value="migrate">Göç (Migrate)</option>
+      <option value="lifecycle">Yaşam Döngüsü</option>
+      <option value="os">İşletim Sistemi</option>
+      <option value="console">Konsol Erişimi</option>
+    </select>
+    <span id="histCount" class="text-muted small ms-auto"></span>
   </div>
+
+  <div class="card panel">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-0 hist-table">
+        <thead><tr>
+          <th>Tarih</th>
+          <th>Kaynak</th>
+          <th>Varlık</th>
+          <th>Kategori</th>
+          <th>İşlem</th>
+          <th>Alan / Değer</th>
+          <th>Kullanıcı</th>
+        </tr></thead>
+        <tbody id="histBody"><tr><td colspan="7" class="text-center text-muted p-4">Yükleniyor…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <p class="text-muted small mt-2 mb-0">
+    <i class="bi bi-info-circle"></i>
+    "Kullanıcı" bilgisi platformun kendi görev/olay kaydından gelir (uygulama kullanıcısı değil).
+    Düzeltmeden önce kaydedilmiş eski satırlarda kullanıcı "—" kalabilir; istemci IP/User-Agent
+    bilgisini vCenter ve Proxmox görev kayıtları genellikle vermez.
+  </p>
 </div>
-<p class="text-muted small mt-2 mb-0">
-  <i class="bi bi-info-circle"></i>
-  "Kullanıcı" bilgisi platformun kendi görev/olay kaydından gelir (uygulama kullanıcısı değil).
-  Düzeltmeden önce kaydedilmiş eski satırlarda kullanıcı "—" kalabilir; istemci IP/User-Agent
-  bilgisini vCenter ve Proxmox görev kayıtları genellikle vermez.
-</p>
 {% endblock %}
 {% block scripts %}<script src="/static/js/history.js?v={{ asset_version }}"></script>{% endblock %}

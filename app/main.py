@@ -60,6 +60,16 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     from .database import ensure_schema
     ensure_schema(engine)   # mevcut tablolara yeni kolonları ekle (hafif migrasyon)
+    # Eski "mac_addresses" değişiklik kayıtlarını temizle (artık izlenmiyor — kirli veri)
+    try:
+        from .models import ChangeHistory
+        _db = SessionLocal()
+        n = _db.query(ChangeHistory).filter(ChangeHistory.field == "mac_addresses").delete()
+        _db.commit(); _db.close()
+        if n:
+            logging.info("Temizlendi: %d adet mac_addresses degisiklik kaydi silindi", n)
+    except Exception as exc:
+        logging.warning("mac_addresses temizligi atlandi: %s", exc)
     _create_default_admin()
     start_scheduler()
     yield
