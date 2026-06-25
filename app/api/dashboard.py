@@ -274,64 +274,50 @@ def insights(db: Session = Depends(get_db), user: User = Depends(get_current_use
         denom = n * sxx - sx * sx
         return (n * sxy - sx * sy) / denom if denom else None
 
-    # Tercih: tarihsel DOĞRUSAL REGRESYON (>=3 nokta, >=2 gün yayılım).
-    reg_ok = False
-    if len(snaps) >= 3 and (snaps[-1].snap_date - snaps[0].snap_date).days >= 2:
+    # Güvenilir tahmin için snapshot serisi üzerinde DOĞRUSAL REGRESYON.
+    # Eşik bilerek YÜKSEK: en az 4 nokta + en az 4 gün yayılım. Aksi halde
+    # "veri toplanıyor" denir — taze kurulumda first_seen tüm VM'leri "yeni"
+    # gibi gösterip alarmcı (ör. "22 gün") tahmin ürettiği için o yöntem KULLANILMAZ.
+    MIN_PTS, MIN_SPAN = 4, 4
+    span = (snaps[-1].snap_date - snaps[0].snap_date).days if len(snaps) >= 2 else 0
+    reg_ok = len(snaps) >= MIN_PTS and span >= MIN_SPAN
+    per_day_disk_gb = per_day_ram_gb = 0.0
+    if reg_ok:
         base = snaps[0].snap_date
         slope_disk = _slope([((s.snap_date - base).days, float(s.alloc_disk_gb or 0)) for s in snaps])
         slope_ram = _slope([((s.snap_date - base).days, float(s.alloc_ram_mb or 0) / 1024) for s in snaps])
         per_day_disk_gb = max(0.0, slope_disk or 0)
         per_day_ram_gb = max(0.0, slope_ram or 0)
         fc_method = "trend"
-        fc_window = (snaps[-1].snap_date - snaps[0].snap_date).days
-        reg_ok = True
+        fc_window = span
+    else:
+        fc_method = "collecting"
+        fc_window = span
 
-    if not reg_ok:
-        # Fallback (yeni kurulum): first_seen + ChangeHistory büyütme deltaları (sezgisel).
-        oldest = db.query(func.min(VirtualMachine.first_seen)).scalar()
-        age_days = max(1, (now - oldest).days) if oldest else 1
-        eff = min(30, max(7, age_days)) if age_days >= 7 else age_days
-        win_start = now - _td(days=30)
-        nv = db.query(
-            func.coalesce(func.sum(VirtualMachine.ram_mb), 0),
-            func.coalesce(func.sum(VirtualMachine.disk_total_gb), 0)).filter(
-            VirtualMachine.is_template == False,                       # noqa: E712
-            VirtualMachine.first_seen >= win_start).one()
-        grow_ram_mb = float(nv[0] or 0); grow_disk_gb = float(nv[1] or 0)
-        for field, ov, nvv in db.query(
-                ChangeHistory.field, ChangeHistory.old_value, ChangeHistory.new_value).filter(
-                ChangeHistory.change_type == "updated",
-                ChangeHistory.changed_at >= win_start,
-                ChangeHistory.field.in_(["ram_mb", "disk_total_gb"])).all():
-            o, n = _to_float(ov), _to_float(nvv)
-            if o is None or n is None or n <= o:
-                continue
-            if field == "ram_mb":
-                grow_ram_mb += (n - o)
-            else:
-                grow_disk_gb += (n - o)
-        per_day_ram_gb = (grow_ram_mb / 1024) / eff
-        per_day_disk_gb = grow_disk_gb / eff
-        fc_method = "estimate"
-        fc_window = eff
+    days_collected = len(snaps)
+    days_needed = MIN_SPAN + 1
 
     def _forecast(cap_gb, alloc_gb, per_day_gb):
         cap_gb = float(cap_gb); alloc_gb = float(alloc_gb); per_day_gb = float(per_day_gb)
         remaining = round(cap_gb - alloc_gb, 1)
         usage_pct = round(100 * alloc_gb / cap_gb, 1) if cap_gb > 0 else None
         days = None
-        if cap_gb > 0 and per_day_gb > 0.001 and remaining > 0:
+        if fc_method == "trend" and cap_gb > 0 and per_day_gb > 0.01 and remaining > 0:
             days = int(remaining / per_day_gb)
-        status = "none"
-        if days is not None:
+        if fc_method == "collecting":
+            status = "collecting"
+        elif days is not None:
             status = "crit" if days < 30 else "warn" if days < 90 else "ok"
         elif cap_gb > 0 and remaining <= 0:
             status = "crit"
+        else:
+            status = "stable"        # trend var ama kayda değer büyüme yok
         return {"capacity_gb": cap_gb, "allocated_gb": alloc_gb, "remaining_gb": remaining,
                 "usage_pct": usage_pct, "per_day_gb": round(per_day_gb, 2),
                 "days_left": days, "status": status}
 
     forecast = {"window_days": fc_window, "method": fc_method,
+                "days_collected": days_collected, "days_needed": days_needed,
                 "disk": _forecast(disk_cap_gb, alloc_disk_gb, per_day_disk_gb),
                 "ram": _forecast(ram_cap_gb, alloc_ram_gb, per_day_ram_gb)}
 

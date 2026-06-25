@@ -147,23 +147,6 @@ const History = {
 };
 
 (function () {
-  // Premium tema — Dashboard ile aynı tercihi paylaşır (vmi-dash-theme).
-  const light = localStorage.getItem('vmi-dash-theme') === 'light';
-  document.body.classList.add('dash-page');
-  document.body.classList.toggle('dash-light', light);
-  const w = document.getElementById('histPremium');
-  if (w) w.classList.toggle('theme-light', light);
-  const ti = document.querySelector('#btnTheme i');
-  if (ti) ti.className = light ? 'bi bi-sun' : 'bi bi-moon-stars';
-  const bt = document.getElementById('btnTheme');
-  if (bt) bt.addEventListener('click', () => {
-    localStorage.setItem('vmi-dash-theme', light ? 'dark' : 'light');
-    location.reload();
-  });
-  const controls = document.getElementById('dashControls');
-  const topRight = document.querySelector('.topbar .ms-auto');
-  if (controls && topRight) topRight.insertBefore(controls, topRight.firstChild);
-
   document.getElementById('histSearch')
     .addEventListener('input', App.debounce(History.load, 300));
   document.getElementById('histEntity').addEventListener('change', History.load);

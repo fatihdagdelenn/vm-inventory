@@ -220,20 +220,37 @@ function barGrad(chart, base, horizontal) {
     const STAT = {ok: ['text-success', 'bi-check-circle', 'Sağlıklı'],
                   warn: ['text-warning', 'bi-exclamation-triangle', 'Yaklaşıyor'],
                   crit: ['text-danger', 'bi-exclamation-octagon', 'Kritik'],
+                  stable: ['text-success', 'bi-check-circle', 'Kararlı'],
+                  collecting: ['text-info', 'bi-hourglass-split', 'Veri toplanıyor'],
                   none: ['text-muted', 'bi-dash-circle', 'Yetersiz veri']};
+    const fc = ins.forecast;
     const fcWin = document.getElementById('fc-window');
-    if (fcWin) fcWin.innerHTML = ins.forecast.method === 'trend'
-      ? `<i class="bi bi-activity"></i> ${ins.forecast.window_days} günlük gerçek trend`
-      : `<i class="bi bi-hourglass-split"></i> ön tahmin · veri birikiyor`;
+    if (fcWin) fcWin.innerHTML = fc.method === 'trend'
+      ? `<i class="bi bi-activity"></i> ${fc.window_days} günlük gerçek trend`
+      : `<i class="bi bi-hourglass-split"></i> veri toplanıyor (${fc.days_collected}/${fc.days_needed} gün)`;
 
+    // Gün sayısını insanca biçimle (çok büyükse abartılı görünmesin)
+    const daysHuman = (d) => {
+      if (d >= 1825) return '5+ yıl';
+      if (d >= 365) return `~${(d / 365).toFixed(1).replace('.0', '')} yıl`;
+      if (d >= 60) return `~${Math.round(d / 30)} ay`;
+      return `~${d} gün`;
+    };
     const fcRow = (title, icon, f) => {
-      const [cls, bi, txt] = STAT[f.status];
-      const daysTxt = f.days_left != null
-        ? `<strong class="${cls}">~${f.days_left} gün</strong> sonra dolabilir`
-        : (f.status === 'crit' ? `<strong class="text-danger">kapasite aşıldı</strong>`
-                               : `<span class="text-muted">büyüme verisi yetersiz</span>`);
+      const [cls, bi, txt] = STAT[f.status] || STAT.none;
+      let daysTxt;
+      if (f.status === 'collecting')
+        daysTxt = `<span class="text-info"><i class="bi bi-hourglass-split"></i> Trend için veri toplanıyor — birkaç gün içinde tahmin hazır olacak.</span>`;
+      else if (f.status === 'crit' && f.days_left == null)
+        daysTxt = `<strong class="text-danger">Kapasite aşıldı (aşırı tahsis).</strong>`;
+      else if (f.days_left != null)
+        daysTxt = `Mevcut hıza göre <strong class="${cls}">${daysHuman(f.days_left)}</strong> sonra dolabilir`;
+      else
+        daysTxt = `<span class="text-success">Kayda değer büyüme yok — kapasite kararlı.</span>`;
       const pct = f.usage_pct != null ? f.usage_pct : 0;
       const barCls = pct >= 90 ? 'bg-danger' : pct >= 75 ? 'bg-warning' : 'bg-info';
+      const rate = f.status === 'trend' || f.per_day_gb > 0
+        ? `<span>+${f.per_day_gb} GB/gün</span>` : '<span></span>';
       return `<div class="forecast-row">
         <div class="d-flex align-items-center mb-1">
           <i class="bi ${icon} me-2"></i><strong>${title}</strong>
@@ -241,14 +258,17 @@ function barGrad(chart, base, horizontal) {
         <div class="progress forecast-bar"><div class="progress-bar ${barCls}" style="width:${Math.min(100,pct)}%"></div></div>
         <div class="d-flex justify-content-between small text-muted mt-1">
           <span>${f.allocated_gb} / ${f.capacity_gb} GB tahsisli (%${pct})</span>
-          <span>+${f.per_day_gb} GB/gün</span></div>
+          ${rate}</div>
         <div class="small mt-1">${daysTxt}</div></div>`;
     };
     const fb = document.getElementById('forecastBody');
-    if (fb) fb.innerHTML = fcRow('Disk (Datastore)', 'bi-device-hdd', ins.forecast.disk) +
-                           fcRow('RAM (Fiziksel)', 'bi-memory', ins.forecast.ram) +
-      `<div class="text-muted fst-italic" style="font-size:.72rem">Tahmin; mevcut büyüme hızının
-       doğrusal süreceği varsayılır. Gizli cluster'lar hariç tutulur.</div>`;
+    if (fb) fb.innerHTML = fcRow('Disk (Datastore)', 'bi-device-hdd', fc.disk) +
+                           fcRow('RAM (Fiziksel)', 'bi-memory', fc.ram) +
+      `<div class="text-muted fst-italic" style="font-size:.72rem">` +
+      (fc.method === 'trend'
+        ? `Son ${fc.window_days} günün gerçek tahsis değişimine göre doğrusal projeksiyon.`
+        : `Tahmin, günlük kapasite anlık görüntüleri biriktikçe (${fc.days_needed} gün) otomatik etkinleşir.`) +
+      `</div>`;
 
     /* Zombi VM'ler */
     const zc = document.getElementById('zombieCount');
@@ -434,8 +454,6 @@ const DashGrid = {
     DashGrid.initDnD();
     document.getElementById('btnEditDash').addEventListener('click', DashGrid.toggleEdit);
     document.getElementById('btnResetDash').addEventListener('click', DashGrid.reset);
-    const bt = document.getElementById('btnTheme');
-    if (bt) bt.addEventListener('click', DashGrid.toggleTheme);
     // Kart araç düğmeleri (event delegation)
     document.getElementById('dashGrid').addEventListener('click', e => {
       const w = e.target.closest('.dash-widget'); if (!w || !DashGrid.editing) return;
@@ -444,25 +462,12 @@ const DashGrid = {
     });
   },
 
-  /* Dashboard kontrollerini paylaşılan üst çubuğa (topbar) taşı → tek satır,
-     beyaz/çift buton yok. Ayrıca sayfayı koyu/açık temaya hazırla. */
+  /* Dashboard'a özel kontrolleri (canlı/gizli/sıfırla/düzenle) paylaşılan üst
+     çubuğa taşı → tek satır. Tema artık global (base.html + App.toggleTheme). */
   mountChrome() {
-    const light = localStorage.getItem('vmi-dash-theme') === 'light';
-    document.body.classList.add('dash-page');
-    document.body.classList.toggle('dash-light', light);
-    const prem = document.getElementById('dashPremium');
-    if (prem) prem.classList.toggle('theme-light', light);
-    const ti = document.querySelector('#btnTheme i');
-    if (ti) ti.className = light ? 'bi bi-sun' : 'bi bi-moon-stars';
     const controls = document.getElementById('dashControls');
     const topRight = document.querySelector('.topbar .ms-auto');
     if (controls && topRight) topRight.insertBefore(controls, topRight.firstChild);
-  },
-
-  toggleTheme() {
-    const light = localStorage.getItem('vmi-dash-theme') === 'light';
-    localStorage.setItem('vmi-dash-theme', light ? 'dark' : 'light');
-    location.reload();   // grafikler yeni tema renkleriyle yeniden çizilsin
   },
 };
 DashGrid.init();

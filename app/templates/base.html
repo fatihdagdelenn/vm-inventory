@@ -10,6 +10,15 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <link href="https://cdn.datatables.net/1.13.8/css/dataTables.bootstrap5.min.css" rel="stylesheet">
   <link href="/static/css/custom.css?v={{ asset_version }}" rel="stylesheet">
+  <script>
+    /* Tema sınıfını boyamadan önce <html>'e ekle (flash önleme). Varsayılan: koyu. */
+    (function () {
+      try {
+        var t = localStorage.getItem('vmi-dash-theme');
+        document.documentElement.classList.add(t === 'light' ? 'theme-light' : 'theme-dark');
+      } catch (e) { document.documentElement.classList.add('theme-dark'); }
+    })();
+  </script>
 </head>
 <body>
 <div class="layout">
@@ -51,6 +60,9 @@
       </button>
       <h1 class="page-title">{{ title }}</h1>
       <div class="ms-auto d-flex align-items-center gap-2">
+        <button class="btn btn-sm btn-theme-toggle" id="btnThemeGlobal" title="Açık / Koyu tema" type="button">
+          <i class="bi bi-moon-stars"></i>
+        </button>
         {% if user.role != 'viewer' %}
         <button class="btn btn-sm btn-outline-primary" onclick="App.syncAll(this)">
           <i class="bi bi-arrow-repeat"></i> <span class="d-none d-md-inline">Tümünü Yenile</span>

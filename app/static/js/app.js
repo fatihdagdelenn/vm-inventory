@@ -262,3 +262,19 @@ const App = {
     } catch (e) { /* hata gösterildi */ }
   },
 };
+
+/* ===== Global tema (tüm sayfalar): koyu/açık geçiş + kalıcı tercih ===== */
+App.toggleTheme = function () {
+  const next = localStorage.getItem('vmi-dash-theme') === 'light' ? 'dark' : 'light';
+  try { localStorage.setItem('vmi-dash-theme', next); } catch (e) {}
+  location.reload();
+};
+(function () {
+  const btn = document.getElementById('btnThemeGlobal');
+  if (!btn) return;
+  const light = localStorage.getItem('vmi-dash-theme') === 'light';
+  const i = btn.querySelector('i');
+  if (i) i.className = light ? 'bi bi-sun' : 'bi bi-moon-stars';
+  btn.title = light ? 'Koyu temaya geç' : 'Açık temaya geç';
+  btn.addEventListener('click', App.toggleTheme);
+})();
