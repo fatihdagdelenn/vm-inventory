@@ -25,6 +25,7 @@
 - [Kurulum (Adım Adım)](#-kurulum-adım-adım)
 - [İlk Yapılandırma](#-i̇lk-yapılandırma)
 - [Kullanım Kılavuzu](#-kullanım-kılavuzu)
+- [Değişiklik Geçmişi: Kim, Neyi, Ne Zaman?](#-değişiklik-geçmişi-kim-neyi-ne-zaman)
 - [Arama Söz Dizimi](#-arama-söz-dizimi)
 - [Roller ve Yetkiler](#-roller-ve-yetkiler)
 - [LDAP / Active Directory](#-ldap--active-directory-opsiyonel)
@@ -52,7 +53,9 @@ Bu soruların hepsi tek arama kutusundan, saniyeden kısa sürede yanıtlanır. 
 | 📊 **Detaylı dashboard** | Kaynak toplamları, OS/ortam/cluster dağılımları, host CPU-RAM grafikleri, depolama, "dikkat gerektirenler" |
 | 🔗 **Çoklu platform** | Sınırsız sayıda vCenter + Proxmox (QEMU VM **ve LXC konteyner**) aynı envanterde |
 | 📄 **Raporlama** | Filtrelenmiş Excel / CSV / PDF; her gün otomatik üretilen zamanlanmış raporlar |
-| 🕓 **Değişiklik takibi** | Her senkronizasyonda fark analizi: ne, ne zaman, neyden neye değişti |
+| 🕵️ **Değişiklik takibi + "kim yaptı"** | Her senkronizasyonda fark analizi: ne, ne zaman, neyden neye (eski→yeni) değişti **ve kim yaptı**. Kategorilere ayrılır (Donanım/Disk/Ağ/Güç/Göç/Yaşam Döngüsü); kaynak (platform/cluster/host/VM ID), işlem tipi ve kullanıcı gösterilir. "Kim" bilgisi platformun kendi görev/olay kaydından gelir (vCenter olayları, Proxmox görev + cluster log) |
+| 🔀 **Canlı göç & yaşam döngüsü** | vMotion / Proxmox göç **hangi host'tan hangi host'a** + kullanıcı; VM oluşturma, **klonlama**, silme, şablona dönüştürme ayrı kategoride izlenir |
+| 🖥️ **Konsol erişimi denetimi** *(opsiyonel)* | VM konsoluna (noVNC/SPICE/MKS) erişen kullanıcılar — Yönetim'den açılır (varsayılan kapalı), 30 dk pencereyle toplanır |
 | 👁️ **Cluster göster/gizle** | Eski/test cluster'ları — standalone host'lardaki "(Cluster'sız)" VM'ler dahil — dashboard sayılarından tek anahtarla çıkarın; veri silinmez |
 | ⚡ **Anlık kullanım oranları** | VM ve host CPU/RAM kullanımı + gerçek disk doluluğu (thin-provision farkındalıklı); hafif görevle ~3 dk'da bir ve her açılışta tazelenir |
 | 🐧 **Tam OS sürümü** | VMware'de ayrıntılı misafir OS verisi (ör. *"Ubuntu 24.04.1 LTS"*) — vSphere 8.0 U2+ ve VMware Tools 11.2+ ile; Proxmox'ta QEMU Guest Agent ile |
@@ -95,7 +98,7 @@ Bu soruların hepsi tek arama kutusundan, saniyeden kısa sürede yanıtlanır. 
 | Yazılım | Docker + Docker Compose **veya** Python 3.11+ |
 | Ağ | Sunucudan vCenter'a `443/tcp`, Proxmox'a `8006/tcp` erişimi |
 | vCenter | 6.7+ (8.x test edildi) — salt-okunur hesap yeterli |
-| Proxmox | 7.x / 8.x — `PVEAuditor` rollü API token yeterli |
+| Proxmox | 7.x / 8.x — API token; temel envanter için `PVEAuditor` yeterli. **"Kim yaptı" / yedek içeriği** için ek yetki: `Sys.Syslog` + `Datastore.Audit` (aşağıda) |
 | Misafirler | IP/OS detayı için: VMware Tools veya QEMU Guest Agent *(opsiyonel)* |
 
 ## 🚀 Kurulum (Adım Adım)
@@ -223,6 +226,23 @@ pveum user token add svc-envanter@pve envanter --privsep 0
 
 > ⚠️ `--privsep 0` zorunludur; verilmezse token VM'leri göremez (sadece node adları gelir).
 
+**(Önerilen) "Kim yaptı" ve yedek içeriği için ek yetkiler.** `PVEAuditor` içinde `Sys.Audit`
+ve `VM.Audit` vardır (görev kaydını ve VM'leri okur), ama **`Sys.Syslog` ve `Datastore.Audit`
+yoktur** ve PVEAuditor yerleşik rol olduğundan düzenlenemez. Bunları ayrı küçük bir rolle ekleyin:
+
+```bash
+# Sys.Syslog = config (RAM/CPU/ağ) değişikliklerinin KULLANICISI cluster log'dan okunur.
+# Datastore.Audit = yedek (backup) içeriği listelenir.
+pveum role add EnvanterEk -privs "Sys.Syslog Datastore.Audit"
+pveum acl modify / --users svc-envanter@pve --roles EnvanterEk
+# Token ayrıcalık ayrımı (privsep) AÇIKSA aynı ACL'yi token'a da verin:
+pveum acl modify / --tokens 'svc-envanter@pve!envanter' --roles EnvanterEk
+```
+
+> ℹ️ Bu ek yetki olmadan envanter çalışır; yalnızca Değişiklik Geçmişi'nde **config
+> değişikliklerinin "Kullanıcı" sütunu boş ("—")** kalır ve yedek içerik dökümü gelmez.
+> vCenter tarafında "kim yaptı" için ek bir şey gerekmez (**Read-only / System.View** yeterli).
+
 Arayüzde **Platformlar → Platform Ekle**:
 
 | Alan | Değer |
@@ -254,9 +274,51 @@ Dashboard'daki **"Dikkat Gerektirenler"** kartından *"Agent/Tools kurulu olmaya
 | **Host'lar** | ESXi/PVE node'ları tek tabloda: Host adı, Yönetim IP, OS/hipervizör sürümü, CPU modeli, çekirdek sayısı, CPU/RAM/Disk kullanım çubukları, cluster, VM sayısı, çalışma süresi (uptime) ve durum. **Tüm sütun başlıkları tıklanabilir** — metin (A-Z), sayısal, IP ve durum bazlı sıralama. **VM sayısına tıklayınca** o host'taki VM'leri (ad, IP, güç durumu, anlık CPU/RAM) listeleyen bir pencere açılır; listedeki bir VM'e tıklayınca **aynı sayfada** VM detay paneli açılır (Sanal Makineler ekranındaki panelle aynı) |
 | **Ağlar** | Port group / bridge / SDN vnet ve host fiziksel kartları (NIC). Açılır-kapanır gruplama: Host'a göre, Cluster'a göre, VLAN'a göre veya Fiziksel Kartlar; ad/VLAN/vSwitch/subnet/MAC araması |
 | **Raporlar** | Anlık Excel/CSV/PDF (filtre destekler) + her gün belirli saatte çalışan zamanlanmış raporlar (`data/reports/` klasörüne yazılır) |
-| **Geçmiş** | Envanter değişiklikleri: eklenen/silinen VM'ler, alan bazında eski→yeni değerler |
+| **Geçmiş** | Envanter değişiklikleri: eklenen/silinen/klonlanan/göç eden VM'ler, alan bazında **eski→yeni** değerler, **kategori** (Donanım/Disk/Ağ/Güç/Göç/Yaşam Döngüsü), **kaynak** (platform/cluster/host/VM ID) ve **kim yaptı** (kullanıcı). Kategori ve varlık türüne göre filtrelenir. Ayrıntı için aşağıdaki "[Değişiklik Geçmişi: Kim, Neyi, Ne Zaman?](#-değişiklik-geçmişi-kim-neyi-ne-zaman)" bölümüne bakın |
 | **Platformlar** | Bağlantı yönetimi, manuel senkronizasyon, API hata logları |
-| **Yönetim** *(admin)* | Kullanıcı CRUD + audit log (kim, ne zaman, ne yaptı) |
+| **Yönetim** *(admin)* | Kullanıcı CRUD + audit log (kim, ne zaman, ne yaptı) + **Senkronizasyon** sekmesi: tam ve kullanım senkron aralıklarını (1–1440 dk) arayüzden ayarlama (anında yeniden zamanlanır, restart gerekmez), **konsol erişimi takibi** anahtarı ve **konsol geçmişini temizle** |
+
+## 🕵️ Değişiklik Geçmişi: Kim, Neyi, Ne Zaman?
+
+Her senkronizasyonda envanterin önceki haliyle farkı alınır ve **Geçmiş** ekranına işlenir.
+Her satırda şunlar bulunur:
+
+| Sütun | İçerik |
+|---|---|
+| **Tarih** | Değişikliğin tespit edildiği zaman |
+| **Kaynak** | Platform (vCenter/Proxmox) · Cluster · Host/Node · VM ID |
+| **Varlık** | VM veya host adı |
+| **Kategori** | Donanım (vCPU/RAM) · Disk · Ağ · Güç · Göç · Yaşam Döngüsü · İşletim Sistemi · Konsol |
+| **İşlem** | Eklendi / Güncellendi / Silindi / Göç / Erişim + ham platform işlemi (ör. `qmclone`, `VmReconfiguredEvent`) |
+| **Alan / Değer** | Değişen alan ve **eski → yeni** (ör. RAM `8 GB → 16 GB`, Host `esx01 → esx02`) |
+| **Kullanıcı** | İşlemi platformda yapan kişi |
+
+İzlenen değişiklikler: **Donanım** (vCPU, RAM, OS tipi), **Disk & Depolama** (boyut, datastore),
+**Ağ** (köprü/portgrup, VLAN, MAC, NIC), **Güç** (aç/kapa/askıya al/yeniden başlat),
+**Yaşam Döngüsü** (oluşturma, klonlama, silme, şablon), **Göç** (canlı göç — kaynak→hedef host).
+
+**"Kim yaptı" nereden gelir?** Uygulamanın kendi kullanıcısı değil — **platformun kendi
+görev/olay kaydından**:
+- **vCenter:** Olay Yöneticisi (`eventManager`) olayları — yeniden yapılandırma, göç, güç, oluşturma vb.
+- **Proxmox:** node görev kayıtları (`/nodes/{node}/tasks`) + cluster log (`/cluster/log`).
+  Config değişiklikleri (RAM/CPU/ağ) Proxmox'ta görev üretmediğinden kullanıcıları **yalnızca
+  cluster log'dan** okunur → token rolünde **`Sys.Syslog`** gerekir (kurulum Adım 3'e bakın).
+
+**Doğru kişi ataması:** Her alan değişimi yalnızca **uygun kategorideki** işlemle eşlenir
+(ör. RAM değişimi yalnız "config" işlemiyle, güç değişimi yalnız "power" işlemiyle). Eşleşen
+işlem yoksa kullanıcı boş bırakılır — **yanlış kişi yazılmaz**.
+
+**Konsol erişimi** *(opsiyonel, varsayılan kapalı)* — Yönetim → Senkronizasyon'dan açılır.
+VM konsoluna erişen kullanıcılar ayrı "Erişim" satırı olarak, 30 dk'lık pencerelerle toplanarak
+yazılır. Mevcut konsol kayıtları aynı ekrandaki butonla toplu silinebilir.
+
+> **Dürüst sınırlar:**
+> - İşlemi yapanın **istemci IP / User-Agent** bilgisi vCenter olaylarında ve Proxmox görev/log
+>   kayıtlarında **bulunmaz** → bu kolonlar altyapı değişikliklerinde çoğunlukla boştur.
+>   (Uygulama-içi işlemler için IP/UA'lı ayrı **Audit Log** vardır — Yönetim ekranı.)
+> - "Kim yaptı" düzeltmesinden **önce** kaydedilmiş eski satırlarda kullanıcı `—` kalır;
+>   yalnızca yeni değişiklikler zenginleşir.
+> - Yakalama gecikmesi = tam senkronizasyon aralığı kadardır (Yönetim → Senkronizasyon).
 
 ## 🔍 Arama Söz Dizimi
 
@@ -341,6 +403,11 @@ server {
 | `CERTIFICATE_VERIFY_FAILED` | Self-signed sertifika: platformda "SSL doğrula" anahtarını kapatın |
 | Proxmox sadece host adları geliyor, VM yok | Token `--privsep 0` ile üretilmemiş. Çözüm: `pveum acl modify / --tokens 'kullanici@realm!tokenadi' --roles PVEAuditor` |
 | `pveum user token list` çalışmıyor | Komuta yalnızca kullanıcıyı verin: `pveum user token list kullanici@realm` (`!tokenadi` kısmı yazılmaz) |
+| Geçmiş'te **config değişiminde "Kullanıcı" boş ("—")** | Proxmox config (RAM/CPU/ağ) değişiklikleri görev üretmez; kullanıcı cluster log'dan gelir → token rolüne **`Sys.Syslog`** ekleyin (Kurulum Adım 3). Logda doğrulama: `docker compose logs --since 5m \| grep "log satiri"` → sayı **> 0** olmalı |
+| Geçmiş'te **göç/klon kullanıcısı boş** | İlgili görev penceresinden düşmüş ya da çok eski olabilir. Logda teşhis: `docker compose logs \| grep -iE "aktoru bulunamadi\|klon cozuldu"` |
+| Geçmiş'te **istemci IP / User-Agent boş** | Beklenen davranış — vCenter/Proxmox altyapı kayıtları operatör IP/UA'sı tutmaz. IP/UA'lı denetim için uygulama-içi **Audit Log**'a (Yönetim) bakın |
+| **Konsol erişimi satırları çok fazla** | Yönetim → Senkronizasyon'dan "Konsol erişimi takibi"ni kapatın (varsayılan kapalı) ve "Mevcut konsol geçmişini temizle"yi kullanın |
+| **Değişiklikler geç/eksik geliyor** | Yakalama gecikmesi = tam senkron aralığı. Yönetim → Senkronizasyon'dan aralığı düşürün (3–5 dk önerilir); "Tümünü Yenile" anında tetikler |
 | VM IP'leri boş | Misafirde QEMU Guest Agent / VMware Tools kurulu ve çalışır olmalı. `ip:yok` aramasıyla eksikleri listeleyin |
 | OS "Linux (2.6+ çekirdek)" görünüyor | O VM'de agent yok — Proxmox yalnızca kaba OS tipini bilir. Agent kurulunca tam ad gelir ("Ubuntu 22.04.3 LTS" gibi) |
 | Cluster kolonu boş | Eski sürüm davranışı; güncel sürümde cluster adı (tek node'da node adı) otomatik atanır. Senkronize edin |
@@ -390,5 +457,16 @@ vm-inventory/
 **Linux VM'lerinin tam sürümü neden bazen gelmiyor?** Tam sürüm (ör. "Ubuntu 24.04.1 LTS") VMware'de **vSphere 8.0 U2+ ve misafirde VMware Tools / open-vm-tools 11.2+** gerektirir; Proxmox'ta ise **QEMU Guest Agent**. Bunlar yoksa katalog adı ("Ubuntu Linux (64-bit)") gösterilir — yanlış değil, yalnızca yama sürümü içermez.
 
 **vCenter etiketleri (Tags) gelmiyor?** vSphere etiketleri pyVmomi/SOAP ile alınamaz; ayrı bir vCenter REST (vAPI tagging) oturumu kullanılır. Servis hesabının etiketleri okuma yetkisi olmalı. REST erişimi başarısız olursa etiketler boş kalır, senkronizasyonun geri kalanı etkilenmez (Platform → Loglar'da uyarı görünür). Proxmox etiketleri (VM `tags` alanı) için ek yetki gerekmez.
+
+**"Kim değiştirdi" bilgisini nereden alıyor?** Uygulamanın kendi kullanıcısından değil —
+platformun kendi kayıtlarından: vCenter olay yöneticisi, Proxmox görev kaydı + cluster log.
+Proxmox'ta RAM/CPU/ağ gibi config değişiklikleri görev üretmediğinden kullanıcı yalnızca
+cluster log'dan okunur; bunun için token rolünde **`Sys.Syslog`** gerekir (Kurulum Adım 3).
+İşlemi yapanın **IP/User-Agent**'ı bu altyapı kayıtlarında bulunmaz; uygulama-içi işlemler
+için IP/UA'lı ayrı **Audit Log** vardır. Ayrıntı: "[Değişiklik Geçmişi](#-değişiklik-geçmişi-kim-neyi-ne-zaman)" bölümü.
+
+**Senkronizasyon sıklığını arayüzden değiştirebilir miyim?** Evet. **Yönetim → Senkronizasyon**
+sekmesinden tam ve kullanım senkron aralıklarını (1–1440 dk) değiştirebilirsiniz; anında yeniden
+zamanlanır, yeniden başlatma gerekmez. `.env`'deki `SYNC_INTERVAL_MINUTES` yalnızca ilk varsayılandır.
 
 **LXC konteynerleri görünüyor mu?** Evet. Proxmox QEMU VM'lerinin yanı sıra LXC konteynerleri de toplanır; OS, IP (çalışırken `interfaces` ucundan), disk, ağ ve etiketleri envantere girer (konteynerlerde agent gerekmez).
