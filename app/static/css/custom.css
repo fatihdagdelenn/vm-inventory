@@ -762,3 +762,51 @@ html.theme-dark .btn-theme-toggle {
   background: rgba(255,255,255,.06); border-color: rgba(148,163,184,.28); color: #cbd8ea;
 }
 html.theme-dark .btn-theme-toggle:hover { background: rgba(255,255,255,.13); color: #fff; }
+
+/* ======================================================================
+   GLOBAL KOYU TEMA — faz48: CSS değişkenlerini koyulaştır
+   Böylece var(--panel/--border/--text…) kullanan TÜM özel bileşenler
+   (search-hero, chip, adv-panel, net-modes, vm-count-link, filter-badge…)
+   tek seferde koyu temaya uyar. Açık tema (:root) dokunulmaz.
+   ====================================================================== */
+html.theme-dark {
+  --ink: #eaf1fb;
+  --ink-2: #dce6f4;
+  --ink-3: #2a3f5c;
+  --accent: #3b9bff;
+  --accent-soft: rgba(59,155,255,.16);
+  --bg: #0b111e;
+  --panel: #151f32;
+  --border: rgba(148,163,184,.16);
+  --text: #cdd9ea;
+  --text-muted: #8aa0bd;
+  --surface-2: #1b2740;
+  --shadow-sm: 0 4px 14px rgba(0,0,0,.30);
+  --shadow-md: 0 8px 24px rgba(0,0,0,.35);
+  --shadow-lg: 0 14px 40px rgba(0,0,0,.50);
+}
+
+/* Sabit (değişken olmayan) renk taşıyan bileşenler için açık koyu kurallar */
+html.theme-dark .chip { background: #1b2740; border-color: rgba(148,163,184,.18); color: #cdd9ea; }
+html.theme-dark .chip:hover,
+html.theme-dark .chip.active {
+  background: rgba(59,155,255,.18); border-color: rgba(59,155,255,.5); color: #cfe4ff;
+}
+html.theme-dark .adv-panel {
+  background: linear-gradient(180deg, #141d30, #111a2b);
+  border-color: rgba(148,163,184,.14); box-shadow: inset 0 1px 0 rgba(255,255,255,.03);
+}
+html.theme-dark .search-hero { box-shadow: 0 8px 24px rgba(0,0,0,.32); }
+html.theme-dark .table thead th { background: transparent; }   /* sabit #fafbfd ezilir */
+html.theme-dark .table { --bs-table-hover-bg: rgba(255,255,255,.04); }
+html.theme-dark .filter-badge button:hover { background: rgba(255,255,255,.12); }
+
+/* Host: VM sayısı yuvarlağı (sabit açık renkliydi → beyaz görünüyordu) */
+html.theme-dark .vm-count-link {
+  background: rgba(59,155,255,.14); border-color: rgba(59,155,255,.35); color: #8cc2ff;
+}
+html.theme-dark .vm-count-link:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* Ağlar: grup başlığı koyu zeminde okunur kalsın */
+html.theme-dark .net-group > summary { color: #eaf1fb; }
+html.theme-dark .net-modes .btn { background: #151f32; }
