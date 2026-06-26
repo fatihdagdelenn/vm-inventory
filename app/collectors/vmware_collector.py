@@ -632,16 +632,31 @@ class VMwareCollector:
                 max_mhz = (vm.runtime.maxCpuUsage or 0) if vm.runtime else 0
                 cpu_pct = round(100 * (qs.overallCpuUsage or 0) / max_mhz, 1) \
                     if max_mhz else None
-                # Gerçek disk kullanımı: datastore'da fiilen yazılı alan
-                # (thin-provisioned disklerde tahsisten çok daha anlamlı)
-                committed = vm.summary.storage.committed if vm.summary.storage else 0
+                # RAM gerçek kullanım: guestMemoryUsage = misafirin AKTİF kullandığı
+                # bellek (Tools gerektirir, vCenter'da görülen ~%kullanım budur).
+                # hostMemoryUsage (tüketilen/granted) uzun çalışan VM'de ≈ tahsis olup
+                # "full" gösterir → YALNIZCA Tools yoksa (guest=0) ona düşülür.
+                ram_used = qs.guestMemoryUsage or qs.hostMemoryUsage or 0
+                # Disk gerçek kullanım: misafir dosya sistemi (Tools) — thin diskte
+                # datastore ayak izinden (committed) çok daha doğru (ör. 40 GB vs 80 GB).
+                disk_used = None
+                try:
+                    gdisks = vm.guest.disk if vm.guest else None
+                    if gdisks:
+                        tot = sum((d.capacity or 0) for d in gdisks)
+                        free = sum((d.freeSpace or 0) for d in gdisks)
+                        if tot > 0:
+                            disk_used = round((tot - free) / 1024**3, 1)
+                except Exception:
+                    pass
+                if disk_used is None:   # Tools yok → datastore ayak izine düş
+                    committed = vm.summary.storage.committed if vm.summary.storage else 0
+                    disk_used = round((committed or 0) / 1024**3, 1)
                 vms.append({
                     "external_id": vm._moId,
                     "cpu_pct": cpu_pct,
-                    # hostMemoryUsage (tüketilen fiziksel RAM) Tools gerektirmez;
-                    # guestMemoryUsage (aktif bellek) yalnızca Tools varken gelir
-                    "ram_used_mb": (qs.hostMemoryUsage or qs.guestMemoryUsage or 0),
-                    "disk_used_gb": round((committed or 0) / 1024**3, 1),
+                    "ram_used_mb": ram_used,
+                    "disk_used_gb": disk_used,
                 })
             except Exception:
                 continue

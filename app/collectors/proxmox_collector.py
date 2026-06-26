@@ -437,6 +437,28 @@ class ProxmoxCollector:
                     entry["os_from_agent"] = os_from_agent
                     entry["ip_from_agent"] = agent_ok
 
+                    # GERÇEK kullanılan disk — guest agent dosya sistemi bilgisinden.
+                    # cluster/resources 'disk' alanı agent'sız 0 döner; thin disklerde
+                    # qcow2 ayak izi gerçek kullanımdan büyük olur. Misafir FS'i gerçeği
+                    # verir (ör. 80 GB tahsis, 40 GB kullanım). Yalnız agent varsa.
+                    if agent_ok:
+                        try:
+                            fs = self.api.nodes(node).qemu(vmid).agent(
+                                "get-fsinfo").get()
+                            used_b = 0
+                            seen = False
+                            for f in (fs.get("result", []) if isinstance(fs, dict) else []):
+                                ub = f.get("used-bytes")
+                                tb = f.get("total-bytes")
+                                # Sanal/özel FS'leri (tmpfs vb. total=0) atla
+                                if ub is not None and tb:
+                                    used_b += int(ub)
+                                    seen = True
+                            if seen:
+                                entry["disk_used_gb"] = round(used_b / 1024**3, 1)
+                        except Exception:
+                            pass  # agent fsinfo desteklemiyor → disk_used boş kalır
+
                 # Agent'tan IP gelmediyse cloud-init statik IP'lerine geri düş
                 # (kapalı VM'ler ve agent kurulu olmayan misafirler için)
                 if not entry["ip_addresses"] and cloudinit_ips:
@@ -779,7 +801,11 @@ class ProxmoxCollector:
         "qmrestore": ("lifecycle", "restore"), "vzrestore": ("lifecycle", "restore"),
         "qmdestroy": ("lifecycle", "destroy"), "vzdestroy": ("lifecycle", "destroy"),
         "qmtemplate": ("lifecycle", "template"), "vztemplate": ("lifecycle", "template"),
-        "qmmigrate": ("migrate", "migrate"), "vzmigrate": ("migrate", "migrate"),
+        # Migration: Proxmox'ta QEMU göç görev tipi 'qmigrate' (tek m), CT 'vzmigrate'
+        # veya 'pctmigrate'. Önceki 'qmmigrate' (çift m) HİÇBİR göreve uymuyordu →
+        # "migration kim yaptı" boş kalıyordu. Tümünü kapsa:
+        "qmigrate": ("migrate", "migrate"), "qmmigrate": ("migrate", "migrate"),
+        "vzmigrate": ("migrate", "migrate"), "pctmigrate": ("migrate", "migrate"),
         "qmconfig": ("config", None), "vzconfig": ("config", None),
         "pctconfig": ("config", None),
         "qmresize": ("disk", None),
@@ -996,13 +1022,15 @@ class ProxmoxCollector:
         vms, hosts = [], []
         for res in self.api.cluster.resources.get():
             if res.get("type") in ("qemu", "lxc") and not res.get("template"):
-                disk_used = res.get("disk") or 0   # agent yoksa 0 döner
                 vms.append({
                     # VM'ler node/vmid ile kayıtlı (collect_vms ile aynı anahtar)
                     "external_id": f"{res.get('node', '')}/{res.get('vmid', '')}",
                     "cpu_pct": round((res.get("cpu") or 0) * 100, 1),
                     "ram_used_mb": int((res.get("mem") or 0) / (1024 * 1024)),
-                    "disk_used_gb": round(disk_used / (1024 ** 3), 1) if disk_used else None,
+                    # disk_used_gb BİLEREK None: cluster/resources 'disk' agent'sız 0
+                    # döner, thin'de ayak izi şişer → yanlış. Gerçek kullanım tam
+                    # senkronizasyonda guest-agent get-fsinfo ile gelir; usage onu EZMESİN.
+                    "disk_used_gb": None,
                 })
             elif res.get("type") == "node":
                 maxmem = res.get("maxmem") or 0

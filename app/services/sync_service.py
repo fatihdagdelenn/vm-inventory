@@ -110,19 +110,21 @@ _POWER_DIRECTION = {
 }
 
 
-def _match_op(ops, categories, direction=None):
+def _match_op(ops, categories, direction=None, min_ts=0):
     """VM'in işlem listesinden (en yeni → en eski) kategoriye uyan ilk işlem.
 
     direction verildiyse önce yön+kategori eşleşmesi aranır, bulunamazsa yalnız
-    kategori. Hiç uygun işlem yoksa None döner (aktör boş kalır)."""
+    kategori. min_ts verilirse o zamandan ESKİ işlemler elenir (taze bir değişimi
+    eski bir kuruluş işlemine atfetmeyi önler). Hiç uygun işlem yoksa None."""
     if not ops or not categories:
         return None
-    for op in ops:
+    cand = [o for o in ops if (o.get("ts") or 0) >= min_ts] if min_ts else ops
+    for op in cand:
         if op.get("category") in categories and \
                 (direction is None or op.get("direction") == direction):
             return op
     if direction is not None:
-        for op in ops:
+        for op in cand:
             if op.get("category") in categories:
                 return op
     return None
@@ -285,6 +287,11 @@ def sync_platform(platform_id: int):
         except Exception as exc:
             vm_ops = {}
             logger.warning("İşlem yapan kullanıcılar alınamadı (%s): %s", platform.name, exc)
+        # Bu sync'te saptanan ALAN değişiklikleri (RAM/CPU/ağ…) ÖNCEKİ sync'ten
+        # sonra olmuştur. Aktör eşleştirmesini bu zamanla sınırlarsak, değişikliğin
+        # log kaydı yakalanamadığında elde kalan ESKİ kuruluş işlemine (yanlış kişi)
+        # atfetmeyiz; "—" kalır. last_sync bu noktada hâlâ önceki değeri tutar.
+        prev_sync_ts = _epoch(platform.last_sync) if platform.last_sync else 0
         if hasattr(collector, "disconnect"):
             collector.disconnect()
 
@@ -445,7 +452,11 @@ def sync_platform(platform_id: int):
                         # Değişimi YALNIZ uygun kategorideki işlemle eşle (yanlış kişi engeli)
                         cats = _FIELD_OP_CATEGORIES.get(f, [])
                         direction = _POWER_DIRECTION.get(str(new)) if f == "power_state" else None
-                        op = _match_op(ops, cats, direction)
+                        # Değişim önceki sync'ten sonra olmuştur → eski işlemleri ele
+                        # (ör. RAM değişimini VM'i kuran kişiye değil, gerçekten
+                        #  değiştiren kişiye atfet). Pencere için 5 dk pay bırakılır.
+                        op = _match_op(ops, cats, direction,
+                                       min_ts=max(0, prev_sync_ts - 300))
                         # Görsel kategori ALANDAN gelir (op kategorisi yalnız eşleştirme
                         # içindir; ör. RAM değişimi op'u 'qmconfig'/'config' olsa da
                         # kullanıcıya 'Donanım' olarak gösterilir).
