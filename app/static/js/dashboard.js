@@ -236,38 +236,44 @@ function barGrad(chart, base, horizontal) {
       if (d >= 60) return `~${Math.round(d / 30)} ay`;
       return `~${d} gün`;
     };
-    const fcRow = (title, icon, f) => {
+    const fcRow = (title, icon, f, unit) => {
       const [cls, bi, txt] = STAT[f.status] || STAT.none;
+      const fmt = (gb) => gb >= 1024 ? (gb / 1024).toFixed(1) + ' TB' : Math.round(gb) + ' GB';
       let daysTxt;
       if (f.status === 'collecting')
-        daysTxt = `<span class="text-info"><i class="bi bi-hourglass-split"></i> Trend için veri toplanıyor — birkaç gün içinde tahmin hazır olacak.</span>`;
+        daysTxt = `<span class="text-info"><i class="bi bi-hourglass-split"></i> Doluluk trendi için veri toplanıyor.</span>`;
       else if (f.status === 'crit' && f.days_left == null)
-        daysTxt = `<strong class="text-danger">Kapasite aşıldı (aşırı tahsis).</strong>`;
+        daysTxt = `<strong class="text-danger">Kapasite dolu/aşıldı.</strong>`;
       else if (f.days_left != null)
-        daysTxt = `Mevcut hıza göre <strong class="${cls}">${daysHuman(f.days_left)}</strong> sonra dolabilir`;
+        daysTxt = `Mevcut <strong>doluluk</strong> hızıyla <strong class="${cls}">${daysHuman(f.days_left)}</strong> sonra dolabilir`;
       else
-        daysTxt = `<span class="text-success">Kayda değer büyüme yok — kapasite kararlı.</span>`;
-      const pct = f.usage_pct != null ? f.usage_pct : 0;
-      const barCls = pct >= 90 ? 'bg-danger' : pct >= 75 ? 'bg-warning' : 'bg-info';
-      const rate = f.status === 'trend' || f.per_day_gb > 0
-        ? `<span>+${f.per_day_gb} GB/gün</span>` : '<span></span>';
+        daysTxt = `<span class="text-success">Doluluk büyümesi kayda değer değil — kararlı.</span>`;
+      const up = f.used_pct != null ? f.used_pct : 0;       // gerçek doluluk
+      const barCls = up >= 90 ? 'bg-danger' : up >= 75 ? 'bg-warning' : 'bg-success';
+      const rate = f.per_day_gb > 0 ? `<span>+${fmt(f.per_day_gb)}/gün</span>` : '<span></span>';
+      // Tahsis (overcommit) satırı — ayrı kavram
+      const ocCls = f.alloc_pct > 100 ? 'text-warning' : 'text-muted';
+      const ocBadge = f.overcommit ? ` <span class="badge bg-warning-subtle text-warning-emphasis" title="VM'lere fizikselden fazla ${unit} verilmiş — sanallaştırmada olağan">overcommit</span>` : '';
       return `<div class="forecast-row">
         <div class="d-flex align-items-center mb-1">
           <i class="bi ${icon} me-2"></i><strong>${title}</strong>
           <span class="ms-auto small ${cls}"><i class="bi ${bi}"></i> ${txt}</span></div>
-        <div class="progress forecast-bar"><div class="progress-bar ${barCls}" style="width:${Math.min(100,pct)}%"></div></div>
-        <div class="d-flex justify-content-between small text-muted mt-1">
-          <span>${f.allocated_gb} / ${f.capacity_gb} GB tahsisli (%${pct})</span>
+        <div class="progress forecast-bar"><div class="progress-bar ${barCls}" style="width:${Math.min(100,up)}%"></div></div>
+        <div class="d-flex justify-content-between small mt-1">
+          <span><strong>Doluluk:</strong> ${fmt(f.used_gb)} / ${fmt(f.capacity_gb)} <span class="text-muted">(%${up})</span></span>
           ${rate}</div>
+        <div class="small ${ocCls} mt-1"><strong>Tahsis:</strong> ${fmt(f.allocated_gb)}
+          <span class="text-muted">(fizikselin %${f.alloc_pct ?? 0}'i)</span>${ocBadge}</div>
         <div class="small mt-1">${daysTxt}</div></div>`;
     };
     const fb = document.getElementById('forecastBody');
-    if (fb) fb.innerHTML = fcRow('Disk (Datastore)', 'bi-device-hdd', fc.disk) +
-                           fcRow('RAM (Fiziksel)', 'bi-memory', fc.ram) +
-      `<div class="text-muted fst-italic" style="font-size:.72rem">` +
-      (fc.method === 'trend'
-        ? `Son ${fc.window_days} günün gerçek tahsis değişimine göre doğrusal projeksiyon.`
-        : `Tahmin, günlük kapasite anlık görüntüleri biriktikçe (${fc.days_needed} gün) otomatik etkinleşir.`) +
+    if (fb) fb.innerHTML = fcRow('Disk (Datastore)', 'bi-device-hdd', fc.disk, 'disk') +
+                           fcRow('RAM (Fiziksel)', 'bi-memory', fc.ram, 'RAM') +
+      `<div class="text-muted mt-1" style="font-size:.72rem; line-height:1.5">
+        <i class="bi bi-info-circle"></i> <strong>Doluluk</strong> = gerçekte kullanılan / fiziksel kapasite
+        (asıl tükenecek olan). <strong>Tahsis</strong> = VM'lere verilen; %100'ü aşması (overcommit)
+        sanallaştırmada normaldir. Öngörü yalnızca doluluğun büyüme hızına göredir` +
+      (fc.method === 'trend' ? ` (son ${fc.window_days} gün).` : `; veri toplanıyor.`) +
       `</div>`;
 
     /* Zombi VM'ler */

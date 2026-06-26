@@ -702,7 +702,10 @@ def record_samples(db):
         func.coalesce(func.sum(VirtualMachine.ram_usage_mb), 0),
         func.count(VirtualMachine.id)).filter(
         VirtualMachine.is_template == False).one()  # noqa: E712
-    ds_cap = db.query(func.coalesce(func.sum(Datastore.capacity_gb), 0)).scalar() or 0
+    ds = db.query(func.coalesce(func.sum(Datastore.capacity_gb), 0),
+                  func.coalesce(func.sum(Datastore.used_gb), 0)).one()
+    ds_cap = ds[0] or 0
+    ds_used = ds[1] or 0
     host_ram = db.query(func.coalesce(func.sum(Host.ram_total_mb), 0)).scalar() or 0
 
     snap = db.query(CapacitySnapshot).filter_by(snap_date=today).first()
@@ -714,6 +717,7 @@ def record_samples(db):
     snap.used_disk_gb = float(t[2] or 0)
     snap.used_ram_mb = int(t[3] or 0)
     snap.datastore_capacity_gb = float(ds_cap)
+    snap.datastore_used_gb = float(ds_used)
     snap.host_ram_mb = int(host_ram)
     snap.vm_count = int(t[4] or 0)
 

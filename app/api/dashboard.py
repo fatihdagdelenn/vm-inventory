@@ -247,22 +247,35 @@ def insights(db: Session = Depends(get_db), user: User = Depends(get_current_use
     from ..models import CapacitySnapshot, VmUsageDaily
 
     # ===== Kapasite Öngörüsü =====
-    # Tüm ortam geneli tahsis + fiziksel kapasite (snapshot ile aynı kapsam).
-    g_alloc = db.query(
+    # POLİTİKA (iki AYRI kavram — bilerek ayrılmıştır):
+    #   • DOLULUK = gerçekte KULLANILAN / fiziksel kapasite → asıl tükenecek olan.
+    #               Disk: datastore used/capacity. RAM: tüketilen RAM / fiziksel RAM.
+    #   • TAHSİS  = VM'lere VERİLEN (provisioned) / fiziksel kapasite. Sanallaştırmada
+    #               %100'ü aşabilir (overcommit) — olağandır, "doluluk" DEĞİLDİR.
+    #   Öngörü (kaç gün) yalnızca DOLULUĞUN günlük büyüme hızına göredir (regresyon).
+
+    # Tahsis + tüketilen RAM (tüm ortam geneli)
+    g = db.query(
         func.coalesce(func.sum(VirtualMachine.ram_mb), 0),
-        func.coalesce(func.sum(VirtualMachine.disk_total_gb), 0)).filter(
+        func.coalesce(func.sum(VirtualMachine.disk_total_gb), 0),
+        func.coalesce(func.sum(VirtualMachine.ram_usage_mb), 0)).filter(
         VirtualMachine.is_template == False).one()  # noqa: E712
-    alloc_ram_gb = round(float(g_alloc[0] or 0) / 1024, 1)
-    alloc_disk_gb = round(float(g_alloc[1] or 0), 1)
+    alloc_ram_gb = round(float(g[0] or 0) / 1024, 1)
+    alloc_disk_gb = round(float(g[1] or 0), 1)
+    used_ram_gb = round(float(g[2] or 0) / 1024, 1)        # gerçek tüketilen RAM
+
     ram_cap_gb = round(float(db.query(func.coalesce(func.sum(Host.ram_total_mb), 0)).scalar() or 0) / 1024, 1)
-    disk_cap_gb = round(float(db.query(func.coalesce(func.sum(Datastore.capacity_gb), 0)).scalar() or 0), 1)
+    ds = db.query(func.coalesce(func.sum(Datastore.capacity_gb), 0),
+                  func.coalesce(func.sum(Datastore.used_gb), 0)).one()
+    disk_cap_gb = round(float(ds[0] or 0), 1)
+    used_disk_gb = round(float(ds[1] or 0), 1)             # datastore gerçek doluluğu
 
     try:
         snaps = db.query(CapacitySnapshot).filter(
             CapacitySnapshot.snap_date >= (now.date() - _td(days=30))).order_by(
             CapacitySnapshot.snap_date).all()
     except Exception:
-        snaps = []     # tablo/şema sorunu → sezgisel fallback'e düş (500 verme)
+        snaps = []
 
     def _slope(points):
         """En küçük kareler eğimi (birim: y / gün). points=[(gun_index, y)]."""
@@ -274,33 +287,34 @@ def insights(db: Session = Depends(get_db), user: User = Depends(get_current_use
         denom = n * sxx - sx * sx
         return (n * sxy - sx * sy) / denom if denom else None
 
-    # Güvenilir tahmin için snapshot serisi üzerinde DOĞRUSAL REGRESYON.
-    # Eşik bilerek YÜKSEK: en az 4 nokta + en az 4 gün yayılım. Aksi halde
-    # "veri toplanıyor" denir — taze kurulumda first_seen tüm VM'leri "yeni"
-    # gibi gösterip alarmcı (ör. "22 gün") tahmin ürettiği için o yöntem KULLANILMAZ.
+    # Eşik bilerek yüksek: >=4 nokta + >=4 gün yayılım. Aksi halde "veri toplanıyor".
     MIN_PTS, MIN_SPAN = 4, 4
     span = (snaps[-1].snap_date - snaps[0].snap_date).days if len(snaps) >= 2 else 0
     reg_ok = len(snaps) >= MIN_PTS and span >= MIN_SPAN
     per_day_disk_gb = per_day_ram_gb = 0.0
     if reg_ok:
         base = snaps[0].snap_date
-        slope_disk = _slope([((s.snap_date - base).days, float(s.alloc_disk_gb or 0)) for s in snaps])
-        slope_ram = _slope([((s.snap_date - base).days, float(s.alloc_ram_mb or 0) / 1024) for s in snaps])
+        # DOLULUK (kullanım) serisinin eğimi — tahsisin DEĞİL. Eski snapshot'larda
+        # datastore_used_gb NULL olabilir → o noktalar elenir (kirletmesin).
+        slope_disk = _slope([((s.snap_date - base).days, float(s.datastore_used_gb))
+                             for s in snaps if s.datastore_used_gb is not None])
+        slope_ram = _slope([((s.snap_date - base).days, float(s.used_ram_mb) / 1024)
+                            for s in snaps if s.used_ram_mb is not None])
         per_day_disk_gb = max(0.0, slope_disk or 0)
         per_day_ram_gb = max(0.0, slope_ram or 0)
         fc_method = "trend"
-        fc_window = span
     else:
         fc_method = "collecting"
-        fc_window = span
-
+    fc_window = span
     days_collected = len(snaps)
     days_needed = MIN_SPAN + 1
 
-    def _forecast(cap_gb, alloc_gb, per_day_gb):
-        cap_gb = float(cap_gb); alloc_gb = float(alloc_gb); per_day_gb = float(per_day_gb)
-        remaining = round(cap_gb - alloc_gb, 1)
-        usage_pct = round(100 * alloc_gb / cap_gb, 1) if cap_gb > 0 else None
+    def _forecast(cap_gb, used_gb, alloc_gb, per_day_gb):
+        cap_gb = float(cap_gb); used_gb = float(used_gb)
+        alloc_gb = float(alloc_gb); per_day_gb = float(per_day_gb)
+        remaining = round(cap_gb - used_gb, 1)
+        used_pct = round(100 * used_gb / cap_gb, 1) if cap_gb > 0 else None
+        alloc_pct = round(100 * alloc_gb / cap_gb, 1) if cap_gb > 0 else None
         days = None
         if fc_method == "trend" and cap_gb > 0 and per_day_gb > 0.01 and remaining > 0:
             days = int(remaining / per_day_gb)
@@ -311,15 +325,17 @@ def insights(db: Session = Depends(get_db), user: User = Depends(get_current_use
         elif cap_gb > 0 and remaining <= 0:
             status = "crit"
         else:
-            status = "stable"        # trend var ama kayda değer büyüme yok
-        return {"capacity_gb": cap_gb, "allocated_gb": alloc_gb, "remaining_gb": remaining,
-                "usage_pct": usage_pct, "per_day_gb": round(per_day_gb, 2),
+            status = "stable"
+        return {"capacity_gb": cap_gb, "used_gb": used_gb, "used_pct": used_pct,
+                "allocated_gb": alloc_gb, "alloc_pct": alloc_pct,
+                "overcommit": (alloc_pct is not None and alloc_pct > 100),
+                "remaining_gb": remaining, "per_day_gb": round(per_day_gb, 2),
                 "days_left": days, "status": status}
 
     forecast = {"window_days": fc_window, "method": fc_method,
                 "days_collected": days_collected, "days_needed": days_needed,
-                "disk": _forecast(disk_cap_gb, alloc_disk_gb, per_day_disk_gb),
-                "ram": _forecast(ram_cap_gb, alloc_ram_gb, per_day_ram_gb)}
+                "disk": _forecast(disk_cap_gb, used_disk_gb, alloc_disk_gb, per_day_disk_gb),
+                "ram": _forecast(ram_cap_gb, used_ram_gb, alloc_ram_gb, per_day_ram_gb)}
 
     # ===== Zombi (boşta) VM'ler =====
     # Tercih: son 7 GÜN VmUsageDaily — tüm günlerde tepe CPU < %2 (>=3 günlük veri).

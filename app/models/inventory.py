@@ -334,6 +334,7 @@ class CapacitySnapshot(Base):
     used_disk_gb = Column(Float)         # gerçek kullanım (sum VM disk_used_gb)
     used_ram_mb = Column(BigInteger)     # gerçek kullanım (sum VM ram_usage_mb)
     datastore_capacity_gb = Column(Float)  # fiziksel disk tavanı
+    datastore_used_gb = Column(Float)      # datastore gerçek kullanımı (doluluk)
     host_ram_mb = Column(BigInteger)       # fiziksel RAM tavanı
     vm_count = Column(Integer)
     created_at = Column(DateTime, default=datetime.utcnow)

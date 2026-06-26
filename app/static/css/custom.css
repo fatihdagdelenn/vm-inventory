@@ -770,9 +770,6 @@ html.theme-dark .btn-theme-toggle:hover { background: rgba(255,255,255,.13); col
    tek seferde koyu temaya uyar. Açık tema (:root) dokunulmaz.
    ====================================================================== */
 html.theme-dark {
-  --ink: #eaf1fb;
-  --ink-2: #dce6f4;
-  --ink-3: #2a3f5c;
   --accent: #3b9bff;
   --accent-soft: rgba(59,155,255,.16);
   --bg: #0b111e;
@@ -785,6 +782,12 @@ html.theme-dark {
   --shadow-md: 0 8px 24px rgba(0,0,0,.35);
   --shadow-lg: 0 14px 40px rgba(0,0,0,.50);
 }
+/* NOT: --ink/--ink-2/--ink-3 BİLEREK override edilmez — kenar çubuğu arka planı
+   ve bazı koyu gradyanlar bu değişkenlerden beslenir. Onları metin rengi olarak
+   kullanan (açık zeminli) bileşenler için aşağıda açık koyu kurallar var. */
+html.theme-dark .group-key,
+html.theme-dark .net-group-title,
+html.theme-dark .net-group > summary { color: #eaf1fb; }
 
 /* Sabit (değişken olmayan) renk taşıyan bileşenler için açık koyu kurallar */
 html.theme-dark .chip { background: #1b2740; border-color: rgba(148,163,184,.18); color: #cdd9ea; }
