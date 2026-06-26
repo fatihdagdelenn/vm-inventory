@@ -277,12 +277,12 @@ const VMs = {
   /** Sorgudaki her kriteri X'le kaldırılabilir rozet olarak göster. */
   renderActiveFilters() {
     const wrap = document.getElementById('activeFilters');
-    const tokens = VMs.q.match(/-?\w+:"[^"]*"|-?\w+:\S+|-?\S+/g) || [];
+    const tokens = VMs.q.match(/[-!]?\w+:"[^"]*"|[-!]?\w+:\S+|[-!]?\S+/g) || [];
     if (!tokens.length) { wrap.classList.add('d-none'); wrap.innerHTML = ''; return; }
     wrap.classList.remove('d-none');
     wrap.innerHTML = '<span class="text-muted small me-1">Aktif:</span>' +
       tokens.map((t, i) =>
-        '<span class="filter-badge' + (t.startsWith('-') ? ' negative' : '') + '">' +
+        '<span class="filter-badge' + ((t.startsWith('-') || t.startsWith('!')) ? ' negative' : '') + '">' +
         App.esc(t) + '<button title="Kaldır" onclick="VMs.removeToken(' + i + ')">' +
         '<i class="bi bi-x"></i></button></span>').join('') +
       (tokens.length > 1 ? '<button class="btn btn-link btn-sm p-0 ms-1" ' +
@@ -291,7 +291,7 @@ const VMs = {
 
   /** Rozetin X'ine basılınca o kriteri sorgudan çıkar. */
   removeToken(index) {
-    const tokens = VMs.q.match(/-?\w+:"[^"]*"|-?\w+:\S+|-?\S+/g) || [];
+    const tokens = VMs.q.match(/[-!]?\w+:"[^"]*"|[-!]?\w+:\S+|[-!]?\S+/g) || [];
     tokens.splice(index, 1);
     const q = tokens.join(' ');
     document.getElementById('vmSearch').value = q;

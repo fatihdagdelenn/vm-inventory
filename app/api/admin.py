@@ -1,6 +1,7 @@
 """Yönetim API'si: kullanıcılar, audit log, değişiklik geçmişi (admin)."""
+import re
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
-from sqlalchemy import or_
+from sqlalchemy import or_, and_, not_, func
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -110,7 +111,18 @@ def change_history(entity: str = "", q: str = "", category: str = "",
     if category:
         query = query.filter(ChangeHistory.category == category)
     if q:
-        query = query.filter(ChangeHistory.entity_name.ilike(f"%{q}%"))
+        # Dahil/dışla arama: "-yedek" veya "!yedek" → bu terimi İÇEREN satırları ELE
+        # (ör. sürekli log üreten yedekleme makinesini gizleyip diğerlerini incele).
+        # Pozitif terimler ad/host/VM-ID/kullanıcı/işlem alanlarında aranır (VE mantığı).
+        cols = [ChangeHistory.entity_name, ChangeHistory.host,
+                ChangeHistory.vm_external_id, ChangeHistory.actor, ChangeHistory.op_type]
+        for m in re.finditer(r'([-!]?)(?:"([^"]+)"|(\S+))', q):
+            neg = bool(m.group(1))
+            term = m.group(2) or m.group(3)
+            if not term:
+                continue
+            any_match = or_(*[func.coalesce(c, "").ilike(f"%{term}%") for c in cols])
+            query = query.filter(not_(any_match) if neg else any_match)
     rows = query.order_by(ChangeHistory.changed_at.desc()).limit(min(limit, 1000)).all()
     return {"items": [{"changed_at": to_iso(r.changed_at),
                        "entity_type": r.entity_type, "entity_name": r.entity_name,

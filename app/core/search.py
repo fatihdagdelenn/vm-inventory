@@ -8,7 +8,7 @@ Desteklenen söz dizimi:
                      platform:"Ankara vCenter"  location:ankara  owner:ali
                      tools:running | tools:yok   (VMware Tools / QEMU Agent)
     SAYISAL        : cpu:>4  cpu:>=8  ram:>=16 (GB)  ram:<4  disk:>500 (GB)
-    DIŞLAMA        : -os:windows  -cluster:test  -web01  (önüne '-' koy)
+    DIŞLAMA        : -os:windows  !cluster:test  -web01  (önüne '-' veya '!' koy)
     ÇOKLU DEĞER    : os:windows,linux   status:running,suspended  (virgül = VEYA)
     BOŞ DEĞER      : ip:yok  (IP'si alınamayan VM'ler)  owner:yok  tag:yok
     SERBEST METİN  : alan belirtilmeyen kelimeler ad, IP, MAC, OS, cluster
@@ -35,8 +35,8 @@ def _like(col, pattern: str):
     """
     return func.coalesce(col, "").ilike(pattern)
 
-# token deseni: [-]alan:"tırnaklı değer" | [-]alan:değer | [-]kelime
-TOKEN_RE = re.compile(r'(-?)(\w+):"([^"]+)"|(-?)(\w+):(\S+)|(-?)(\S+)')
+# token deseni: [-/!]alan:"tırnaklı değer" | [-/!]alan:değer | [-/!]kelime
+TOKEN_RE = re.compile(r'([-!]?)(\w+):"([^"]+)"|([-!]?)(\w+):(\S+)|([-!]?)(\S+)')
 
 # sayısal karşılaştırma deseni: >=16  <4  >100  =8  16
 NUM_RE = re.compile(r'^(>=|<=|>|<|=)?(\d+(?:\.\d+)?)$')

@@ -589,15 +589,27 @@ def sync_platform(platform_id: int):
         db.close()
 
 
+import threading
+# Tam senkronizasyon ile hafif kullanım tazelemesinin AYNI ANDA çalışıp
+# DB'de (aynı VM satırlarına yazarak) çakışmasını önleyen paylaşımlı kilit.
+# Tam senkr. kilidi bekler (öncelikli); kullanım tazelemesi alamazsa O TURU ATLAR
+# (bir sonraki aralıkta yeniden dener) — böylece kuyruklanma/yavaşlama olmaz.
+_sync_lock = threading.Lock()
+
+
 def sync_all_platforms():
     """Tüm etkin platformları sırayla senkronize et (zamanlayıcı görevi)."""
-    db = SessionLocal()
-    try:
-        ids = [p.id for p in db.query(Platform).filter_by(enabled=True)]
-    finally:
-        db.close()
-    for pid in ids:
-        sync_platform(pid)
+    with _sync_lock:
+        _t0 = datetime.utcnow()
+        db = SessionLocal()
+        try:
+            ids = [p.id for p in db.query(Platform).filter_by(enabled=True)]
+        finally:
+            db.close()
+        for pid in ids:
+            sync_platform(pid)
+        logger.info("Tam senkronizasyon tamamlandi: %d platform, %.1f sn",
+                    len(ids), (datetime.utcnow() - _t0).total_seconds())
 
 
 # ==================== Hafif kullanım senkronizasyonu ====================
@@ -612,6 +624,17 @@ def sync_usage_all():
     - ChangeHistory ve SyncLog üretmez (gürültü olmasın diye)
     Böylece dashboard ve listelerdeki kullanım oranları neredeyse canlıdır.
     """
+    # Tam senkronizasyon devam ediyorsa çakışmamak için bu turu atla.
+    if not _sync_lock.acquire(blocking=False):
+        logger.info("Tam senkronizasyon devam ediyor; kullanim tazelemesi bu tur atlandi.")
+        return
+    try:
+        _usage_sync_body()
+    finally:
+        _sync_lock.release()
+
+
+def _usage_sync_body():
     db = SessionLocal()
     try:
         platforms = db.query(Platform).filter_by(enabled=True).all()

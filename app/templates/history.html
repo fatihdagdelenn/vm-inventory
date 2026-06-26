@@ -2,10 +2,12 @@
 {% block content %}
 <div class="dash-premium" id="histPremium">
 
-  <div class="d-flex flex-wrap mb-3 gap-2 align-items-center">
-    <div class="search-box flex-grow-1" style="max-width:360px">
+  <div class="d-flex flex-wrap mb-2 gap-2 align-items-center">
+    <div class="search-box flex-grow-1" style="max-width:380px">
       <i class="bi bi-search"></i>
-      <input type="text" id="histSearch" class="form-control" placeholder="VM veya host adı ara…">
+      <input type="text" id="histSearch" class="form-control"
+             placeholder="VM/host ara…  hariç tutmak için -yedek veya !yedek"
+             title="Birden çok kelime yazabilirsiniz. Başına - veya ! koyduğunuz kelimeyi İÇEREN kayıtlar gizlenir (ör. gürültülü yedek makinesini hariç tutmak için -yedek).">
     </div>
     <select id="histEntity" class="form-select form-select-sm w-auto">
       <option value="">Tüm Varlıklar</option><option value="vm">VM</option><option value="host">Host</option>
@@ -23,6 +25,7 @@
     </select>
     <span id="histCount" class="text-muted small ms-auto"></span>
   </div>
+  <div id="histFilters" class="active-filters mb-3 d-none"></div>
 
   <div class="card panel">
     <div class="table-responsive">

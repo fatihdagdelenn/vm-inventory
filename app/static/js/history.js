@@ -116,10 +116,51 @@ const History = {
     return html;
   },
 
+  /** Aktif filtre kutusu: arama terimleri (dahil/dışla) + varlık + kategori. */
+  renderFilters(q, entity, category) {
+    const wrap = document.getElementById('histFilters');
+    const chips = [];
+    const terms = q.match(/[-!]?"[^"]*"|[-!]?\S+/g) || [];
+    terms.forEach((t, i) => {
+      const neg = t.startsWith('-') || t.startsWith('!');
+      chips.push('<span class="filter-badge' + (neg ? ' negative' : '') + '">' +
+        (neg ? '<i class="bi bi-dash-circle"></i> ' : '') + App.esc(t) +
+        '<button title="Kaldır" onclick="History.removeTerm(' + i + ')"><i class="bi bi-x"></i></button></span>');
+    });
+    if (entity)
+      chips.push('<span class="filter-badge">Varlık: ' + (entity === 'vm' ? 'VM' : 'Host') +
+        '<button title="Kaldır" onclick="History.clearSel(\'histEntity\')"><i class="bi bi-x"></i></button></span>');
+    if (category) {
+      const lbl = (History.CATS[category] || {}).l || category;
+      chips.push('<span class="filter-badge">Kategori: ' + App.esc(lbl) +
+        '<button title="Kaldır" onclick="History.clearSel(\'histCategory\')"><i class="bi bi-x"></i></button></span>');
+    }
+    if (!chips.length) { wrap.classList.add('d-none'); wrap.innerHTML = ''; return; }
+    wrap.classList.remove('d-none');
+    wrap.innerHTML = '<span class="text-muted small me-1">Aktif filtreler:</span>' + chips.join('') +
+      (chips.length > 1 ? '<button class="btn btn-link btn-sm p-0 ms-1" onclick="History.clearAllFilters()">tümünü temizle</button>' : '');
+  },
+
+  removeTerm(i) {
+    const inp = document.getElementById('histSearch');
+    const terms = (inp.value.trim().match(/[-!]?"[^"]*"|[-!]?\S+/g) || []);
+    terms.splice(i, 1);
+    inp.value = terms.join(' ');
+    History.load();
+  },
+  clearSel(id) { document.getElementById(id).value = ''; History.load(); },
+  clearAllFilters() {
+    document.getElementById('histSearch').value = '';
+    document.getElementById('histEntity').value = '';
+    document.getElementById('histCategory').value = '';
+    History.load();
+  },
+
   async load() {
     const q = document.getElementById('histSearch').value.trim();
     const entity = document.getElementById('histEntity').value;
     const category = document.getElementById('histCategory').value;
+    History.renderFilters(q, entity, category);
     const body = document.getElementById('histBody');
     let data;
     try {
