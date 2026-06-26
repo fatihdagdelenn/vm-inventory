@@ -813,3 +813,55 @@ html.theme-dark .vm-count-link:hover { background: var(--accent); color: #fff; b
 /* Ağlar: grup başlığı koyu zeminde okunur kalsın */
 html.theme-dark .net-group > summary { color: #eaf1fb; }
 html.theme-dark .net-modes .btn { background: #151f32; }
+
+/* ======================================================================
+   DEĞİŞİKLİK GEÇMİŞİ — faz51: yumuşak (göz yormayan) rozetler + koyu offcanvas
+   ====================================================================== */
+.cat-badge, .op-badge {
+  display: inline-flex; align-items: center; gap: .32rem;
+  font-weight: 600; font-size: .72rem; line-height: 1; white-space: nowrap;
+  padding: .36em .6em; border-radius: 7px; border: 1px solid transparent;
+}
+/* Açık tema — düşük doygunluklu tonlar */
+.cat-hardware  { background: #eef1ff; color: #4f46e5; }
+.cat-disk      { background: #e8f7fb; color: #0e7490; }
+.cat-network   { background: #eef2f7; color: #475569; }
+.cat-power     { background: #fff5e6; color: #b45309; }
+.cat-migrate   { background: #f3f0fe; color: #6d28d9; }
+.cat-lifecycle { background: #e9f8f0; color: #047857; }
+.cat-os        { background: #eaf2ff; color: #1d4ed8; }
+.cat-console   { background: #fdeeee; color: #b91c1c; }
+.cat-other     { background: #f1f5f9; color: #64748b; }
+.op-created    { background: #e9f8f0; color: #047857; }
+.op-updated    { background: #fff5e6; color: #b45309; }
+.op-deleted    { background: #fdeeee; color: #b91c1c; }
+.op-migrated   { background: #eef2f7; color: #475569; }
+.op-access     { background: #fdeeee; color: #b91c1c; }
+/* Koyu tema — düşük-alfa tonlar, okunur ama parlak değil */
+html.theme-dark .cat-hardware  { background: rgba(99,102,241,.15);  color: #b3bcff; }
+html.theme-dark .cat-disk      { background: rgba(45,170,200,.14);  color: #8ed4e8; }
+html.theme-dark .cat-network   { background: rgba(148,163,184,.15); color: #cbd5e1; }
+html.theme-dark .cat-power     { background: rgba(245,158,11,.14);  color: #f3c577; }
+html.theme-dark .cat-migrate   { background: rgba(167,139,250,.16); color: #cabdf9; }
+html.theme-dark .cat-lifecycle { background: rgba(16,185,129,.14);  color: #7fd9b3; }
+html.theme-dark .cat-os        { background: rgba(59,130,246,.15);  color: #9ec2f7; }
+html.theme-dark .cat-console   { background: rgba(239,68,68,.14);   color: #f0a3a3; }
+html.theme-dark .cat-other     { background: rgba(148,163,184,.12); color: #aebfd6; }
+html.theme-dark .op-created    { background: rgba(16,185,129,.14);  color: #7fd9b3; }
+html.theme-dark .op-updated    { background: rgba(245,158,11,.14);  color: #f3c577; }
+html.theme-dark .op-deleted    { background: rgba(239,68,68,.14);   color: #f0a3a3; }
+html.theme-dark .op-migrated   { background: rgba(148,163,184,.15); color: #cbd5e1; }
+html.theme-dark .op-access     { background: rgba(239,68,68,.14);   color: #f0a3a3; }
+
+/* Geçmişteki op_type alt metni (qmigrate, VmReconfiguredEvent…) — nötr, parlak değil */
+.hist-table code, .val-cell code {
+  background: rgba(100,116,139,.10); color: #5b6b80;
+  padding: .08em .4em; border-radius: 4px; font-size: .9em;
+}
+html.theme-dark .hist-table code, html.theme-dark .val-cell code {
+  background: rgba(148,163,184,.12); color: #9fb0c8;
+}
+
+/* VM detay offcanvas: koyu temada açık şerit "patlamasın" */
+html.theme-dark .detail-row:nth-child(odd) { background: rgba(255,255,255,.035); }
+html.theme-dark .detail-row { border-color: rgba(148,163,184,.10); }

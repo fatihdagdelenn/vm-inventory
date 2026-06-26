@@ -261,6 +261,69 @@ const App = {
       if (typeof App._vmDetailOnSaved === 'function') App._vmDetailOnSaved();
     } catch (e) { /* hata gösterildi */ }
   },
+
+  /* ===== Ortak drill-down modalları (Host'lar + Datastore'lar) ===== */
+  /** VM dizisini ortak VM-listesi modalında göster; satır → VM detayı. */
+  showVmList(title, vms) {
+    document.getElementById('hostVmsTitle').textContent = title;
+    const body = document.getElementById('hostVmsBody');
+    const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('hostVmsModal'));
+    modal.show();
+    if (!vms || !vms.length) {
+      body.innerHTML = '<tr><td colspan="5" class="text-center text-muted p-3">VM bulunmuyor.</td></tr>';
+      return;
+    }
+    body.innerHTML = vms.map(v => {
+      const ramPct = v.ram_mb ? Math.round(100 * (v.ram_usage_mb || 0) / v.ram_mb) : null;
+      const cpu = (v.cpu_count != null ? v.cpu_count + ' vCPU' : '—') +
+                  (v.cpu_usage_pct != null ? ' <span class="text-muted">%' + Math.round(v.cpu_usage_pct) + '</span>' : '');
+      const ram = App.fmtRam(v.ram_mb) +
+                  (ramPct != null ? ' <span class="text-muted">%' + ramPct + '</span>' : '');
+      return '<tr class="vm-row" style="cursor:pointer" onclick="App.openVmFromModal(' + v.id + ')">' +
+        '<td><strong>' + App.esc(v.name) + '</strong>' +
+          (v.vmid ? ' <small class="text-muted">#' + App.esc(v.vmid) + '</small>' : '') + '</td>' +
+        '<td class="small text-nowrap">' + App.esc((v.ip_addresses || '—').split(',')[0] || '—') + '</td>' +
+        '<td>' + App.stateBadge(v.power_state) + '</td>' +
+        '<td class="small text-nowrap">' + cpu + '</td>' +
+        '<td class="small text-nowrap">' + ram + '</td></tr>';
+    }).join('');
+  },
+
+  /** Modaldaki VM satırı → modalı kapat, ortak offcanvas'ta VM detayı. */
+  openVmFromModal(vmId) {
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('hostVmsModal')).hide();
+    App.vmDetail(vmId);
+  },
+
+  /** Bir host'un VM'lerini çekip ortak VM-listesi modalında göster. */
+  async hostVms(hostId) {
+    App.showVmList('Yükleniyor…', null);
+    let h;
+    try { h = await App.api('/api/hosts/' + hostId); } catch (e) { return; }
+    App.showVmList(h.name + ' — ' + (h.vms || []).length + ' VM', h.vms || []);
+  },
+
+  /** Host dizisini liste modalında göster; tıklayınca o host'un VM'leri. */
+  showHostList(title, hosts) {
+    document.getElementById('hostListTitle').textContent = title;
+    const body = document.getElementById('hostListBody');
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('hostListModal')).show();
+    if (!hosts || !hosts.length) {
+      body.innerHTML = '<div class="text-muted small p-2">Host bulunamadı.</div>';
+      return;
+    }
+    body.innerHTML = hosts.map(h =>
+      '<button type="button" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" ' +
+      'onclick="App.openHostFromList(' + h.id + ')">' +
+      '<span><i class="bi bi-server"></i> ' + App.esc(h.name) + '</span>' +
+      '<i class="bi bi-chevron-right text-muted"></i></button>').join('');
+  },
+
+  /** Host listesinden host → liste modalını kapat, host'un VM'leri modalı. */
+  openHostFromList(hostId) {
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('hostListModal')).hide();
+    App.hostVms(hostId);
+  },
 };
 
 /* ===== Global tema (tüm sayfalar): koyu/açık geçiş + kalıcı tercih ===== */

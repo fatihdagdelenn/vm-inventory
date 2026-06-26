@@ -39,6 +39,11 @@ const DS = {
       const shared = d.shared
         ? ' <span class="badge text-bg-light border" title="Birden çok host/node tarafından paylaşılıyor">paylaşımlı</span>' : '';
       const st = stMap[d.status] || [d.status || '—', 'state-stopped'];
+      const cnt = (n, kind) => n > 0
+        ? '<span class="badge text-bg-light border ds-count" style="cursor:pointer" ' +
+          'onclick="DS.drill(' + d.id + ',\'' + kind + '\')" title="Detayları gör">' +
+          n + ' <i class="bi bi-box-arrow-up-right"></i></span>'
+        : '<span class="badge text-bg-light border">0</span>';
       return '<tr>' +
         '<td><strong>' + App.esc(d.name) + '</strong>' + shared + '</td>' +
         '<td class="small text-muted">' + App.esc(d.node || '—') + '</td>' +
@@ -46,12 +51,21 @@ const DS = {
         '<td class="small">' + App.esc(d.type || '—') + '</td>' +
         '<td class="text-nowrap">' + App.fmtGb(d.capacity_gb) + '</td>' +
         '<td style="min-width:170px">' + usage + '</td>' +
-        '<td><span class="badge text-bg-light border">' + d.host_count + '</span></td>' +
-        '<td><span class="badge text-bg-light border">' + d.vm_count + '</span></td>' +
+        '<td>' + cnt(d.host_count, 'host') + '</td>' +
+        '<td>' + cnt(d.vm_count, 'vm') + '</td>' +
         '<td><span class="state-badge ' + st[1] + '">' + App.esc(st[0]) + '</span></td>' +
       '</tr>';
     }).join('');
     document.getElementById('dsCount').textContent = data.items.length + ' datastore';
+  },
+
+  /** Host/VM sayısına tıklanınca: bu datastore'un host'larını/VM'lerini ortak
+   *  modallarda göster (Host'lar sayfasındaki detay modallarının aynısı). */
+  async drill(dsId, kind) {
+    let d;
+    try { d = await App.api('/api/datastores/' + dsId); } catch (e) { return; }
+    if (kind === 'vm') App.showVmList(d.name + ' — Sanal Makineler', d.vms);
+    else App.showHostList(d.name + ' — Host\'lar', d.hosts);
   },
 
   setSort(col) {

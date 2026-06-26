@@ -87,6 +87,46 @@
   <div class="offcanvas-body" id="vmDetailBody"></div>
 </div>
 
+<!-- Global VM-listesi modalı: bir host'un veya datastore'un VM'lerini gösterir
+     (Host'lar ve Datastore'lar sayfaları ortak kullanır). Satıra tıklayınca VM detayı. -->
+<div class="modal fade" id="hostVmsModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-pc-display"></i> <span id="hostVmsTitle">Sanal Makineler</span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover table-sm align-middle mb-0" id="hostVmsTable">
+            <thead><tr>
+              <th>VM Adı</th><th>IP Adresi</th><th>Durum</th><th>CPU</th><th>RAM</th>
+            </tr></thead>
+            <tbody id="hostVmsBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer py-2">
+        <span class="small text-muted me-auto">
+          <i class="bi bi-info-circle"></i> Satıra tıklayarak VM detayını görüntüleyin.</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Global Host-listesi modalı: bir datastore'u kullanan host'lar; tıklayınca o host'un VM'leri -->
+<div class="modal fade" id="hostListModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-hdd-rack"></i> <span id="hostListTitle">Host'lar</span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body"><div class="list-group" id="hostListBody"></div></div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>

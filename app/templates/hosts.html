@@ -30,30 +30,5 @@
   </div>
 </div>
 
-<!-- Host'a ait VM'ler modalı: VM sayısına tıklanınca açılır -->
-<div class="modal fade" id="hostVmsModal" tabindex="-1">
-  <div class="modal-dialog modal-lg modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-pc-display"></i> <span id="hostVmsTitle">Sanal Makineler</span></h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body p-0">
-        <div class="table-responsive">
-          <table class="table table-hover table-sm align-middle mb-0" id="hostVmsTable">
-            <thead><tr>
-              <th>VM Adı</th><th>IP Adresi</th><th>Durum</th><th>CPU</th><th>RAM</th>
-            </tr></thead>
-            <tbody id="hostVmsBody"></tbody>
-          </table>
-        </div>
-      </div>
-      <div class="modal-footer py-2">
-        <span class="small text-muted me-auto" id="hostVmsHint">
-          <i class="bi bi-info-circle"></i> Satıra tıklayarak VM detayını bu sayfada görüntüleyin.</span>
-      </div>
-    </div>
-  </div>
-</div>
 {% endblock %}
 {% block scripts %}<script src="/static/js/hosts.js?v={{ asset_version }}"></script>{% endblock %}

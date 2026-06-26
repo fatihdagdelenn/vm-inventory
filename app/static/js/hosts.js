@@ -132,45 +132,11 @@ const Hosts = {
     Hosts.render();
   },
 
-  /** VM sayısına tıklanınca: host'un VM'lerini çek, modal mini tablosunu doldur. */
-  async showVms(hostId) {
-    const modalEl = document.getElementById('hostVmsModal');
-    const body = document.getElementById('hostVmsBody');
-    document.getElementById('hostVmsTitle').textContent = 'Sanal Makineler';
-    body.innerHTML = '<tr><td colspan="5" class="text-center text-muted p-3">Yükleniyor…</td></tr>';
-    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
-    modal.show();
+  /** VM sayısına tıklanınca: ortak VM-listesi modalı (App.hostVms). */
+  showVms(hostId) { App.hostVms(hostId); },
 
-    let h;
-    try { h = await App.api('/api/hosts/' + hostId); } catch (e) { modal.hide(); return; }
-    document.getElementById('hostVmsTitle').textContent = h.name + ' — ' + (h.vms || []).length + ' VM';
-
-    if (!h.vms || !h.vms.length) {
-      body.innerHTML = '<tr><td colspan="5" class="text-center text-muted p-3">Bu host\'ta VM bulunmuyor.</td></tr>';
-      return;
-    }
-    body.innerHTML = h.vms.map(v => {
-      const ramPct = v.ram_mb ? Math.round(100 * (v.ram_usage_mb || 0) / v.ram_mb) : null;
-      const cpu = (v.cpu_count != null ? v.cpu_count + ' vCPU' : '—') +
-                  (v.cpu_usage_pct != null ? ' <span class="text-muted">%' + Math.round(v.cpu_usage_pct) + '</span>' : '');
-      const ram = App.fmtRam(v.ram_mb) +
-                  (ramPct != null ? ' <span class="text-muted">%' + ramPct + '</span>' : '');
-      return '<tr class="vm-row" onclick="Hosts.openVm(' + v.id + ')">' +
-        '<td><strong>' + App.esc(v.name) + '</strong>' +
-          (v.vmid ? ' <small class="text-muted">#' + App.esc(v.vmid) + '</small>' : '') + '</td>' +
-        '<td class="small text-nowrap">' + App.esc((v.ip_addresses || '—').split(',')[0] || '—') + '</td>' +
-        '<td>' + App.stateBadge(v.power_state) + '</td>' +
-        '<td class="small text-nowrap">' + cpu + '</td>' +
-        '<td class="small text-nowrap">' + ram + '</td></tr>';
-    }).join('');
-  },
-
-  /** Modal'daki VM'e tıklanınca: host modalını kapat, VM detayını AYNI sayfada
-   *  ortak offcanvas panelinde göster (Sanal Makineler sayfasına gitmeden). */
-  openVm(vmId) {
-    bootstrap.Modal.getOrCreateInstance(document.getElementById('hostVmsModal')).hide();
-    App.vmDetail(vmId);
-  },
+  /** (geriye dönük uyumluluk) modaldaki VM → ortak offcanvas. */
+  openVm(vmId) { App.openVmFromModal(vmId); },
 };
 
 (function () {
