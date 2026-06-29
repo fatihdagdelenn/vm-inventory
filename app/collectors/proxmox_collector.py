@@ -701,12 +701,23 @@ class ProxmoxCollector:
                 err = exc
         return best, (None if best is not None else err)
 
+    def _all_storage_configs(self):
+        """Tüm depo yapılandırmalarını /storage listesinden bir kez oku
+        (per-id /storage/{name} bazı kurulum/izinlerde boş dönebiliyor).
+        ({ad: cfg}, hata) döndürür."""
+        try:
+            rows = self.api.storage.get() or []
+            return {r.get("storage", ""): r for r in rows}, ""
+        except Exception as exc:
+            return {}, str(exc)
+
     def _storage_config(self, name: str) -> dict:
-        """/storage/{name} yapılandırması (PBS namespace/datastore/server görmek için)."""
+        """/storage/{name} yapılandırması (PBS namespace/datastore/server/kullanıcı)."""
         try:
             return self.api.storage(name).get() or {}
         except Exception:
-            return {}
+            cfg_map, _ = self._all_storage_configs()
+            return cfg_map.get(name, {})
 
     @staticmethod
     def _is_backup(ctype, volid, plugin) -> bool:
@@ -798,6 +809,7 @@ class ProxmoxCollector:
             groups = self._storage_groups()
         except Exception as exc:
             return [{"error": f"cluster/resources okunamadi: {exc}"}]
+        cfg_map, cfg_err = self._all_storage_configs()   # tüm config'leri bir kez oku
 
         for name, g in groups.items():
             info = {"storage": name, "node": "", "plugin": g["plugin"],
@@ -811,13 +823,16 @@ class ProxmoxCollector:
                 content, err = self._fetch_content(node, name)
                 if content is not None and len(content) > 0:
                     break                       # içerik dönen node'da kal
-            # PBS için yapılandırmayı oku (namespace asıl şüpheli)
+            # PBS için yapılandırmayı oku (namespace + PBS API kullanıcısı asıl şüpheli)
             if g["plugin"] == "pbs":
-                cfg = self._storage_config(name)
+                cfg = cfg_map.get(name) or self._storage_config(name)
                 ns = cfg.get("namespace") or "(kök)"
-                ds = cfg.get("datastore") or cfg.get("pbs-datastore") or "?"
+                ds = cfg.get("datastore") or "?"
                 srv = cfg.get("server") or "?"
-                info["config"] = f"datastore={ds} · namespace={ns} · server={srv}"
+                usr = cfg.get("username") or "?"      # PBS API kullanıcısı/token
+                info["config"] = f"datastore={ds} · namespace={ns} · server={srv} · PBS-kullanıcı={usr}"
+                if not cfg and cfg_err:
+                    info["config"] += f"  (config okunamadı: {cfg_err})"
                 # filtreli vs filtresiz ayrı sayım (hangisinin döndüğünü görmek için)
                 if info["node"]:
                     try:
@@ -848,10 +863,13 @@ class ProxmoxCollector:
             # Olası sebep notu
             if info["items"] == 0:
                 if g["plugin"] == "pbs":
-                    info["note"] = ("PBS deposu boş döndü. PVE yalnız config'deki "
-                                    "namespace'i listeler → backuplar başka namespace'teyse "
-                                    "GÖRÜNMEZ. Yukarıdaki 'namespace' değerini, PBS'te "
-                                    "backupların durduğu namespace ile karşılaştır.")
+                    info["note"] = ("PBS deposu boş döndü ama backup işi çalışıyorsa "
+                                    "backuplar VARDIR. En olası neden: depo config'indeki "
+                                    "PBS API kullanıcısının (yukarıdaki 'PBS-kullanıcı') PBS "
+                                    "tarafında Datastore.Audit/okuma izni YOK (yazma/Backup "
+                                    "izni var → backup alır ama listeleyemez). İkincil: "
+                                    "namespace yanlış. PBS'te o kullanıcıya datastore üzerinde "
+                                    "DatastoreAudit/DatastoreReader ver.")
                 else:
                     info["note"] = ("Depo boş döndü. Olası: Datastore.Audit izni yok "
                                     "veya depo bu node'da pasif/erişilemez.")
