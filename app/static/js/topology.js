@@ -13,7 +13,8 @@
 const Topo = {
   cy: null,
   es: null,
-  expanded: new Set(),        // VM'leri açık host id'leri ("h5")
+  expanded: new Set(),        // VM'leri GÖRÜNÜR host id'leri ("h5")
+  loaded: new Set(),          // VM'leri bir kez ÇEKİLMİŞ host id'leri (grafikte kalır)
   layers: { storage: false, network: false },
   _refreshTimer: null,
   _POS_KEY: 'topo_pos_v1',
@@ -301,52 +302,83 @@ const Topo = {
     return l.join(',');
   },
 
-  /* ---------------- Host VM aç/kapat (lazy) ---------------- */
+  /* ---------------- Host VM aç/kapat (lazy + gizle, SİLME) ----------------
+     VM'ler bir kez çekilip grafikte KALIR; aç/kapa yalnız GÖRÜNÜRLÜK değiştirir.
+     Böylece elle ayarlanan konumlar kapatıp açınca KORUNUR. */
   async toggleHost(hid) {
-    if (this.expanded.has(hid)) { this.collapseHost(hid); return; }
-    const host = this.cy.getElementById(hid);
-    host.addClass('loading');
-    let data;
-    try {
-      data = await App.api('/api/topology/host/' + host.data('db_id') +
-                           '/vms?layers=' + encodeURIComponent(this.layerParam()));
-    } catch (e) { host.removeClass('loading'); return; }
-    host.removeClass('loading');
-    const existing = new Set(this.cy.nodes().map(n => n.id()));
-    const nodes = data.nodes.filter(n => !existing.has(n.data.id));  // datastore/net tekil
-    const added = this.cy.add({ nodes: this.prep(nodes), edges: data.edges });
-    this.expanded.add(hid);
-    this.placeNear(host, added.nodes());     // host yanına yerleştir (relayout YOK)
-    this.savePos();
+    if (this.expanded.has(hid)) {            // açıksa → gizle (silme!)
+      this.expanded.delete(hid);
+      this.applyVisibility();
+      return;
+    }
+    if (!this.loaded.has(hid)) {             // ilk kez → çek + ekle + yerleştir
+      const host = this.cy.getElementById(hid);
+      host.addClass('loading');
+      let data;
+      try {
+        data = await App.api('/api/topology/host/' + host.data('db_id') +
+                             '/vms?layers=' + encodeURIComponent(this.layerParam()));
+      } catch (e) { host.removeClass('loading'); return; }
+      host.removeClass('loading');
+      const existing = new Set(this.cy.nodes().map(n => n.id()));
+      const nodes = data.nodes.filter(n => !existing.has(n.data.id));   // datastore/net tekil
+      const added = this.cy.add({ nodes: this.prep(nodes), edges: data.edges });
+      this.placeNear(host, added.nodes());   // host yanına yerleştir (relayout YOK)
+      this.loaded.add(hid);
+      this.savePos();
+    }
+    this.expanded.add(hid);                  // göster (konumlar zaten kayıtlı)
+    this.applyVisibility();
   },
 
-  collapseHost(hid) {
-    const vms = this.cy.nodes('node[type="vm"][host="' + hid + '"]');
-    vms.connectedEdges().remove();
-    vms.remove();
-    this.expanded.delete(hid);
-    this.pruneOrphans();
-    this.savePos();                          // konum sıfırlanmaz (relayout YOK)
-  },
-
-  pruneOrphans() {  // bağlantısız kalan datastore/network düğümlerini sil
+  /** Görünürlüğü uygula: VM'ler host'u expanded ise görünür; datastore/network
+   *  yalnız görünür bir VM'e bağlıysa görünür. Düğümler SİLİNMEZ → konum korunur. */
+  applyVisibility() {
+    this.cy.nodes('node[type="vm"]').forEach(v =>
+      v.style('display', this.expanded.has(v.data('host')) ? 'element' : 'none'));
     this.cy.nodes('node[type="datastore"], node[type="network"]').forEach(n => {
-      if (n.connectedEdges().length === 0) n.remove();
+      const anyVis = n.connectedEdges().some(e => {
+        const o = e.source().same(n) ? e.target() : e.source();
+        return o.style('display') !== 'none';
+      });
+      n.style('display', anyVis ? 'element' : 'none');
     });
   },
 
-  async reloadLayers() {  // katman değişince açık host'ları yeniden yükle
-    const open = [...this.expanded];
-    open.forEach(hid => this.collapseHost(hid));
-    for (const hid of open) await this.toggleHost(hid);
+  async reloadLayers() {
+    // Mevcut katman düğüm/kenarlarını temizle, yüklü host'lar için yeniden çek.
+    this.cy.elements('edge[etype="vm-datastore"], edge[etype="vm-network"]').remove();
+    this.cy.nodes('node[type="datastore"], node[type="network"]').remove();
+    for (const hid of this.loaded) {
+      const host = this.cy.getElementById(hid);
+      if (host.empty()) continue;
+      let data;
+      try {
+        data = await App.api('/api/topology/host/' + host.data('db_id') +
+                             '/vms?layers=' + encodeURIComponent(this.layerParam()));
+      } catch (e) { continue; }
+      const existing = new Set(this.cy.nodes().map(n => n.id()));
+      const newNodes = data.nodes.filter(n => !existing.has(n.data.id));      // datastore/net
+      const newEdges = data.edges.filter(e => e.data.etype !== 'host-vm' &&
+                                              this.cy.getElementById(e.data.id).empty());
+      const added = this.cy.add({ nodes: this.prep(newNodes), edges: newEdges });
+      this.placeNear(host, added.nodes());
+    }
+    this.applyVisibility();
+    this.savePos();
   },
 
   async expandAll() {
     const hosts = this.cy.nodes('node[type="host"]').map(n => n.id());
-    for (const hid of hosts) if (!this.expanded.has(hid)) await this.toggleHost(hid);
+    for (const hid of hosts) {
+      if (this.loaded.has(hid)) { this.expanded.add(hid); continue; }
+      await this.toggleHost(hid);            // çeker + açar
+    }
+    this.applyVisibility();
   },
   collapseAll() {
-    [...this.expanded].forEach(hid => this.collapseHost(hid));
+    this.expanded.clear();
+    this.applyVisibility();
   },
 
   /* ---------------- Cluster daralt/genişlet ---------------- */
@@ -455,8 +487,9 @@ const Topo = {
     });
   },
 
-  /** Tam senkronizasyon sonrası: host doluluk/sayıları tazele + açık host'ları
-   *  yeniden yükle (göç eden VM eski host'tan düşer, yeni host'ta belirir). */
+  /** Tam senkronizasyon sonrası: host doluluk/sayılarını tazele; açık host'ların
+   *  VM üyeliğini KONUMLARI BOZMADAN uzlaştır (yeni VM eklenir, gideni silinir,
+   *  durum güncellenir). Mevcut VM'ler yerinde kalır. */
   async softRefresh() {
     let data;
     try { data = await App.api('/api/topology'); } catch (e) { return; }
@@ -473,9 +506,33 @@ const Topo = {
                           ram + ' · ' + (n.data.vm_count || 0) + ' VM');
       }
     });
-    const open = [...this.expanded];
-    open.forEach(hid => this.collapseHost(hid));
-    for (const hid of open) await this.toggleHost(hid);
+    // Yalnız GÖRÜNÜR host'ları uzlaştır (konumlar korunur)
+    for (const hid of [...this.expanded]) {
+      const host = this.cy.getElementById(hid);
+      if (host.empty()) continue;
+      let hd;
+      try {
+        hd = await App.api('/api/topology/host/' + host.data('db_id') +
+                           '/vms?layers=' + encodeURIComponent(this.layerParam()));
+      } catch (e) { continue; }
+      const incoming = new Set(hd.nodes.filter(n => n.data.type === 'vm').map(n => n.data.id));
+      // giden VM'leri sil
+      this.cy.nodes('node[type="vm"][host="' + hid + '"]').forEach(v => {
+        if (!incoming.has(v.id())) v.remove();
+      });
+      // yeni düğümleri ekle + durum güncelle
+      const existing = new Set(this.cy.nodes().map(n => n.id()));
+      const newNodes = hd.nodes.filter(n => !existing.has(n.data.id));
+      const newEdges = hd.edges.filter(e => this.cy.getElementById(e.data.id).empty());
+      const added = this.cy.add({ nodes: this.prep(newNodes), edges: newEdges });
+      this.placeNear(host, added.nodes());
+      hd.nodes.forEach(n => {
+        const el = this.cy.getElementById(n.data.id);
+        if (el.nonempty() && n.data.status) el.data('status', n.data.status);
+      });
+    }
+    this.applyVisibility();
+    this.savePos();
   },
 };
 
