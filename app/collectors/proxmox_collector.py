@@ -740,13 +740,28 @@ class ProxmoxCollector:
             g["nodes"].append((node, s.get("status", "")))
         return groups
 
-    @staticmethod
-    def _candidate_nodes(g):
-        """Sorgulanacak node sırası: paylaşımlı depoda aktif node'lar önce (birini
-        bulunca yeter); yerel depoda her node ayrı taranır."""
-        if g["shared"]:
-            return sorted(g["nodes"], key=lambda x: 0 if x[1] == "available" else 1)
-        return g["nodes"]
+    def _online_nodes(self):
+        """Cluster'daki online node adları (paylaşımlı depo tüm node'larda denenir)."""
+        try:
+            return [n.get("node") for n in self.api.nodes.get()
+                    if n.get("node") and n.get("status", "online") != "offline"]
+        except Exception:
+            return []
+
+    def _candidate_nodes(self, g):
+        """Sorgulanacak node sırası.
+        - Yerel depo: yalnız tanımlı olduğu node('lar).
+        - Paylaşımlı depo (PBS dahil): TÜM online node'lar denenir. Çünkü PBS
+          içeriğini REST API yalnız PBS'e gerçekten bağlanabilen node'da döndürür;
+          cluster/resources 'available' bilgisi yanıltıcı olabilir (pvesm list bir
+          node'da çalışırken REST başka node'da boş dönebiliyor)."""
+        if not g["shared"]:
+            return [(n, st) for n, st in g["nodes"]]
+        res_avail = [n for n, st in g["nodes"] if st == "available"]
+        res_other = [n for n, _ in g["nodes"] if n not in res_avail]
+        online = [n for n in self._online_nodes()
+                  if n not in res_avail and n not in res_other]
+        return [(n, "") for n in (res_avail + res_other + online)]
 
     def collect_backups(self) -> list[dict]:
         """Depo içeriğinden yedekleri topla (vzdump + PBS).
@@ -817,12 +832,18 @@ class ProxmoxCollector:
                     "items": 0, "backups": 0, "sample": "", "ctypes": "",
                     "nodes_tried": 0, "error": "", "note": "", "config": ""}
             content, err = None, None
+            pernode = []
             for node, _st in self._candidate_nodes(g):
                 info["node"] = node
                 info["nodes_tried"] += 1
-                content, err = self._fetch_content(node, name)
-                if content is not None and len(content) > 0:
+                cc, ce = self._fetch_content(node, name)
+                pernode.append(f"{node}:{'hata' if cc is None else len(cc)}")
+                if cc is not None and len(cc) > 0:
+                    content, err = cc, ce
                     break                       # içerik dönen node'da kal
+                if content is None:
+                    content, err = cc, ce       # en azından son sonucu tut
+            info["pernode"] = ", ".join(pernode)
             # PBS için yapılandırmayı oku (namespace + PBS API kullanıcısı asıl şüpheli)
             if g["plugin"] == "pbs":
                 cfg = cfg_map.get(name) or self._storage_config(name)
