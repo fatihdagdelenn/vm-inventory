@@ -116,6 +116,8 @@ const Bk = {
           '<td class="small">' + App.esc(s.plugin || '—') + '</td><td>' + nodeTxt + '</td>' +
           '<td class="small">' + App.esc(s.content_field || '—') + '</td>' +
           '<td>' + (s.items || 0) + '</td><td>' + (s.backups || 0) + '</td><td>' + status + '</td></tr>';
+        if (s.config) html += '<tr><td colspan="7" class="small" style="color:#0ea5e9">⚙ PBS: ' + App.esc(s.config) +
+          (s.n_unfiltered != null ? '  ·  filtresiz=' + s.n_unfiltered + ' / content=backup=' + s.n_backup_filter : '') + '</td></tr>';
         if (s.ctypes) html += '<tr><td colspan="7" class="text-muted small">içerik: ' + App.esc(s.ctypes) + '</td></tr>';
         if (s.note) html += '<tr><td colspan="7" class="small" style="color:#f59e0b">↳ ' + App.esc(s.note) + '</td></tr>';
         if (s.sample) html += '<tr><td colspan="7" class="text-muted small">örnek: ' + App.esc(s.sample) + '</td></tr>';

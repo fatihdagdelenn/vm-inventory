@@ -688,16 +688,25 @@ class ProxmoxCollector:
         return result
 
     def _fetch_content(self, node: str, name: str):
-        """Depo içeriğini çek: ÖNCE filtresiz (tüm içerik), olmazsa content=backup.
-        Filtresiz sorgu PBS dahil tüm yedekleri görmemizi sağlar (filtreli sorgu
-        bazı sürüm/izinlerde boş dönebiliyor). (content_list, error) döndürür."""
-        last = None
-        for kwargs in ({}, {"content": "backup"}):
+        """Depo içeriğini çek. PBS'te bazı sürümlerde filtresiz sorgu boş döner,
+        bazılarında content=backup boş döner — bu yüzden HER İKİSİ denenir ve
+        DAHA ÇOK satır döndüren sonuç kullanılır. (content_list, error) döndürür."""
+        best, err = None, None
+        for kwargs in ({"content": "backup"}, {}):
             try:
-                return self.api.nodes(node).storage(name).content.get(**kwargs), None
+                r = self.api.nodes(node).storage(name).content.get(**kwargs)
+                if best is None or len(r) > len(best):
+                    best = r
             except Exception as exc:
-                last = exc
-        return None, last
+                err = exc
+        return best, (None if best is not None else err)
+
+    def _storage_config(self, name: str) -> dict:
+        """/storage/{name} yapılandırması (PBS namespace/datastore/server görmek için)."""
+        try:
+            return self.api.storage(name).get() or {}
+        except Exception:
+            return {}
 
     @staticmethod
     def _is_backup(ctype, volid, plugin) -> bool:
@@ -794,7 +803,7 @@ class ProxmoxCollector:
             info = {"storage": name, "node": "", "plugin": g["plugin"],
                     "content_field": g["content"], "shared": g["shared"],
                     "items": 0, "backups": 0, "sample": "", "ctypes": "",
-                    "nodes_tried": 0, "error": "", "note": ""}
+                    "nodes_tried": 0, "error": "", "note": "", "config": ""}
             content, err = None, None
             for node, _st in self._candidate_nodes(g):
                 info["node"] = node
@@ -802,6 +811,25 @@ class ProxmoxCollector:
                 content, err = self._fetch_content(node, name)
                 if content is not None and len(content) > 0:
                     break                       # içerik dönen node'da kal
+            # PBS için yapılandırmayı oku (namespace asıl şüpheli)
+            if g["plugin"] == "pbs":
+                cfg = self._storage_config(name)
+                ns = cfg.get("namespace") or "(kök)"
+                ds = cfg.get("datastore") or cfg.get("pbs-datastore") or "?"
+                srv = cfg.get("server") or "?"
+                info["config"] = f"datastore={ds} · namespace={ns} · server={srv}"
+                # filtreli vs filtresiz ayrı sayım (hangisinin döndüğünü görmek için)
+                if info["node"]:
+                    try:
+                        nb = self.api.nodes(info["node"]).storage(name).content.get(content="backup")
+                        info["n_backup_filter"] = len(nb)
+                    except Exception:
+                        info["n_backup_filter"] = -1
+                    try:
+                        na = self.api.nodes(info["node"]).storage(name).content.get()
+                        info["n_unfiltered"] = len(na)
+                    except Exception:
+                        info["n_unfiltered"] = -1
             if content is None:
                 info["error"] = str(err)
                 out.append(info)
@@ -820,9 +848,10 @@ class ProxmoxCollector:
             # Olası sebep notu
             if info["items"] == 0:
                 if g["plugin"] == "pbs":
-                    info["note"] = ("PBS deposu boş döndü. Olası: token rolünde "
-                                    "Datastore.Audit yok, PBS namespace farklı, ya da "
-                                    "depo bu node'da pasif.")
+                    info["note"] = ("PBS deposu boş döndü. PVE yalnız config'deki "
+                                    "namespace'i listeler → backuplar başka namespace'teyse "
+                                    "GÖRÜNMEZ. Yukarıdaki 'namespace' değerini, PBS'te "
+                                    "backupların durduğu namespace ile karşılaştır.")
                 else:
                     info["note"] = ("Depo boş döndü. Olası: Datastore.Audit izni yok "
                                     "veya depo bu node'da pasif/erişilemez.")
