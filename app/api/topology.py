@@ -50,6 +50,7 @@ def _host_node(h: Host, vm_count: int, cluster_id: str) -> dict:
         "ram_pct": ram_pct,
         "vm_count": vm_count,
         "cpu_cores": h.cpu_cores, "ram_total_mb": h.ram_total_mb,
+        "ip": h.mgmt_ip or "",
         "cluster": h.cluster or _NO_CLUSTER,
     }}
 
@@ -73,6 +74,7 @@ def topology(db: Session = Depends(get_db), user=Depends(get_current_user)):
           .group_by(VirtualMachine.host_id).all())
 
     seen_clusters = set()
+    cluster_hosts = {}          # cid -> [host node id, ...]  (sunucular arası ağ için)
     host_total = 0
     for h in db.query(Host).all():
         if h.platform_id not in platforms:
@@ -87,7 +89,20 @@ def topology(db: Session = Depends(get_db), user=Depends(get_current_user)):
                 "parent": f"p{h.platform_id}"}})
             seen_clusters.add(cid)
         nodes.append(_host_node(h, vm_counts.get(h.id, 0), cid))
+        cluster_hosts.setdefault(cid, []).append(f"h{h.id}")
         host_total += 1
+
+    # Sunucular arası ağ bağlantıları: aynı cluster'daki host'ları halka oluştur
+    # (tam mesh yerine N kenar → spaghetti olmaz; 2 host'ta tek kenar, 1'de yok).
+    for cid, hids in cluster_hosts.items():
+        n = len(hids)
+        if n < 2:
+            continue
+        for i in range(n if n > 2 else 1):
+            a, b = hids[i], hids[(i + 1) % n]
+            edges.append({"data": {
+                "id": f"hl_{a}_{b}", "source": a, "target": b,
+                "etype": "host-link"}})
 
     return {"nodes": nodes, "edges": edges,
             "stats": {"platforms": len(platforms),
