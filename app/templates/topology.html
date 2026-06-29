@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="topo-wrap">
+  <!-- Üst araç çubuğu: arama + eylemler -->
+  <div class="topo-toolbar">
+    <div class="search-box topo-search">
+      <i class="bi bi-search"></i>
+      <input type="text" id="topoSearch" class="form-control"
+             placeholder="VM adı ara → haritada bul ve odaklan…" autocomplete="off">
+      <div id="topoSuggest" class="topo-suggest d-none"></div>
+    </div>
+    <button class="btn btn-sm btn-outline-secondary" id="topoExpandAll" title="Tüm host'ların VM'lerini aç">
+      <i class="bi bi-arrows-angle-expand"></i> <span class="d-none d-lg-inline">Tümünü Aç</span></button>
+    <button class="btn btn-sm btn-outline-secondary" id="topoCollapseAll" title="Tüm VM'leri gizle">
+      <i class="bi bi-arrows-angle-contract"></i> <span class="d-none d-lg-inline">Daralt</span></button>
+    <button class="btn btn-sm btn-outline-secondary" id="topoFit" title="Haritayı ekrana sığdır">
+      <i class="bi bi-aspect-ratio"></i></button>
+    <button class="btn btn-sm btn-outline-secondary" id="topoRelayout" title="Yeniden yerleştir">
+      <i class="bi bi-diagram-2"></i></button>
+    <span class="topo-stats text-muted small ms-auto" id="topoStats"></span>
+    <span class="topo-live small" id="topoLive" title="Canlı bağlantı durumu">
+      <i class="bi bi-circle-fill"></i> <span>bağlanıyor…</span></span>
+  </div>
+
+  <!-- Sol üst: Görünüm Filtreleri (katmanlar) — spaghetti efektini önler -->
+  <div class="topo-panel topo-filters">
+    <div class="topo-panel-title"><i class="bi bi-layers"></i> Görünüm Filtreleri</div>
+    <label class="topo-switch"><input type="checkbox" id="lyHardware" checked disabled>
+      <span><i class="bi bi-hdd-network"></i> Donanım Hiyerarşisi</span></label>
+    <label class="topo-switch"><input type="checkbox" id="lyStorage">
+      <span><i class="bi bi-hdd-stack"></i> Depolama İlişkileri</span></label>
+    <label class="topo-switch"><input type="checkbox" id="lyNetwork">
+      <span><i class="bi bi-diagram-3"></i> Ağ İlişkileri</span></label>
+    <div class="topo-hint small text-muted">VM'ler host'a tıklayınca yüklenir (lazy).</div>
+  </div>
+
+  <!-- Sağ alt: Lejant -->
+  <div class="topo-panel topo-legend">
+    <div class="topo-panel-title"><i class="bi bi-info-circle"></i> Lejant</div>
+    <div class="lg-row"><span class="lg-dot" style="background:#6366f1"></span> Platform</div>
+    <div class="lg-row"><span class="lg-dot" style="background:#0ea5e9"></span> Cluster</div>
+    <div class="lg-row"><span class="lg-dot lg-host"></span> Host (CPU halkası)</div>
+    <div class="lg-row"><span class="lg-dot" style="background:#22c55e"></span> VM çalışıyor</div>
+    <div class="lg-row"><span class="lg-dot" style="background:#ef4444"></span> VM durmuş</div>
+    <div class="lg-row"><span class="lg-dot" style="background:#f59e0b"></span> VM askıda</div>
+  </div>
+
+  <div id="topoLoading" class="topo-loading"><div class="spinner-border text-primary"></div>
+    <div class="mt-2 small text-muted">Topoloji yükleniyor…</div></div>
+  <div id="cy"></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/layout-base@2.0.1/layout-base.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/cose-base@2.2.0/cose-base.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/cytoscape-fcose@2.2.0/cytoscape-fcose.js"></script>
+<script src="/static/js/topology.js?v={{ asset_version }}"></script>
+{% endblock %}

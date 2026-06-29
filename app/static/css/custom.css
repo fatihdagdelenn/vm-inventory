@@ -865,3 +865,54 @@ html.theme-dark .hist-table code, html.theme-dark .val-cell code {
 /* VM detay offcanvas: koyu temada açık şerit "patlamasın" */
 html.theme-dark .detail-row:nth-child(odd) { background: rgba(255,255,255,.035); }
 html.theme-dark .detail-row { border-color: rgba(148,163,184,.10); }
+
+/* ======================================================================
+   TOPOLOJİ (Infrastructure Topology Map) — faz53
+   ====================================================================== */
+.topo-wrap { position: relative; display: flex; flex-direction: column;
+  height: calc(100vh - 104px); min-height: 460px; }
+.topo-toolbar { flex: 0 0 auto; display: flex; align-items: center; gap: .5rem;
+  padding: .25rem 0 .6rem; flex-wrap: wrap; }
+.topo-search { flex: 1 1 280px; max-width: 420px; position: relative; }
+#cy { flex: 1 1 auto; width: 100%; min-height: 300px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 14px; }
+html.theme-dark #cy { background: #0d1826; }
+
+/* Yüzen paneller */
+.topo-panel { position: absolute; z-index: 5; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 12px; padding: .6rem .75rem;
+  box-shadow: 0 6px 20px rgba(15,29,46,.12); font-size: .82rem; }
+.topo-panel-title { font-weight: 700; font-size: .78rem; margin-bottom: .45rem;
+  display: flex; align-items: center; gap: .35rem; color: var(--text); }
+.topo-filters { top: 60px; left: 14px; width: 210px; }
+.topo-legend { bottom: 16px; right: 16px; }
+.topo-switch { display: flex; align-items: center; gap: .5rem; padding: .2rem 0;
+  cursor: pointer; color: var(--text); }
+.topo-switch input { accent-color: var(--accent); }
+.topo-switch span { display: flex; align-items: center; gap: .4rem; }
+.topo-hint { margin-top: .4rem; line-height: 1.3; }
+.lg-row { display: flex; align-items: center; gap: .5rem; padding: .12rem 0; color: var(--text); }
+.lg-dot { width: 13px; height: 13px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
+.lg-host { background: conic-gradient(#22c55e 0 60%, #27384f 60% 100%);
+  border: 2px solid #3a4f6d; width: 15px; height: 15px; }
+
+/* Arama öneri kutusu */
+.topo-suggest { position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(15,29,46,.18); max-height: 320px; overflow-y: auto; z-index: 20; }
+.topo-sg { padding: .45rem .7rem; cursor: pointer; display: flex; align-items: center;
+  gap: .4rem; border-bottom: 1px solid var(--border); color: var(--text); }
+.topo-sg:last-child { border-bottom: 0; }
+.topo-sg:hover { background: var(--accent-soft); }
+.topo-sg-empty { padding: .55rem .7rem; color: var(--text-muted); }
+
+/* Canlı (SSE) göstergesi */
+.topo-live { display: inline-flex; align-items: center; gap: .35rem; color: var(--text-muted); }
+.topo-live i { font-size: .55rem; }
+.topo-live.on { color: #16a34a; }
+.topo-live.off { color: #f59e0b; }
+html.theme-dark .topo-live.on { color: #4ade80; }
+
+/* Yükleniyor katmanı */
+.topo-loading { position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; z-index: 8; }

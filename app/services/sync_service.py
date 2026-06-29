@@ -610,6 +610,13 @@ def sync_all_platforms():
             sync_platform(pid)
         logger.info("Tam senkronizasyon tamamlandi: %d platform, %.1f sn",
                     len(ids), (datetime.utcnow() - _t0).total_seconds())
+        # Topoloji haritası canlı tazelensin (SSE aboneleri haberdar olur).
+        try:
+            from ..core import events
+            events.publish({"kind": "sync",
+                            "ts": datetime.utcnow().isoformat() + "Z"})
+        except Exception:
+            pass
 
 
 # ==================== Hafif kullanım senkronizasyonu ====================
