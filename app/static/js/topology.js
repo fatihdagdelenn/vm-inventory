@@ -15,7 +15,10 @@ const Topo = {
   es: null,
   expanded: new Set(),        // VM'leri GÖRÜNÜR host id'leri ("h5")
   loaded: new Set(),          // VM'leri bir kez ÇEKİLMİŞ host id'leri (grafikte kalır)
+  layerLoaded: { storage: new Set(), network: new Set() },  // host bazlı katman verisi yüklendi mi
   layers: { storage: false, network: false },
+  flow: true,                 // hareketli kablolar
+  _dash: 0, _flowTimer: null,
   _refreshTimer: null,
   _POS_KEY: 'topo_pos_v1',
   pos: {},                    // kayıtlı düğüm konumları {id:{x,y}}
@@ -130,10 +133,18 @@ const Topo = {
       { selector: 'edge', style: {
           'width': 1.4, 'line-color': c.edge, 'curve-style': 'bezier',
           'target-arrow-shape': 'none' } },
+      // host → VM kablosu: erişim (agent) varsa yeşil, yoksa kırmızı; kesikli (akış)
+      { selector: 'edge[etype="host-vm"]', style: {
+          'width': 2, 'line-style': 'dashed', 'line-dash-pattern': [6, 4],
+          'line-color': '#94a3b8', 'opacity': 0.9 } },
+      { selector: 'edge[etype="host-vm"][access="ok"]', style: {
+          'line-color': '#22c55e' } },
+      { selector: 'edge[etype="host-vm"][access="no"]', style: {
+          'line-color': '#ef4444' } },
       // sunucular arası ağ bağlantısı (cluster fabriği)
       { selector: 'edge[etype="host-link"]', style: {
-          'width': 2, 'line-color': '#14b8a6', 'line-style': 'solid',
-          'opacity': 0.55, 'curve-style': 'bezier' } },
+          'width': 2.2, 'line-color': '#14b8a6', 'line-style': 'dashed',
+          'line-dash-pattern': [8, 5], 'opacity': 0.6, 'curve-style': 'bezier' } },
       { selector: 'edge[etype="vm-datastore"]', style: {
           'line-color': '#f59e0b', 'line-style': 'dashed', 'opacity': 0.7 } },
       { selector: 'edge[etype="vm-network"]', style: {
@@ -180,6 +191,7 @@ const Topo = {
     this.bindEvents();
     await this.loadBase();
     this.connectSSE();
+    this.startFlow();
 
     // Tema değişiminde stilleri yeniden uygula
     const themeBtn = document.getElementById('btnThemeGlobal');
@@ -191,6 +203,19 @@ const Topo = {
     const l = document.getElementById('topoLoading');
     if (l) l.innerHTML = '<div class="text-danger"><i class="bi bi-exclamation-triangle"></i> ' +
       App.esc(msg) + '</div>';
+  },
+
+  /** Hareketli kablolar: görünür kenarların kesik desenini akıt. Performans için
+   *  yalnız GÖRÜNÜR kenarlara uygulanır ve çok kenar varsa (>260) otomatik durur. */
+  startFlow() {
+    clearInterval(this._flowTimer);
+    this._flowTimer = setInterval(() => {
+      if (!this.flow) return;
+      const vis = this.cy.edges(':visible');
+      if (vis.length === 0 || vis.length > 260) return;   // perf koruması
+      this._dash = (this._dash + 1) % 18;
+      vis.style('line-dash-offset', -this._dash);          // tek toplu güncelleme
+    }, 90);
   },
 
   async loadBase() {
@@ -283,11 +308,16 @@ const Topo = {
       if (ev.key === 'Enter') { ev.preventDefault(); this.pickFirst(); }
       if (ev.key === 'Escape') this.hideSuggest();
     });
-    // Katman filtreleri
+    // Katman filtreleri (sil-yok modeli: konum korunur)
     document.getElementById('lyStorage').addEventListener('change', (ev) =>
-      { this.layers.storage = ev.target.checked; this.reloadLayers(); });
+      this.setLayer('storage', ev.target.checked));
     document.getElementById('lyNetwork').addEventListener('change', (ev) =>
-      { this.layers.network = ev.target.checked; this.reloadLayers(); });
+      this.setLayer('network', ev.target.checked));
+    const fl = document.getElementById('lyFlow');
+    if (fl) fl.addEventListener('change', (ev) => {
+      this.flow = ev.target.checked;
+      if (!this.flow) this.cy.edges().style('line-dash-offset', 0);
+    });
     // Eylem düğmeleri
     document.getElementById('topoFit').addEventListener('click', () => cy.fit(null, 50));
     document.getElementById('topoRelayout').addEventListener('click', () => this.runLayout(true));
@@ -325,44 +355,56 @@ const Topo = {
       const added = this.cy.add({ nodes: this.prep(nodes), edges: data.edges });
       this.placeNear(host, added.nodes());   // host yanına yerleştir (relayout YOK)
       this.loaded.add(hid);
+      if (this.layers.storage) this.layerLoaded.storage.add(hid);   // bu çekimde geldi
+      if (this.layers.network) this.layerLoaded.network.add(hid);
       this.savePos();
     }
     this.expanded.add(hid);                  // göster (konumlar zaten kayıtlı)
     this.applyVisibility();
   },
 
-  /** Görünürlüğü uygula: VM'ler host'u expanded ise görünür; datastore/network
-   *  yalnız görünür bir VM'e bağlıysa görünür. Düğümler SİLİNMEZ → konum korunur. */
+  /** Görünürlüğü uygula. Düğümler SİLİNMEZ; sadece display değişir → konum korunur.
+   *  - VM: host'u expanded ise görünür.
+   *  - datastore/network: ilgili KATMAN açık VE görünür bir VM'e bağlıysa görünür. */
   applyVisibility() {
     this.cy.nodes('node[type="vm"]').forEach(v =>
       v.style('display', this.expanded.has(v.data('host')) ? 'element' : 'none'));
+    const showLayer = { datastore: this.layers.storage, network: this.layers.network };
     this.cy.nodes('node[type="datastore"], node[type="network"]').forEach(n => {
+      if (!showLayer[n.data('type')]) { n.style('display', 'none'); return; }
       const anyVis = n.connectedEdges().some(e => {
         const o = e.source().same(n) ? e.target() : e.source();
-        return o.style('display') !== 'none';
+        return o.data('type') === 'vm' && o.style('display') !== 'none';
       });
       n.style('display', anyVis ? 'element' : 'none');
     });
   },
 
-  async reloadLayers() {
-    // Mevcut katman düğüm/kenarlarını temizle, yüklü host'lar için yeniden çek.
-    this.cy.elements('edge[etype="vm-datastore"], edge[etype="vm-network"]').remove();
-    this.cy.nodes('node[type="datastore"], node[type="network"]').remove();
-    for (const hid of this.loaded) {
-      const host = this.cy.getElementById(hid);
-      if (host.empty()) continue;
-      let data;
-      try {
-        data = await App.api('/api/topology/host/' + host.data('db_id') +
-                             '/vms?layers=' + encodeURIComponent(this.layerParam()));
-      } catch (e) { continue; }
-      const existing = new Set(this.cy.nodes().map(n => n.id()));
-      const newNodes = data.nodes.filter(n => !existing.has(n.data.id));      // datastore/net
-      const newEdges = data.edges.filter(e => e.data.etype !== 'host-vm' &&
-                                              this.cy.getElementById(e.data.id).empty());
-      const added = this.cy.add({ nodes: this.prep(newNodes), edges: newEdges });
-      this.placeNear(host, added.nodes());
+  /** Katman aç/kapat: düğümleri SİLMEZ (konum korunur), sadece görünürlük; açılınca
+   *  o katman verisi henüz çekilmemiş yüklü host'lar için lazy çeker. */
+  async setLayer(layer, on) {
+    this.layers[layer] = on;
+    if (on) {
+      for (const hid of this.loaded) {
+        if (this.layerLoaded[layer].has(hid)) continue;
+        const host = this.cy.getElementById(hid);
+        if (host.empty()) continue;
+        let data;
+        try {
+          data = await App.api('/api/topology/host/' + host.data('db_id') +
+                               '/vms?layers=' + layer);
+        } catch (e) { continue; }
+        const ntype = (layer === 'storage') ? 'datastore' : 'network';
+        const etype = (layer === 'storage') ? 'vm-datastore' : 'vm-network';
+        const existing = new Set(this.cy.nodes().map(n => n.id()));
+        const newNodes = data.nodes.filter(n => n.data.type === ntype &&
+                                                !existing.has(n.data.id));
+        const newEdges = data.edges.filter(e => e.data.etype === etype &&
+                                                this.cy.getElementById(e.data.id).empty());
+        const added = this.cy.add({ nodes: this.prep(newNodes), edges: newEdges });
+        this.placeNear(host, added.nodes());
+        this.layerLoaded[layer].add(hid);
+      }
     }
     this.applyVisibility();
     this.savePos();

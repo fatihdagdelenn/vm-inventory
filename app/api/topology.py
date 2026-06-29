@@ -33,6 +33,7 @@ from ..models import Platform, Host, VirtualMachine, Datastore
 from ..core.security import get_current_user
 from ..core import events
 from .clusters import hidden_cluster_names
+from .vms import _agent_state
 
 router = APIRouter(prefix="/api/topology", tags=["topology"])
 
@@ -120,6 +121,7 @@ def host_vms(host_id: int, layers: str = "",
     hid = f"h{host_id}"
     cl = h.cluster or _NO_CLUSTER
     cid = f"c{h.platform_id}_{cl}"           # VM'ler host ile aynı cluster kutusunda
+    ptype = (db.query(Platform.type).filter_by(id=h.platform_id).scalar() or "")
     nodes, edges = [], []
     ds_seen, net_seen = set(), set()
 
@@ -130,15 +132,17 @@ def host_vms(host_id: int, layers: str = "",
     for v in vms:
         vid = f"v{v.id}"
         ip = (v.ip_addresses or "").split(",")[0].strip()
+        agent = _agent_state(v.tools_status, ptype)       # running | stopped | none
+        access = "ok" if agent == "running" else "no"     # erişim: yeşil/kırmızı kablo
         nodes.append({"data": {
             "id": vid, "label": v.name or f"vm-{v.id}", "type": "vm",
             "parent": cid, "host": hid, "db_id": v.id,
             "status": v.power_state or "unknown",
             "cpu_count": v.cpu_count, "ram_mb": v.ram_mb,
-            "ip": ip, "agent": v.tools_status or ""}})
+            "ip": ip, "agent": agent}})
         edges.append({"data": {
             "id": f"e_{hid}_{vid}", "source": hid, "target": vid,
-            "etype": "host-vm"}})
+            "etype": "host-vm", "access": access}})
 
         if "storage" in want and v.datastore:
             for ds in (t.strip() for t in v.datastore.split(",") if t.strip()):

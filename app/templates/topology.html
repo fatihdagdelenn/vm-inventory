@@ -31,6 +31,8 @@
       <span><i class="bi bi-hdd-stack"></i> Depolama İlişkileri</span></label>
     <label class="topo-switch"><input type="checkbox" id="lyNetwork">
       <span><i class="bi bi-diagram-3"></i> Ağ İlişkileri</span></label>
+    <label class="topo-switch"><input type="checkbox" id="lyFlow" checked>
+      <span><i class="bi bi-activity"></i> Hareketli kablolar</span></label>
     <div class="topo-hint small text-muted">VM'ler host'a tıklayınca yüklenir (lazy).</div>
   </div>
 
@@ -42,6 +44,8 @@
     <div class="lg-row"><i class="bi bi-hdd-network lg-ico" style="color:#2f81f7"></i> Host (sunucu, sınır=CPU yükü)</div>
     <div class="lg-row"><i class="bi bi-database lg-ico" style="color:#f59e0b"></i> Datastore</div>
     <div class="lg-row"><span class="lg-line"></span> Sunucular arası ağ</div>
+    <div class="lg-row"><span class="lg-line" style="border-top-color:#22c55e;border-top-style:dashed"></span> VM erişilebilir (agent)</div>
+    <div class="lg-row"><span class="lg-line" style="border-top-color:#ef4444;border-top-style:dashed"></span> VM erişilemiyor</div>
     <div class="lg-row"><span class="lg-dot" style="background:#22c55e"></span> VM çalışıyor</div>
     <div class="lg-row"><span class="lg-dot" style="background:#ef4444"></span> VM durmuş</div>
     <div class="lg-row"><span class="lg-dot" style="background:#f59e0b"></span> VM askıda</div>
