@@ -833,6 +833,19 @@ class ProxmoxCollector:
                 info["config"] = f"datastore={ds} · namespace={ns} · server={srv} · PBS-kullanıcı={usr}"
                 if not cfg and cfg_err:
                     info["config"] += f"  (config okunamadı: {cfg_err})"
+                # Depo DURUMU (kullanım): veri var mı yok mu kesinleştirir.
+                if info["node"]:
+                    try:
+                        st = self.api.nodes(info["node"]).storage(name).status.get()
+                        used = (st.get("used") or 0) / 1024**3
+                        total = (st.get("total") or 0) / 1024**3
+                        info["used_gb"] = round(used, 1)
+                        info["total_gb"] = round(total, 1)
+                        info["active"] = st.get("active", st.get("enabled"))
+                        info["config"] += (f" · kullanım={info['used_gb']}/{info['total_gb']} GB"
+                                           f" · aktif={info['active']}")
+                    except Exception as exc:
+                        info["config"] += f" · durum okunamadı: {exc}"
                 # filtreli vs filtresiz ayrı sayım (hangisinin döndüğünü görmek için)
                 if info["node"]:
                     try:
@@ -863,13 +876,28 @@ class ProxmoxCollector:
             # Olası sebep notu
             if info["items"] == 0:
                 if g["plugin"] == "pbs":
-                    info["note"] = ("PBS deposu boş döndü ama backup işi çalışıyorsa "
-                                    "backuplar VARDIR. En olası neden: depo config'indeki "
-                                    "PBS API kullanıcısının (yukarıdaki 'PBS-kullanıcı') PBS "
-                                    "tarafında Datastore.Audit/okuma izni YOK (yazma/Backup "
-                                    "izni var → backup alır ama listeleyemez). İkincil: "
-                                    "namespace yanlış. PBS'te o kullanıcıya datastore üzerinde "
-                                    "DatastoreAudit/DatastoreReader ver.")
+                    used = info.get("used_gb")
+                    if used and used > 1:
+                        auth_hint = (
+                            "API TOKEN kullanıyorsun → PVE backup içeriğini VM iznine göre "
+                            "FİLTRELER ve token'da VM.Audit yoksa (özellikle 'Privilege "
+                            "Separation' AÇIKSA token, kullanıcının iznini almaz) 0 görünür. "
+                            "Çözüm: Datacenter→Permissions→Add: Path=/vms, Role=PVEAuditor "
+                            "(VM.Audit içerir), API Token=" + (getattr(self, "token_name", None) or "<token>") +
+                            ";  VEYA token'da Privilege Separation'ı KAPAT."
+                            if getattr(self, "token_name", None) else
+                            "Bağlanan kullanıcının /vms üzerinde VM.Audit izni eksik olabilir; "
+                            "Datacenter→Permissions→Add: Path=/vms, Role=PVEAuditor ver."
+                        )
+                        info["note"] = (f"Depoda VERİ VAR (~{used} GB) ve `pvesm list` root ile "
+                                        "yedekleri görüyor; ama API 0 dönüyor → PVE, backup "
+                                        "listesini VM iznine göre filtreliyor (iso/vztmpl "
+                                        "görünür çünkü VM'e bağlı değil). " + auth_hint)
+                    else:
+                        info["note"] = ("Depo kullanımı ~0 → bu PBS datastore'unda gerçekten "
+                                        "backup yok. Backuplar BAŞKA datastore/namespace'te ya "
+                                        "da başka platformda olabilir. Backup işinin yazdığı "
+                                        "hedefi (Storage) bu depoyla karşılaştır.")
                 else:
                     info["note"] = ("Depo boş döndü. Olası: Datastore.Audit izni yok "
                                     "veya depo bu node'da pasif/erişilemez.")
