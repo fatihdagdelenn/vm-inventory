@@ -104,16 +104,21 @@ const Bk = {
     d.platforms.forEach(p => {
       html += '<div class="fw-semibold mt-2">' + App.esc(p.platform) + '</div>';
       if (p.error) { html += '<div class="text-danger">' + App.esc(p.error) + '</div>'; return; }
-      html += '<table class="table table-sm mb-1"><thead><tr><th>Depo</th><th>Node</th>' +
+      html += '<table class="table table-sm mb-1"><thead><tr><th>Depo</th><th>Tip</th><th>Node</th>' +
         '<th>İçerik alanı</th><th>Öğe</th><th>Yedek</th><th>Durum</th></tr></thead><tbody>';
       (p.storages || []).forEach(s => {
         const status = s.error ? '<span class="text-danger">' + App.esc(s.error) + '</span>'
           : (s.backups > 0 ? '<span class="text-success">' + s.backups + ' yedek</span>'
                            : '<span class="text-muted">yedek yok</span>');
-        html += '<tr><td>' + App.esc(s.storage || '—') + '</td><td>' + App.esc(s.node || '') + '</td>' +
+        const nodeTxt = App.esc(s.node || '') + (s.shared && s.nodes_tried > 1
+          ? ' <span class="text-muted small">(' + s.nodes_tried + ' node denendi)</span>' : '');
+        html += '<tr><td>' + App.esc(s.storage || '—') + '</td>' +
+          '<td class="small">' + App.esc(s.plugin || '—') + '</td><td>' + nodeTxt + '</td>' +
           '<td class="small">' + App.esc(s.content_field || '—') + '</td>' +
           '<td>' + (s.items || 0) + '</td><td>' + (s.backups || 0) + '</td><td>' + status + '</td></tr>';
-        if (s.sample) html += '<tr><td colspan="6" class="text-muted small">örnek: ' + App.esc(s.sample) + '</td></tr>';
+        if (s.ctypes) html += '<tr><td colspan="7" class="text-muted small">içerik: ' + App.esc(s.ctypes) + '</td></tr>';
+        if (s.note) html += '<tr><td colspan="7" class="small" style="color:#f59e0b">↳ ' + App.esc(s.note) + '</td></tr>';
+        if (s.sample) html += '<tr><td colspan="7" class="text-muted small">örnek: ' + App.esc(s.sample) + '</td></tr>';
       });
       html += '</tbody></table>';
     });

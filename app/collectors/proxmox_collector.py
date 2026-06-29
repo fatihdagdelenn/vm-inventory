@@ -687,110 +687,147 @@ class ProxmoxCollector:
                 })
         return result
 
-    def collect_backups(self) -> list[dict]:
-        """Depo içeriğinden yedekleri topla (vzdump dosyaları + PBS anlık görüntüleri).
+    def _fetch_content(self, node: str, name: str):
+        """Depo içeriğini çek: ÖNCE filtresiz (tüm içerik), olmazsa content=backup.
+        Filtresiz sorgu PBS dahil tüm yedekleri görmemizi sağlar (filtreli sorgu
+        bazı sürüm/izinlerde boş dönebiliyor). (content_list, error) döndürür."""
+        last = None
+        for kwargs in ({}, {"content": "backup"}):
+            try:
+                return self.api.nodes(node).storage(name).content.get(**kwargs), None
+            except Exception as exc:
+                last = exc
+        return None, last
 
-        Mümkün olduğunca hoşgörülü: HER depo sorgulanır (status/content ön-filtresi yok),
-        içerikten yalnızca yedek olanlar süzülür, volid ile tekilleştirilir.
-        content='backup' sorgusu kabul edilmezse filtresiz tekrar denenir.
-        """
-        result, seen_vol, seen_store = [], set(), set()
-        try:
-            storages = self.api.cluster.resources.get(type="storage")
-        except Exception as exc:
-            logger.warning("Depo listesi alınamadı: %s", exc)
-            return result
-        for s in storages:
+    @staticmethod
+    def _is_backup(ctype, volid, plugin) -> bool:
+        return (ctype == "backup") or ("/backup/" in volid) or ("vzdump-" in volid) \
+            or (plugin == "pbs" and ctype in (None, "", "backup"))
+
+    def _storage_groups(self):
+        """cluster/resources storage satırlarını ad bazında grupla.
+        ad -> {shared, plugin, content_field, nodes:[(node,status), ...]}."""
+        groups = {}
+        for s in self.api.cluster.resources.get(type="storage"):
             name, node = s.get("storage", ""), s.get("node", "")
             if not name or not node:
                 continue
-            shared = bool(int(s.get("shared", 0) or 0))
-            plugin = s.get("plugintype", "")
-            # paylaşımlı depoyu tek kez, yerel depoyu node bazında sorgula
-            skey = name if shared else f"{node}/{name}"
-            if skey in seen_store:
+            g = groups.setdefault(name, {
+                "shared": bool(int(s.get("shared", 0) or 0)),
+                "plugin": s.get("plugintype", ""),
+                "content": s.get("content", "") or "",
+                "nodes": []})
+            g["nodes"].append((node, s.get("status", "")))
+        return groups
+
+    @staticmethod
+    def _candidate_nodes(g):
+        """Sorgulanacak node sırası: paylaşımlı depoda aktif node'lar önce (birini
+        bulunca yeter); yerel depoda her node ayrı taranır."""
+        if g["shared"]:
+            return sorted(g["nodes"], key=lambda x: 0 if x[1] == "available" else 1)
+        return g["nodes"]
+
+    def collect_backups(self) -> list[dict]:
+        """Depo içeriğinden yedekleri topla (vzdump + PBS).
+
+        - Depo ADINA göre gruplar; paylaşımlı depoyu (aktif node öncelikli) birden
+          çok node'da dener, ilk içerik dönen node yeterli; yerel depoyu her node'da.
+        - İçeriği FİLTRESİZ çeker, yedekleri kendisi süzer (filtreli sorgu bazı
+          sürüm/izinlerde boş döndüğü için).
+        """
+        result, seen_vol = [], set()
+        try:
+            groups = self._storage_groups()
+        except Exception as exc:
+            logger.warning("Depo listesi alinamadi: %s", exc)
+            return result
+
+        for name, g in groups.items():
+            # Yedek tutamayan depoyu atla (hız) — PBS hariç (içeriği hep backup'tır)
+            if g["plugin"] != "pbs" and "backup" not in g["content"]:
                 continue
-            seen_store.add(skey)
-            content = None
-            last_exc = None
-            for kwargs in ({"content": "backup"}, {}):   # önce filtreli, olmazsa filtresiz
-                try:
-                    content = self.api.nodes(node).storage(name).content.get(**kwargs)
-                    break
-                except Exception as exc:
-                    last_exc = exc
-            if content is None:
-                logger.warning("İçerik alınamadı %s/%s: %s", node, name, last_exc)
-                continue
-            found = 0
-            for c in content:
-                ctype = c.get("content")
-                volid = c.get("volid", "")
-                # yalnızca yedekler: content alanı 'backup' VEYA volid yedek desenli
-                is_backup = (ctype == "backup") or ("/backup/" in volid) \
-                    or ("vzdump-" in volid) or (ctype is None and "backup" in volid)
-                if not is_backup or not volid or volid in seen_vol:
+            for node, _status in self._candidate_nodes(g):
+                content, err = self._fetch_content(node, name)
+                if content is None:
+                    logger.warning("Icerik alinamadi %s/%s: %s", node, name, err)
                     continue
-                seen_vol.add(volid)
-                found += 1
-                ctime = c.get("ctime")
-                tail = volid.split("/")[-1]
-                fmt = c.get("format", "") or (tail.split(".", 1)[1] if "." in tail else "")
-                result.append({
-                    "vmid": str(c.get("vmid") or ""), "vm_name": "",
-                    "storage": name, "volid": volid, "fmt": fmt,
-                    "created_at": datetime.utcfromtimestamp(ctime) if ctime else None,
-                    "size_gb": round((c.get("size") or 0) / 1024**3, 2),
-                    "protected": bool(c.get("protected", 0)),
-                    "notes": (c.get("notes") or c.get("comment") or "").strip(),
-                    "source": "pbs" if plugin == "pbs" else "vzdump",
-                })
-            logger.info("Yedek tarama: depo=%s node=%s tip=%s içerik=%d yedek=%d",
-                        name, node, plugin or "?", len(content), found)
-        logger.info("Yedek taraması tamamlandı: toplam %d yedek", len(result))
+                found = 0
+                for c in content:
+                    ctype, volid = c.get("content"), c.get("volid", "")
+                    if not volid or volid in seen_vol:
+                        continue
+                    if not self._is_backup(ctype, volid, g["plugin"]):
+                        continue
+                    seen_vol.add(volid)
+                    found += 1
+                    ctime = c.get("ctime")
+                    tail = volid.split("/")[-1]
+                    fmt = c.get("format", "") or (tail.split(".", 1)[1] if "." in tail else "")
+                    result.append({
+                        "vmid": str(c.get("vmid") or ""), "vm_name": "",
+                        "storage": name, "volid": volid, "fmt": fmt,
+                        "created_at": datetime.utcfromtimestamp(ctime) if ctime else None,
+                        "size_gb": round((c.get("size") or 0) / 1024**3, 2),
+                        "protected": bool(c.get("protected", 0)),
+                        "notes": (c.get("notes") or c.get("comment") or "").strip(),
+                        "source": "pbs" if g["plugin"] == "pbs" else "vzdump",
+                    })
+                logger.info("Yedek tarama: depo=%s node=%s tip=%s icerik=%d yedek=%d",
+                            name, node, g["plugin"] or "?", len(content), found)
+                # Paylaşımlı depoda içerik dönen ilk node yeterli; yerelde tümünü tara
+                if g["shared"] and len(content) > 0:
+                    break
+        logger.info("Yedek taramasi tamamlandi: toplam %d yedek", len(result))
         return result
 
     def diagnose_backups(self) -> list[dict]:
-        """Yedek toplamanın neden boş döndüğünü teşhis et (UI'da gösterilir).
-
-        Her depo için: ad, node, eklenti, content alanı, içerik sayısı, yedek sayısı,
-        örnek volid ve varsa hata mesajı. Hiç istisna fırlatmaz.
-        """
-        out, seen = [], set()
+        """Yedekler neden boş? Her depo için FİLTRESİZ içerik sayısı + yedek sayısı +
+        içerik-tipi dökümü + örnek + denenen node + olası sebep notu. İstisna atmaz."""
+        out = []
         try:
-            storages = self.api.cluster.resources.get(type="storage")
+            groups = self._storage_groups()
         except Exception as exc:
-            return [{"error": f"cluster/resources okunamadı: {exc}"}]
-        for s in storages:
-            name, node = s.get("storage", ""), s.get("node", "")
-            if not name or not node:
-                continue
-            shared = bool(int(s.get("shared", 0) or 0))
-            skey = name if shared else f"{node}/{name}"
-            if skey in seen:
-                continue
-            seen.add(skey)
-            info = {"storage": name, "node": node, "plugin": s.get("plugintype", ""),
-                    "content_field": s.get("content", ""), "items": 0, "backups": 0,
-                    "sample": "", "error": ""}
-            content = None
-            for kwargs in ({"content": "backup"}, {}):
-                try:
-                    content = self.api.nodes(node).storage(name).content.get(**kwargs)
-                    break
-                except Exception as exc:
-                    info["error"] = str(exc)
+            return [{"error": f"cluster/resources okunamadi: {exc}"}]
+
+        for name, g in groups.items():
+            info = {"storage": name, "node": "", "plugin": g["plugin"],
+                    "content_field": g["content"], "shared": g["shared"],
+                    "items": 0, "backups": 0, "sample": "", "ctypes": "",
+                    "nodes_tried": 0, "error": "", "note": ""}
+            content, err = None, None
+            for node, _st in self._candidate_nodes(g):
+                info["node"] = node
+                info["nodes_tried"] += 1
+                content, err = self._fetch_content(node, name)
+                if content is not None and len(content) > 0:
+                    break                       # içerik dönen node'da kal
             if content is None:
+                info["error"] = str(err)
                 out.append(info)
                 continue
-            info["error"] = ""
             info["items"] = len(content)
+            ctype_counts = {}
             for c in content:
+                ct = c.get("content") or "?"
+                ctype_counts[ct] = ctype_counts.get(ct, 0) + 1
                 volid = c.get("volid", "")
-                if c.get("content") == "backup" or "/backup/" in volid or "vzdump-" in volid:
+                if self._is_backup(c.get("content"), volid, g["plugin"]):
                     info["backups"] += 1
                     if not info["sample"]:
                         info["sample"] = volid
+            info["ctypes"] = ", ".join(f"{k}:{v}" for k, v in sorted(ctype_counts.items()))
+            # Olası sebep notu
+            if info["items"] == 0:
+                if g["plugin"] == "pbs":
+                    info["note"] = ("PBS deposu boş döndü. Olası: token rolünde "
+                                    "Datastore.Audit yok, PBS namespace farklı, ya da "
+                                    "depo bu node'da pasif.")
+                else:
+                    info["note"] = ("Depo boş döndü. Olası: Datastore.Audit izni yok "
+                                    "veya depo bu node'da pasif/erişilemez.")
+            elif info["backups"] == 0:
+                info["note"] = "İçerik var ama yedek yok (bu depoda yedek tutulmuyor)."
             out.append(info)
         return out
 
