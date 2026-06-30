@@ -459,8 +459,8 @@ tr.row-focus > td { animation: rowFocusPulse 2.6s ease-out; }
 .btn-edit-primary:hover { filter: brightness(1.08); color: #fff; }
 
 /* ---- 12-kolon esnek grid ---- */
-.dash-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 1rem; align-items: start; }
-.dash-widget { grid-column: span var(--w, 4); position: relative; min-width: 0; }
+.dash-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 1rem; grid-auto-rows: 8px; grid-auto-flow: row dense; align-items: start; }
+.dash-widget { grid-column: span var(--w, 4); grid-row: span var(--rows, 32); align-self: start; position: relative; min-width: 0; }
 .dash-widget.is-hidden { display: none; }
 @media (max-width: 1100px) { .dash-widget { grid-column: span 6; } }
 @media (max-width: 640px)  { .dash-widget { grid-column: span 12 !important; } }
@@ -545,6 +545,23 @@ tr.row-focus > td { animation: rowFocusPulse 2.6s ease-out; }
 .wt:hover { background: #3b9bff; color: #fff; border-color: #3b9bff; }
 .wt-drag { cursor: grab; }
 .dash-widget.dragging { opacity: .45; }
+
+/* ---- Çoklu sayfa sekme çubuğu ---- */
+.dash-tabs { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; margin-bottom: 1rem; }
+.dash-tab { background: rgba(148,163,184,.08); border: 1px solid rgba(148,163,184,.2);
+  color: #aab8cc; padding: .34rem .8rem; border-radius: 9px; font-size: .85rem; font-weight: 600;
+  cursor: pointer; display: inline-flex; align-items: center; gap: .45rem; line-height: 1.1; }
+.dash-tab:hover { border-color: rgba(59,155,255,.4); color: #cfe0f5; }
+.dash-tab.active { background: rgba(59,155,255,.18); border-color: rgba(59,155,255,.55); color: #fff; }
+.dash-tab .tab-x, .dash-tab .tab-ren { opacity: .55; font-size: .78rem; }
+.dash-tab .tab-x:hover { color: #ff6b6b; opacity: 1; }
+.dash-tab .tab-ren:hover { color: #6db1ff; opacity: 1; }
+.dash-tab-add { color: #6db1ff; border-style: dashed; }
+.dash-widget .wt-page { font-size: .68rem; border-radius: 6px; border: 1px solid rgba(148,163,184,.3);
+  background: #16233c; color: #cdd9ea; padding: 1px 4px; max-width: 130px; }
+html.theme-light .dash-tab { color: #475569; background: #eef2f7; border-color: #dbe3ec; }
+html.theme-light .dash-tab.active { background: #dbeafe; border-color: #93c5fd; color: #1e3a5f; }
+html.theme-light .dash-widget .wt-page { background: #fff; color: #334155; }
 
 /* ---- Gizli kartlar menüsü ---- */
 .dash-hidden-menu { background: #151f32; border: 1px solid rgba(148,163,184,.2); }

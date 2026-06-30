@@ -344,62 +344,123 @@ function barGrad(chart, base, horizontal) {
 })();
 
 /* ============================ Modüler grid yönetimi ============================ */
+const ROW_UNIT = 8, GRID_GAP = 16;       // masonry: grid-auto-rows + satır boşluğu
+const LS_KEY2 = 'vmi-dash-layout-v2';     // çoklu sayfa + masonry yerleşimi
+let _uid = 0; const newId = () => 'p' + (Date.now().toString(36)) + (++_uid);
+
 const DashGrid = {
   editing: false,
+  state: null,
 
-  load() { try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch (e) { return {}; } },
-  save() {
-    const grid = document.getElementById('dashGrid');
-    const widgets = [...grid.querySelectorAll('.dash-widget')];
-    const layout = {order: [], width: {}, hidden: []};
-    widgets.forEach(w => {
-      const id = w.dataset.widget;
-      layout.order.push(id);
-      layout.width[id] = parseInt(w.dataset.w, 10);
-      if (w.classList.contains('is-hidden')) layout.hidden.push(id);
-    });
-    try { localStorage.setItem(LS_KEY, JSON.stringify(layout)); } catch (e) {}
+  /* ---- Durum yükle / kaydet / migrasyon ---- */
+  loadRaw() { try { return JSON.parse(localStorage.getItem(LS_KEY2)); } catch (e) { return null; } },
+  save() { try { localStorage.setItem(LS_KEY2, JSON.stringify(DashGrid.state)); } catch (e) {} },
+
+  allWidgetIds() {
+    return [...document.querySelectorAll('#dashGrid .dash-widget')].map(w => w.dataset.widget);
   },
 
-  applySaved() {
-    const grid = document.getElementById('dashGrid'); if (!grid) return;
-    const L = DashGrid.load();
-    if (L.order && L.order.length) {            // kaydedilmiş sırayı uygula
-      L.order.forEach(id => {
-        const w = grid.querySelector(`[data-widget="${id}"]`);
-        if (w) grid.appendChild(w);
-      });
+  ensureState() {
+    const ids = DashGrid.allWidgetIds();
+    let st = DashGrid.loadRaw();
+    if (!st || !st.pages) {
+      // v1 (tek sayfa) yerleşimini taşı, yoksa varsayılan kur
+      let v1 = null; try { v1 = JSON.parse(localStorage.getItem(LS_KEY)); } catch (e) {}
+      const p1 = 'p1';
+      st = { pages: [{ id: p1, name: 'Genel' }], active: p1,
+             assign: {}, order: {}, width: {}, hidden: [] };
+      const ord = (v1 && v1.order && v1.order.length)
+        ? v1.order.filter(id => ids.includes(id)) : ids.slice();
+      ids.forEach(id => { if (!ord.includes(id)) ord.push(id); });
+      st.order[p1] = ord;
+      ids.forEach(id => { st.assign[id] = p1; });
+      if (v1 && v1.width) st.width = { ...v1.width };
+      if (v1 && v1.hidden) st.hidden = v1.hidden.filter(id => ids.includes(id));
     }
-    const all = grid.querySelectorAll('.dash-widget');
-    all.forEach(w => {
-      const id = w.dataset.widget;
-      if (L.width && L.width[id]) w.dataset.w = L.width[id];
-      w.style.setProperty('--w', w.dataset.w);
-      w.classList.toggle('is-hidden', !!(L.hidden && L.hidden.includes(id)));
+    // Yeni eklenen widget'ları (kod güncellemesi) ilk sayfaya iliştir
+    const first = st.pages[0].id;
+    ids.forEach(id => {
+      if (!(id in st.assign)) st.assign[id] = first;
+      const pg = st.assign[id];
+      st.order[pg] = st.order[pg] || [];
+      if (!st.order[pg].includes(id)) st.order[pg].push(id);
     });
-    DashGrid.refreshHiddenMenu();
+    if (!st.pages.some(p => p.id === st.active)) st.active = st.pages[0].id;
+    DashGrid.state = st;
   },
 
   setWidth(w, val) { w.dataset.w = val; w.style.setProperty('--w', val); },
+
+  /* ---- Görünüm: aktif sayfanın widget'larını sıraya diz, gerisini gizle ---- */
+  applyView() {
+    const grid = document.getElementById('dashGrid'); if (!grid) return;
+    const st = DashGrid.state, act = st.active;
+    (st.order[act] || []).forEach(id => {
+      const w = grid.querySelector(`[data-widget="${id}"]`); if (w) grid.appendChild(w);
+    });
+    grid.querySelectorAll('.dash-widget').forEach(w => {
+      const id = w.dataset.widget;
+      const onPage = (st.assign[id] || st.pages[0].id) === act;
+      const hidden = st.hidden.includes(id);
+      w.style.display = (onPage && !hidden) ? '' : 'none';
+      if (st.width[id]) DashGrid.setWidth(w, st.width[id]);
+      else w.style.setProperty('--w', w.dataset.w);
+      // sayfa-taşı seçicisini güncelle
+      const sel = w.querySelector('.wt-page');
+      if (sel) sel.value = st.assign[id] || st.pages[0].id;
+    });
+    DashGrid.refreshHiddenMenu();
+    DashGrid.relayout();
+  },
+
+  /* ---- MASONRY: her görünür widget'ın içerik yüksekliğinden satır-açıklığı hesapla ---- */
+  relayout() {
+    const grid = document.getElementById('dashGrid'); if (!grid) return;
+    const ws = [...grid.querySelectorAll('.dash-widget')].filter(w => w.style.display !== 'none');
+    const heights = ws.map(w => w.offsetHeight);                  // tek seferde OKU
+    ws.forEach((w, i) => {                                        // sonra YAZ (thrash yok)
+      const span = Math.max(1, Math.ceil((heights[i] + GRID_GAP) / (ROW_UNIT + GRID_GAP)));
+      w.style.setProperty('--rows', span);
+    });
+    DashGrid.resizeCharts();
+  },
 
   cycleWidth(w) {
     const cur = parseInt(w.dataset.w, 10);
     const next = WIDTHS[(WIDTHS.indexOf(cur) + 1) % WIDTHS.length] || 4;
     DashGrid.setWidth(w, next);
-    DashGrid.save();
-    DashGrid.resizeCharts();
+    DashGrid.state.width[w.dataset.widget] = next;
+    DashGrid.save(); DashGrid.relayout();
   },
 
-  hide(w) { w.classList.add('is-hidden'); DashGrid.save(); DashGrid.refreshHiddenMenu(); DashGrid.resizeCharts(); },
+  hide(w) {
+    const id = w.dataset.widget;
+    if (!DashGrid.state.hidden.includes(id)) DashGrid.state.hidden.push(id);
+    DashGrid.save(); DashGrid.applyView();
+  },
   unhide(id) {
-    const w = document.querySelector(`[data-widget="${id}"]`);
-    if (w) { w.classList.remove('is-hidden'); DashGrid.save(); DashGrid.refreshHiddenMenu(); DashGrid.resizeCharts(); }
+    DashGrid.state.hidden = DashGrid.state.hidden.filter(x => x !== id);
+    DashGrid.save(); DashGrid.applyView();
+  },
+
+  /* ---- Widget'ı başka sayfaya taşı ---- */
+  moveToPage(id, pid) {
+    const st = DashGrid.state;
+    const old = st.assign[id];
+    if (st.order[old]) st.order[old] = st.order[old].filter(x => x !== id);
+    st.assign[id] = pid;
+    st.order[pid] = st.order[pid] || [];
+    if (!st.order[pid].includes(id)) st.order[pid].push(id);
+    DashGrid.save(); DashGrid.applyView();
   },
 
   refreshHiddenMenu() {
     const menu = document.getElementById('hiddenCardsMenu');
     const cnt = document.getElementById('hiddenCount');
-    const hidden = [...document.querySelectorAll('.dash-widget.is-hidden')];
+    const st = DashGrid.state;
+    // aktif sayfaya ait gizli kartlar
+    const hidden = [...document.querySelectorAll('.dash-widget')].filter(w =>
+      st.hidden.includes(w.dataset.widget) && (st.assign[w.dataset.widget] || st.pages[0].id) === st.active);
     if (cnt) cnt.textContent = hidden.length;
     if (!menu) return;
     menu.innerHTML = hidden.length ? hidden.map(w =>
@@ -409,6 +470,54 @@ const DashGrid = {
   },
 
   resizeCharts() { requestAnimationFrame(() => CHARTS.forEach(c => { try { c.resize(); } catch (e) {} })); },
+
+  /* ---- Sekme çubuğu ---- */
+  renderTabs() {
+    const bar = document.getElementById('dashTabs'); if (!bar) return;
+    const st = DashGrid.state;
+    let html = st.pages.map(p => {
+      const act = p.id === st.active ? ' active' : '';
+      const ed = DashGrid.editing
+        ? ` <span class="tab-ren" title="Yeniden adlandır" data-ren="${p.id}"><i class="bi bi-pencil"></i></span>`
+          + (st.pages.length > 1 ? ` <span class="tab-x" title="Sayfayı sil" data-del="${p.id}"><i class="bi bi-x-lg"></i></span>` : '')
+        : '';
+      return `<button class="dash-tab${act}" data-page="${p.id}">${App.esc(p.name)}${ed}</button>`;
+    }).join('');
+    if (DashGrid.editing)
+      html += `<button class="dash-tab dash-tab-add" id="dashAddPage" title="Sayfa ekle"><i class="bi bi-plus-lg"></i> Sayfa</button>`;
+    bar.innerHTML = html;
+  },
+
+  switchPage(pid) {
+    if (!DashGrid.state.pages.some(p => p.id === pid)) return;
+    DashGrid.state.active = pid; DashGrid.save();
+    DashGrid.renderTabs(); DashGrid.applyView();
+  },
+  addPage() {
+    const name = (prompt('Yeni sayfa adı:', 'Sayfa ' + (DashGrid.state.pages.length + 1)) || '').trim();
+    if (!name) return;
+    const id = newId();
+    DashGrid.state.pages.push({ id, name }); DashGrid.state.order[id] = [];
+    DashGrid.state.active = id; DashGrid.save();
+    DashGrid.renderTabs(); DashGrid.applyView();
+  },
+  renamePage(pid) {
+    const p = DashGrid.state.pages.find(x => x.id === pid); if (!p) return;
+    const name = (prompt('Sayfa adı:', p.name) || '').trim();
+    if (name) { p.name = name; DashGrid.save(); DashGrid.renderTabs(); }
+  },
+  deletePage(pid) {
+    const st = DashGrid.state;
+    if (st.pages.length <= 1) return;
+    if (!confirm('Bu sayfa silinsin mi? Kartları ilk sayfaya taşınır.')) return;
+    const target = st.pages.find(p => p.id !== pid).id;
+    (st.order[pid] || []).forEach(id => { st.assign[id] = target;
+      st.order[target] = st.order[target] || []; if (!st.order[target].includes(id)) st.order[target].push(id); });
+    delete st.order[pid];
+    st.pages = st.pages.filter(p => p.id !== pid);
+    if (st.active === pid) st.active = target;
+    DashGrid.save(); DashGrid.renderTabs(); DashGrid.applyView();
+  },
 
   /* ---- Düzenleme modu ---- */
   toggleEdit() {
@@ -421,14 +530,17 @@ const DashGrid = {
     btn.querySelector('span').textContent = DashGrid.editing ? 'Bitti' : "Dashboard'u Düzenle";
     btn.querySelector('i').className = DashGrid.editing ? 'bi bi-check2' : 'bi bi-grid-1x2';
     grid.querySelectorAll('.dash-widget').forEach(w => { w.draggable = DashGrid.editing; });
+    grid.querySelectorAll('.wt-page').forEach(s => { s.classList.toggle('d-none', !DashGrid.editing); });
+    DashGrid.renderTabs();
   },
 
   reset() {
-    try { localStorage.removeItem(LS_KEY); } catch (e) {}
+    if (!confirm('Tüm dashboard yerleşimi (sayfalar dahil) sıfırlansın mı?')) return;
+    try { localStorage.removeItem(LS_KEY2); localStorage.removeItem(LS_KEY); } catch (e) {}
     location.reload();
   },
 
-  /* ---- Sürükle-bırak (HTML5 DnD) ---- */
+  /* ---- Sürükle-bırak (aktif sayfa içinde yeniden sırala) ---- */
   dragEl: null,
   initDnD() {
     const grid = document.getElementById('dashGrid'); if (!grid) return;
@@ -441,13 +553,17 @@ const DashGrid = {
     grid.addEventListener('dragend', () => {
       if (!DashGrid.dragEl) return;
       DashGrid.dragEl.classList.remove('dragging'); DashGrid.dragEl = null;
-      DashGrid.save(); DashGrid.resizeCharts();
+      // yeni sırayı aktif sayfaya kaydet
+      const act = DashGrid.state.active;
+      DashGrid.state.order[act] = [...grid.querySelectorAll('.dash-widget')]
+        .filter(w => w.style.display !== 'none').map(w => w.dataset.widget);
+      DashGrid.save(); DashGrid.relayout();
     });
     grid.addEventListener('dragover', e => {
       if (!DashGrid.dragEl) return;
       e.preventDefault();
       const target = e.target.closest('.dash-widget');
-      if (!target || target === DashGrid.dragEl) return;
+      if (!target || target === DashGrid.dragEl || target.style.display === 'none') return;
       const r = target.getBoundingClientRect();
       const after = (e.clientY - r.top) > r.height / 2 || (e.clientX - r.left) > r.width / 2;
       grid.insertBefore(DashGrid.dragEl, after ? target.nextSibling : target);
@@ -457,36 +573,76 @@ const DashGrid = {
   init() {
     if (!document.getElementById('dashGrid')) return;
     DashGrid.mountChrome();
-    // Her karta düzenleme araçlarını (sürükle / genişlik / kapat) enjekte et
+    DashGrid.ensureState();
+    // Her karta düzenleme araçları (sürükle / genişlik / kapat / sayfa) enjekte et
     document.querySelectorAll('#dashGrid .dash-widget').forEach(w => {
       const tools = document.createElement('div');
       tools.className = 'widget-tools';
       tools.innerHTML =
         '<span class="wt wt-drag" title="Sürükle"><i class="bi bi-grip-vertical"></i></span>' +
+        '<select class="wt wt-page d-none" title="Sayfaya taşı"></select>' +
         '<button type="button" class="wt wt-size" title="Genişliği değiştir"><i class="bi bi-aspect-ratio"></i></button>' +
         '<button type="button" class="wt wt-hide" title="Kartı gizle"><i class="bi bi-x-lg"></i></button>';
       w.appendChild(tools);
     });
-    DashGrid.applySaved();
+    DashGrid.refreshPageSelectors();
+    DashGrid.renderTabs();
+    DashGrid.applyView();
     DashGrid.initDnD();
     document.getElementById('btnEditDash').addEventListener('click', DashGrid.toggleEdit);
     document.getElementById('btnResetDash').addEventListener('click', DashGrid.reset);
-    // Kart araç düğmeleri (event delegation)
-    document.getElementById('dashGrid').addEventListener('click', e => {
+
+    // Kart araç düğmeleri
+    const grid = document.getElementById('dashGrid');
+    grid.addEventListener('click', e => {
       const w = e.target.closest('.dash-widget'); if (!w || !DashGrid.editing) return;
       if (e.target.closest('.wt-hide')) { e.preventDefault(); DashGrid.hide(w); }
       else if (e.target.closest('.wt-size')) { e.preventDefault(); DashGrid.cycleWidth(w); }
     });
+    grid.addEventListener('change', e => {
+      const sel = e.target.closest('.wt-page'); if (!sel) return;
+      const w = e.target.closest('.dash-widget');
+      DashGrid.moveToPage(w.dataset.widget, sel.value);
+    });
+
+    // Sekme çubuğu olayları
+    const bar = document.getElementById('dashTabs');
+    bar.addEventListener('click', e => {
+      if (e.target.closest('#dashAddPage')) { DashGrid.addPage(); return; }
+      const ren = e.target.closest('[data-ren]'); if (ren) { e.stopPropagation(); DashGrid.renamePage(ren.dataset.ren); return; }
+      const del = e.target.closest('[data-del]'); if (del) { e.stopPropagation(); DashGrid.deletePage(del.dataset.del); return; }
+      const tab = e.target.closest('.dash-tab[data-page]'); if (tab) DashGrid.switchPage(tab.dataset.page);
+    });
+
+    // Async içerik/grafikler yüklendikçe ve pencere boyutlandıkça yeniden paketle
+    if (window.ResizeObserver) {
+      const ro = new ResizeObserver(() => {
+        clearTimeout(DashGrid._roT); DashGrid._roT = setTimeout(() => DashGrid.relayout(), 60);
+      });
+      grid.querySelectorAll('.dash-widget').forEach(w => ro.observe(w));
+    }
+    window.addEventListener('resize', () => {
+      clearTimeout(DashGrid._wT); DashGrid._wT = setTimeout(() => DashGrid.relayout(), 120);
+    });
+    window.addEventListener('dash:relayout', () => DashGrid.relayout());
+    [200, 700, 1500].forEach(ms => setTimeout(() => DashGrid.relayout(), ms));  // ilk yükleme güvenlik ağı
   },
 
-  /* Dashboard'a özel kontrolleri (canlı/gizli/sıfırla/düzenle) paylaşılan üst
-     çubuğa taşı → tek satır. Tema artık global (base.html + App.toggleTheme). */
+  refreshPageSelectors() {
+    const opts = DashGrid.state.pages.map(p => `<option value="${p.id}">→ ${App.esc(p.name)}</option>`).join('');
+    document.querySelectorAll('#dashGrid .wt-page').forEach(sel => { sel.innerHTML = opts; });
+  },
+
+  /* Kontrolleri üst çubuğa taşı (tek satır). Tema global. */
   mountChrome() {
     const controls = document.getElementById('dashControls');
     const topRight = document.querySelector('.topbar .ms-auto');
     if (controls && topRight) topRight.insertBefore(controls, topRight.firstChild);
   },
 };
+// renderTabs içinde sayfa eklendiğinde/ad değişince seçicileri tazele
+const _origRenderTabs = DashGrid.renderTabs;
+DashGrid.renderTabs = function () { _origRenderTabs.call(DashGrid); DashGrid.refreshPageSelectors && DashGrid.refreshPageSelectors(); };
 DashGrid.init();
 
 /* ============================ Cluster görünürlük yönetimi ============================ */
