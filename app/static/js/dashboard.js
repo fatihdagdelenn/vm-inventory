@@ -284,24 +284,35 @@ function barGrad(chart, base, horizontal) {
     if (zb) {
       if (!ins.zombies.length) {
         zb.innerHTML = '<div class="text-success small p-2"><i class="bi bi-check-circle"></i> ' +
-          (ins.zombie_basis === '7d'
-            ? 'Son 7 günde sürekli boşta kalan çalışan VM yok.'
+          (ins.zombie_basis === '14-30d'
+            ? 'Çok metrikli analizde (CPU+RAM+Disk+Ağ) zombi/şüpheli VM yok.'
             : 'Boşta görünen çalışan VM yok. (Anlık örneğe göre)') + '</div>';
       } else {
+        const scoreBg = z => z.score == null ? '#64748b'
+          : (z.score >= 80 ? '#ef4444' : (z.score >= 55 ? '#f59e0b' : '#22c55e'));
+        const klassBg = k => (k || '').startsWith('Kesin') ? '#ef4444'
+          : ((k || '').startsWith('Şüpheli') ? '#f59e0b' : '#22c55e');
         zb.innerHTML =
           `<div class="zombie-savings mb-2"><i class="bi bi-piggy-bank"></i>
             Geri kazanılabilir: <strong>${s.vcpu}</strong> vCPU ·
             <strong>${s.ram_gb}</strong> GB RAM · <strong>${s.disk_gb}</strong> GB disk</div>
           <div class="table-responsive"><table class="table table-sm table-hover align-middle mb-1">
-            <thead><tr><th>VM</th><th>Host</th><th class="text-end">CPU</th><th class="text-end">RAM</th></tr></thead>
+            <thead><tr><th>VM</th><th class="text-center">Skor</th><th>Sınıf</th><th class="text-end">RAM</th></tr></thead>
             <tbody>` + ins.zombies.map(z =>
-              `<tr><td><strong>${App.esc(z.name)}</strong></td><td class="small text-muted">${App.esc(z.host||'—')}</td>
-               <td class="text-end small">%${z.cpu_pct}</td><td class="text-end small">${z.ram_gb} GB</td></tr>`).join('') +
+              `<tr>
+                <td><strong>${App.esc(z.name)}</strong>
+                  <div class="text-muted" style="font-size:.7rem">${App.esc(z.host || '—')} · ${(z.reasons || []).map(App.esc).join(' · ')}</div>
+                </td>
+                <td class="text-center"><span style="display:inline-block;min-width:38px;padding:2px 8px;border-radius:999px;font-weight:700;color:#fff;background:${scoreBg(z)}">${z.score == null ? '—' : z.score}</span></td>
+                <td><span style="display:inline-block;padding:1px 8px;border-radius:6px;font-size:.72rem;font-weight:600;color:#fff;background:${klassBg(z.klass)}">${App.esc(z.klass || '')}</span>
+                  <div class="text-muted" style="font-size:.68rem">güven: ${App.esc(z.confidence || '')}</div></td>
+                <td class="text-end small">${z.ram_gb} GB</td>
+              </tr>`).join('') +
           `</tbody></table></div>
           <div class="text-muted fst-italic" style="font-size:.72rem">` +
-          (ins.zombie_basis === '7d'
-            ? `Son 7 günde tepe CPU %2'nin altında kalan çalışan VM'ler (günlük örnekleme).`
-            : `Anlık kullanım örneğinde CPU < %2. 7 günlük ortalama için veri birikiyor.`) +
+          (ins.zombie_basis === '14-30d'
+            ? `14-30 günlük CPU+RAM+Disk+Ağ korelasyonu. "Kesin Zombi" için 4 metrik birden idle + ≥7 gün veri gerekir; eksik metrik (Disk/Ağ örneği henüz birikiyorsa) en fazla "Şüpheli" verir.`
+            : `Anlık CPU < %2 (tarihsel veri birikiyor). Disk/Ağ örnekleri biriktikçe çok metrikli skora geçer.`) +
           `</div>`;
       }
     }

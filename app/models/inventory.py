@@ -84,6 +84,11 @@ class VirtualMachine(Base):
     cpu_usage_pct = Column(Float)                   # Anlık CPU kullanımı (%) — hafif senkr. günceller
     ram_usage_mb = Column(BigInteger)               # Anlık RAM kullanımı (MB) — hafif senkr. günceller
     disk_used_gb = Column(Float)                    # Gerçek disk kullanımı (GB) — vCenter committed / PX agent
+    net_kbps = Column(Float)                        # Anlık ağ trafiği (KB/s) — netin+netout delta'sından
+    diskio_kbps = Column(Float)                     # Anlık disk I/O (KB/s) — diskread+diskwrite delta'sından
+    io_net_bytes = Column(BigInteger)               # Son kümülatif netin+netout (delta hesabı için)
+    io_disk_bytes = Column(BigInteger)              # Son kümülatif diskread+diskwrite (delta hesabı için)
+    io_ts = Column(DateTime)                        # Son IO örneği zamanı (oran = delta / dt)
     first_seen = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -356,6 +361,10 @@ class VmUsageDaily(Base):
     cpu_avg = Column(Float)              # gün içi ortalama CPU %
     cpu_max = Column(Float)              # gün içi tepe CPU %
     ram_avg_mb = Column(BigInteger)      # gün içi ortalama RAM kullanımı (MB)
+    ram_min_mb = Column(BigInteger)      # gün içi en düşük RAM (düz-çizgi/varyans tespiti)
+    ram_max_mb = Column(BigInteger)      # gün içi en yüksek RAM
+    net_kbps = Column(Float)             # gün içi ortalama ağ trafiği (KB/s)
+    diskio_kbps = Column(Float)          # gün içi ortalama disk I/O (KB/s)
     samples = Column(Integer, default=0)
 
     __table_args__ = (UniqueConstraint("vm_id", "day", name="uq_vm_usage_day"),)

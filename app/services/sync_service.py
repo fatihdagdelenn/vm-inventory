@@ -658,6 +658,7 @@ def _usage_sync_body():
                         pass
 
                 # VM kullanımları: external_id ile eşle, toplu güncelle
+                now = datetime.utcnow()
                 vm_rows = {v.external_id: v for v in
                            db.query(VirtualMachine)
                              .filter_by(platform_id=platform.id).all()}
@@ -671,6 +672,23 @@ def _usage_sync_body():
                         vm.ram_usage_mb = u["ram_used_mb"]
                     if u.get("disk_used_gb"):
                         vm.disk_used_gb = u["disk_used_gb"]
+                    # Ağ/Disk I/O oranı: kümülatif sayaç farkı / geçen süre (KB/s).
+                    # Negatif delta = VM yeniden başlamış (sayaç sıfırlandı) → atla.
+                    nb, db_ = u.get("net_bytes"), u.get("disk_bytes")
+                    if nb is not None and db_ is not None:
+                        prev_ts = vm.io_ts
+                        if prev_ts and vm.io_net_bytes is not None:
+                            dt = (now - prev_ts).total_seconds()
+                            if dt >= 1:
+                                dn = nb - (vm.io_net_bytes or 0)
+                                dd = db_ - (vm.io_disk_bytes or 0)
+                                if dn >= 0:
+                                    vm.net_kbps = round(dn / dt / 1024, 2)
+                                if dd >= 0:
+                                    vm.diskio_kbps = round(dd / dt / 1024, 2)
+                        vm.io_net_bytes = nb
+                        vm.io_disk_bytes = db_
+                        vm.io_ts = now
 
                 # Host kullanımları: ada göre eşle
                 host_rows = {h.name: h for h in
@@ -718,21 +736,30 @@ def record_samples(db):
 
     # 1) VM günlük kullanım toplulaştırma (yalnız kullanım örneği olanlar)
     vms = db.query(VirtualMachine.id, VirtualMachine.cpu_usage_pct,
-                   VirtualMachine.ram_usage_mb).filter_by(is_template=False).all()
+                   VirtualMachine.ram_usage_mb, VirtualMachine.net_kbps,
+                   VirtualMachine.diskio_kbps).filter_by(is_template=False).all()
     existing = {r.vm_id: r for r in db.query(VmUsageDaily).filter_by(day=today).all()}
-    for vm_id, cpu, ram in vms:
+    for vm_id, cpu, ram, net_kbps, disk_kbps in vms:
         if cpu is None:
             continue                      # kullanım örneği yok → atla
         ram = ram or 0
         row = existing.get(vm_id)
         if row is None:
             db.add(VmUsageDaily(vm_id=vm_id, day=today, cpu_avg=cpu,
-                                cpu_max=cpu, ram_avg_mb=ram, samples=1))
+                                cpu_max=cpu, ram_avg_mb=ram, ram_min_mb=ram,
+                                ram_max_mb=ram, net_kbps=net_kbps,
+                                diskio_kbps=disk_kbps, samples=1))
         else:
             n = row.samples or 0
             row.cpu_avg = (((row.cpu_avg or 0) * n) + cpu) / (n + 1)
             row.ram_avg_mb = int((((row.ram_avg_mb or 0) * n) + ram) / (n + 1))
             row.cpu_max = max(row.cpu_max or 0, cpu)
+            row.ram_min_mb = min(row.ram_min_mb if row.ram_min_mb is not None else ram, ram)
+            row.ram_max_mb = max(row.ram_max_mb or 0, ram)
+            if net_kbps is not None:
+                row.net_kbps = (((row.net_kbps or 0) * n) + net_kbps) / (n + 1)
+            if disk_kbps is not None:
+                row.diskio_kbps = (((row.diskio_kbps or 0) * n) + disk_kbps) / (n + 1)
             row.samples = n + 1
 
     # 2) Kapasite snapshot (tüm ortam geneli; gizli cluster filtresi yok)

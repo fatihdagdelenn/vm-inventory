@@ -337,38 +337,73 @@ def insights(db: Session = Depends(get_db), user: User = Depends(get_current_use
                 "disk": _forecast(disk_cap_gb, used_disk_gb, alloc_disk_gb, per_day_disk_gb),
                 "ram": _forecast(ram_cap_gb, used_ram_gb, alloc_ram_gb, per_day_ram_gb)}
 
-    # ===== Zombi (boşta) VM'ler =====
-    # Tercih: son 7 GÜN VmUsageDaily — tüm günlerde tepe CPU < %2 (>=3 günlük veri).
-    # Yeterli günlük veri yoksa anlık (son örnek) kullanıma düşer.
-    IDLE_CPU = 2.0
-    since = now.date() - _td(days=7)
-    try:
-        daily = db.query(VmUsageDaily.vm_id, func.max(VmUsageDaily.cpu_max),
-                         func.count(VmUsageDaily.id)).filter(
-            VmUsageDaily.day >= since).group_by(VmUsageDaily.vm_id).all()
-    except Exception:
-        daily = []     # tablo/şema sorunu → anlık örneğe düş (500 verme)
-    zombie_basis = "7d" if daily else "instant"
-    idle_ids = [vid for vid, cmax, cnt in daily if (cmax or 0) < IDLE_CPU and (cnt or 0) >= 3]
+    # ===== Zombi (boşta) VM'ler — ÇOK METRİKLİ KORELASYON =====
+    # Yalnız CPU yanıltıcı (false-positive). 14-30 günlük pencerede CPU/RAM/Disk/Ağ
+    # birlikte değerlendirilir (core.zombie.score_vm). Eksik metrik cezalandırmaz.
+    from ..core import zombie as zlib
 
-    if zombie_basis == "7d":
-        zq = (vm_q().filter(VirtualMachine.power_state == "running",
-                            VirtualMachine.id.in_(idle_ids)) if idle_ids else None)
+    def _f(x):
+        return float(x) if x is not None else None
+
+    ZWIN = 30
+    zsince = now.date() - _td(days=ZWIN)
+    try:
+        zrows = db.query(
+            VmUsageDaily.vm_id,
+            func.avg(VmUsageDaily.cpu_avg), func.max(VmUsageDaily.cpu_max),
+            func.avg(VmUsageDaily.ram_avg_mb), func.min(VmUsageDaily.ram_min_mb),
+            func.max(VmUsageDaily.ram_max_mb), func.avg(VmUsageDaily.net_kbps),
+            func.avg(VmUsageDaily.diskio_kbps), func.count(VmUsageDaily.id),
+        ).filter(VmUsageDaily.day >= zsince).group_by(VmUsageDaily.vm_id).all()
+    except Exception:
+        zrows = []
+    wstats = {r[0]: dict(cpu_avg=_f(r[1]), cpu_max=_f(r[2]), ram_avg=_f(r[3]),
+                         ram_min=_f(r[4]), ram_max=_f(r[5]), net=_f(r[6]),
+                         disk=_f(r[7]), days=int(r[8] or 0)) for r in zrows}
+
+    zombies = []
+    if wstats:
+        zombie_basis = "14-30d"
+        zvms = vm_q().filter(VirtualMachine.power_state == "running").outerjoin(
+            Host, VirtualMachine.host_id == Host.id).with_entities(
+            VirtualMachine.id, VirtualMachine.name, Host.name,
+            VirtualMachine.cpu_count, VirtualMachine.ram_mb,
+            VirtualMachine.disk_total_gb).all()
+        for vid, name, hname, vcpu, ram_mb, disk_gb in zvms:
+            st = wstats.get(vid)
+            if not st:
+                continue
+            res = zlib.score_vm(cpu_avg=st["cpu_avg"], cpu_max=st["cpu_max"],
+                                ram_avg_mb=st["ram_avg"], ram_min_mb=st["ram_min"],
+                                ram_max_mb=st["ram_max"], net_kbps=st["net"],
+                                diskio_kbps=st["disk"], days=st["days"])
+            if res["klass"] == "Aktif":
+                continue
+            zombies.append({"name": name, "host": hname or "", "vcpu": vcpu or 0,
+                            "ram_gb": round((ram_mb or 0) / 1024, 1),
+                            "disk_gb": round(disk_gb or 0, 1),
+                            "score": res["score"], "klass": res["klass"],
+                            "confidence": res["confidence"], "reasons": res["reasons"]})
+        zombies.sort(key=lambda z: z["score"], reverse=True)
     else:
-        zq = vm_q().filter(VirtualMachine.power_state == "running",
-                           VirtualMachine.cpu_usage_pct.isnot(None),
-                           VirtualMachine.cpu_usage_pct < IDLE_CPU)
-    zrows = []
-    if zq is not None:
-        zrows = zq.outerjoin(Host, VirtualMachine.host_id == Host.id).with_entities(
+        # Tarihsel veri yok (taze kurulum) → anlık CPU'ya düş (geçici).
+        zombie_basis = "instant"
+        zrows2 = vm_q().filter(VirtualMachine.power_state == "running",
+                               VirtualMachine.cpu_usage_pct.isnot(None),
+                               VirtualMachine.cpu_usage_pct < 2.0).outerjoin(
+            Host, VirtualMachine.host_id == Host.id).with_entities(
             VirtualMachine.name, Host.name, VirtualMachine.cpu_count,
             VirtualMachine.ram_mb, VirtualMachine.disk_total_gb,
             VirtualMachine.cpu_usage_pct).order_by(
             func.coalesce(VirtualMachine.ram_mb, 0).desc()).all()
-    zombies = [{"name": r[0], "host": r[1] or "", "vcpu": r[2] or 0,
-                "ram_gb": round((r[3] or 0) / 1024, 1),
-                "disk_gb": round(r[4] or 0, 1),
-                "cpu_pct": round(r[5] or 0, 1)} for r in zrows]
+        zombies = [{"name": r[0], "host": r[1] or "", "vcpu": r[2] or 0,
+                    "ram_gb": round((r[3] or 0) / 1024, 1),
+                    "disk_gb": round(r[4] or 0, 1),
+                    "score": None, "klass": "Şüpheli (Sahibine Sor)",
+                    "confidence": "düşük",
+                    "reasons": [f"Anlık CPU %{round(r[5] or 0, 1)} (tarihsel veri yok)"]}
+                   for r in zrows2]
+
     zombie_savings = {
         "count": len(zombies),
         "vcpu": sum(z["vcpu"] for z in zombies),

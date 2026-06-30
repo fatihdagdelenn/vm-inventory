@@ -1159,6 +1159,10 @@ class ProxmoxCollector:
                     # döner, thin'de ayak izi şişer → yanlış. Gerçek kullanım tam
                     # senkronizasyonda guest-agent get-fsinfo ile gelir; usage onu EZMESİN.
                     "disk_used_gb": None,
+                    # Kümülatif IO sayaçları (VM açılışından beri, byte). Oran (KB/s)
+                    # ardışık örneklerin farkından sync tarafında hesaplanır.
+                    "net_bytes": int((res.get("netin") or 0) + (res.get("netout") or 0)),
+                    "disk_bytes": int((res.get("diskread") or 0) + (res.get("diskwrite") or 0)),
                 })
             elif res.get("type") == "node":
                 maxmem = res.get("maxmem") or 0
