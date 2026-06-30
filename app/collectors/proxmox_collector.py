@@ -899,21 +899,16 @@ class ProxmoxCollector:
                 if g["plugin"] == "pbs":
                     used = info.get("used_gb")
                     if used and used > 1:
-                        auth_hint = (
-                            "API TOKEN kullanıyorsun → PVE backup içeriğini VM iznine göre "
-                            "FİLTRELER ve token'da VM.Audit yoksa (özellikle 'Privilege "
-                            "Separation' AÇIKSA token, kullanıcının iznini almaz) 0 görünür. "
-                            "Çözüm: Datacenter→Permissions→Add: Path=/vms, Role=PVEAuditor "
-                            "(VM.Audit içerir), API Token=" + (getattr(self, "token_name", None) or "<token>") +
-                            ";  VEYA token'da Privilege Separation'ı KAPAT."
-                            if getattr(self, "token_name", None) else
-                            "Bağlanan kullanıcının /vms üzerinde VM.Audit izni eksik olabilir; "
-                            "Datacenter→Permissions→Add: Path=/vms, Role=PVEAuditor ver."
-                        )
-                        info["note"] = (f"Depoda VERİ VAR (~{used} GB) ve `pvesm list` root ile "
-                                        "yedekleri görüyor; ama API 0 dönüyor → PVE, backup "
-                                        "listesini VM iznine göre filtreliyor (iso/vztmpl "
-                                        "görünür çünkü VM'e bağlı değil). " + auth_hint)
+                        info["note"] = (
+                            f"Depoda VERİ VAR (~{used} GB) ama içerik listesi boş. PBS içeriğini "
+                            "listelemek için PVE'nin depoya BAĞLANMASI gerekir; bu yalnız "
+                            "`Datastore.Audit` ile OLMAZ — `Datastore.Allocate/AllocateSpace` "
+                            "(yani DatastoreAdmin rolü) ister. PVEAuditor tek başına yetmez "
+                            "(depo görünür ama bağlanıp listeleyemez → boş). ÇÖZÜM: token'ın "
+                            "kullanıcısına `/` veya `/storage` üzerinde DatastoreAdmin + "
+                            "PVEAuditor ver" + (getattr(self, "token_name", None) and
+                            " VE token'da 'Privilege Separation'ı KAPAT (ya da aynı izinleri "
+                            "doğrudan token'a ver)" or "") + ". Bunu yapınca yedekler görünür.")
                     else:
                         info["note"] = ("Depo kullanımı ~0 → bu PBS datastore'unda gerçekten "
                                         "backup yok. Backuplar BAŞKA datastore/namespace'te ya "
