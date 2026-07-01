@@ -344,7 +344,15 @@ function barGrad(chart, base, horizontal) {
 })();
 
 /* ============================ Modüler grid yönetimi ============================ */
-const ROW_UNIT = 1, GRID_GAP = 16;        // masonry: 1px satır, 16px dikey boşluk span'e gömülü
+const ROWH = 100, ROW_GAP = 16;           // sabit-satır grid: satır yüksekliği + boşluk
+const HMAX = 12, WMAX = 12;                // maksimum satır/kolon açıklığı
+// Widget başına varsayılan yükseklik (satır). Belirtilmeyen = 3.
+const DEFAULT_H = {
+  'stat-vcenter': 1, 'stat-proxmox': 1, 'stat-host': 1, 'stat-vm': 1,
+  'stat-running': 1, 'stat-stopped': 1,
+  'mini-vcpu': 1, 'mini-ram': 1, 'mini-disk': 1, 'mini-suspended': 1,
+  'recentChanges': 4, 'platformStatus': 4,
+};
 const LS_KEY2 = 'vmi-dash-layout-v2';     // çoklu sayfa + masonry yerleşimi
 let _uid = 0; const newId = () => 'p' + (Date.now().toString(36)) + (++_uid);
 
@@ -368,7 +376,7 @@ const DashGrid = {
       let v1 = null; try { v1 = JSON.parse(localStorage.getItem(LS_KEY)); } catch (e) {}
       const p1 = 'p1';
       st = { pages: [{ id: p1, name: 'Genel' }], active: p1,
-             assign: {}, order: {}, width: {}, hidden: [] };
+             assign: {}, order: {}, width: {}, height: {}, hidden: [] };
       const ord = (v1 && v1.order && v1.order.length)
         ? v1.order.filter(id => ids.includes(id)) : ids.slice();
       ids.forEach(id => { if (!ord.includes(id)) ord.push(id); });
@@ -377,19 +385,25 @@ const DashGrid = {
       if (v1 && v1.width) st.width = { ...v1.width };
       if (v1 && v1.hidden) st.hidden = v1.hidden.filter(id => ids.includes(id));
     }
-    // Yeni eklenen widget'ları (kod güncellemesi) ilk sayfaya iliştir
+    st.height = st.height || {};
+    // Yeni eklenen widget'ları (kod güncellemesi) ilk sayfaya iliştir + varsayılan yükseklik
     const first = st.pages[0].id;
     ids.forEach(id => {
       if (!(id in st.assign)) st.assign[id] = first;
       const pg = st.assign[id];
       st.order[pg] = st.order[pg] || [];
       if (!st.order[pg].includes(id)) st.order[pg].push(id);
+      if (!(id in st.height)) st.height[id] = DEFAULT_H[id] || 3;
     });
     if (!st.pages.some(p => p.id === st.active)) st.active = st.pages[0].id;
     DashGrid.state = st;
   },
 
   setWidth(w, val) { w.dataset.w = val; w.style.setProperty('--w', val); },
+  setSize(w, cols, rows) {
+    w.dataset.w = cols; w.style.setProperty('--w', cols);
+    w.dataset.h = rows; w.style.setProperty('--h', rows);
+  },
 
   /* ---- Görünüm: aktif sayfanın widget'larını sıraya diz, gerisini gizle ---- */
   applyView() {
@@ -403,28 +417,19 @@ const DashGrid = {
       const onPage = (st.assign[id] || st.pages[0].id) === act;
       const hidden = st.hidden.includes(id);
       w.style.display = (onPage && !hidden) ? '' : 'none';
-      if (st.width[id]) DashGrid.setWidth(w, st.width[id]);
-      else w.style.setProperty('--w', w.dataset.w);
-      // sayfa-taşı seçicisini güncelle
+      const cols = st.width[id] || parseInt(w.dataset.w, 10) || 4;
+      const rows = st.height[id] || DEFAULT_H[id] || 3;
+      DashGrid.setSize(w, cols, rows);
       const sel = w.querySelector('.wt-page');
       if (sel) sel.value = st.assign[id] || st.pages[0].id;
     });
     DashGrid.refreshHiddenMenu();
-    DashGrid.relayout();
-  },
-
-  /* ---- MASONRY: her görünür widget'ın içerik yüksekliğinden satır-açıklığı hesapla ---- */
-  relayout() {
-    const grid = document.getElementById('dashGrid'); if (!grid) return;
-    const ws = [...grid.querySelectorAll('.dash-widget')].filter(w => w.style.display !== 'none');
-    const heights = ws.map(w => w.offsetHeight);                  // tek seferde OKU
-    ws.forEach((w, i) => {                                        // sonra YAZ (thrash yok)
-      // 1px satır + row-gap 0 → span = içerik yüksekliği (px) + dikey boşluk.
-      const span = Math.max(1, Math.ceil(heights[i]) + GRID_GAP);
-      w.style.setProperty('--rows', String(span));
-    });
     DashGrid.resizeCharts();
   },
+
+  /* Sabit-satır grid: satır-açıklığı kullanıcı tarafından ayarlanır (masonry yok).
+     Boyut değişince grafikleri yeniden ölçekle. */
+  relayout() { DashGrid.resizeCharts(); },
 
   cycleWidth(w) {
     const cur = parseInt(w.dataset.w, 10);
@@ -432,6 +437,40 @@ const DashGrid = {
     DashGrid.setWidth(w, next);
     DashGrid.state.width[w.dataset.widget] = next;
     DashGrid.save(); DashGrid.relayout();
+  },
+
+  /* ---- Köşeden sürükle-boyutlandırma (hem genişlik hem yükseklik) ---- */
+  rz: null,
+  startResize(e, w) {
+    e.preventDefault(); e.stopPropagation();
+    const grid = document.getElementById('dashGrid');
+    const cols = getComputedStyle(grid).gridTemplateColumns.split(' ').length || 12;
+    const gridRect = grid.getBoundingClientRect();
+    const colUnit = (gridRect.width - (cols - 1) * ROW_GAP) / cols + ROW_GAP;  // 1 kolon + boşluk
+    const rowUnit = ROWH + ROW_GAP;                                            // 1 satır + boşluk
+    const wRect = w.getBoundingClientRect();
+    w.draggable = false;                        // taşıma-sürüklemesiyle çakışmasın
+    w.classList.add('resizing');
+    DashGrid.rz = { w, wLeft: wRect.left, wTop: wRect.top, colUnit, rowUnit, cols };
+    window.addEventListener('pointermove', DashGrid.onResize);
+    window.addEventListener('pointerup', DashGrid.endResize, { once: true });
+  },
+  onResize(e) {
+    const rz = DashGrid.rz; if (!rz) return;
+    const nc = Math.min(rz.cols, Math.max(1, Math.round((e.clientX - rz.wLeft) / rz.colUnit)));
+    const nr = Math.min(HMAX, Math.max(1, Math.round((e.clientY - rz.wTop) / rz.rowUnit)));
+    DashGrid.setSize(rz.w, nc, nr);
+  },
+  endResize() {
+    const rz = DashGrid.rz; if (!rz) return;
+    window.removeEventListener('pointermove', DashGrid.onResize);
+    const w = rz.w; w.classList.remove('resizing');
+    if (DashGrid.editing) w.draggable = true;
+    const id = w.dataset.widget;
+    DashGrid.state.width[id] = parseInt(w.dataset.w, 10);
+    DashGrid.state.height[id] = parseInt(w.dataset.h, 10);
+    DashGrid.rz = null;
+    DashGrid.save(); DashGrid.resizeCharts();
   },
 
   hide(w) {
@@ -580,11 +619,16 @@ const DashGrid = {
       const tools = document.createElement('div');
       tools.className = 'widget-tools';
       tools.innerHTML =
-        '<span class="wt wt-drag" title="Sürükle"><i class="bi bi-grip-vertical"></i></span>' +
+        '<span class="wt wt-drag" title="Taşı (sürükle)"><i class="bi bi-grip-vertical"></i></span>' +
         '<select class="wt wt-page d-none" title="Sayfaya taşı"></select>' +
-        '<button type="button" class="wt wt-size" title="Genişliği değiştir"><i class="bi bi-aspect-ratio"></i></button>' +
+        '<button type="button" class="wt wt-size" title="Genişliği hızlı değiştir"><i class="bi bi-aspect-ratio"></i></button>' +
         '<button type="button" class="wt wt-hide" title="Kartı gizle"><i class="bi bi-x-lg"></i></button>';
       w.appendChild(tools);
+      // Köşe boyutlandırma kolu (hem genişlik hem yükseklik)
+      const rz = document.createElement('span');
+      rz.className = 'wt-resize'; rz.title = 'Boyutlandır (sürükle: yana/aşağı)';
+      rz.innerHTML = '<i class="bi bi-arrows-angle-expand"></i>';
+      w.appendChild(rz);
     });
     DashGrid.refreshPageSelectors();
     DashGrid.renderTabs();
@@ -599,6 +643,11 @@ const DashGrid = {
       const w = e.target.closest('.dash-widget'); if (!w || !DashGrid.editing) return;
       if (e.target.closest('.wt-hide')) { e.preventDefault(); DashGrid.hide(w); }
       else if (e.target.closest('.wt-size')) { e.preventDefault(); DashGrid.cycleWidth(w); }
+    });
+    grid.addEventListener('pointerdown', e => {
+      const h = e.target.closest('.wt-resize');
+      if (!h || !DashGrid.editing) return;
+      DashGrid.startResize(e, e.target.closest('.dash-widget'));
     });
     grid.addEventListener('change', e => {
       const sel = e.target.closest('.wt-page'); if (!sel) return;

@@ -35,6 +35,9 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 # sonra tarayıcı asla eski CSS/JS kullanmaz (Ctrl+F5 gerekmez).
 import time as _time
 templates.env.globals["asset_version"] = int(_time.time())
+# Arayüzde gösterilen uygulama sürümü (footer). Her fazda version.py güncellenir.
+from .core.version import APP_VERSION
+templates.env.globals["app_version"] = APP_VERSION
 # Arayüzde tarih/saatleri çevirmek için kullanılan zaman dilimi (window.APP_TZ).
 templates.env.globals["app_tz"] = settings.app_timezone
 
