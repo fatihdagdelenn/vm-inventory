@@ -344,7 +344,7 @@ function barGrad(chart, base, horizontal) {
 })();
 
 /* ============================ Modüler grid yönetimi ============================ */
-const ROW_UNIT = 8, GRID_GAP = 16;       // masonry: grid-auto-rows + satır boşluğu
+const ROW_UNIT = 1, GRID_GAP = 16;        // masonry: 1px satır, 16px dikey boşluk span'e gömülü
 const LS_KEY2 = 'vmi-dash-layout-v2';     // çoklu sayfa + masonry yerleşimi
 let _uid = 0; const newId = () => 'p' + (Date.now().toString(36)) + (++_uid);
 
@@ -419,8 +419,9 @@ const DashGrid = {
     const ws = [...grid.querySelectorAll('.dash-widget')].filter(w => w.style.display !== 'none');
     const heights = ws.map(w => w.offsetHeight);                  // tek seferde OKU
     ws.forEach((w, i) => {                                        // sonra YAZ (thrash yok)
-      const span = Math.max(1, Math.ceil((heights[i] + GRID_GAP) / (ROW_UNIT + GRID_GAP)));
-      w.style.setProperty('--rows', span);
+      // 1px satır + row-gap 0 → span = içerik yüksekliği (px) + dikey boşluk.
+      const span = Math.max(1, Math.ceil(heights[i]) + GRID_GAP);
+      w.style.setProperty('--rows', String(span));
     });
     DashGrid.resizeCharts();
   },
