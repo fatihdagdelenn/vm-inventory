@@ -180,13 +180,13 @@ function barGrad(chart, base, horizontal) {
      onClick: () => { location.href = '/datastores'; }});
 
   /* ---- Son değişiklikler ---- */
-  const typeBadge = t => ({
+  const typeBadge = ct => ({
     created: '<span class="badge text-bg-success">' + t('ct.created','Eklendi') + '</span>',
     updated: '<span class="badge text-bg-warning text-dark">' + t('ct.updated','Güncellendi') + '</span>',
     deleted: '<span class="badge text-bg-danger">' + t('ct.deleted','Silindi') + '</span>',
     migrated: '<span class="badge text-bg-info text-dark">' + t('ct.migrated','Göç') + '</span>',
     access: '<span class="badge text-bg-secondary">' + t('ct.access','Erişim') + '</span>',
-  }[t] || App.esc(t));
+  }[ct] || App.esc(ct));
   const rc = document.getElementById('recentChanges');
   if (rc) rc.innerHTML = d.recent_changes.length ? d.recent_changes.map(c => '<tr>' +
     '<td class="text-nowrap small text-muted">' + App.fmtDate(c.changed_at) + '</td>' +
