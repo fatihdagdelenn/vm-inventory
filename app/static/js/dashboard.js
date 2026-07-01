@@ -48,10 +48,10 @@ function barGrad(chart, base, horizontal) {
   set('at-nobackup', d.attention.no_backup);
 
   const hi = document.getElementById('hiddenInfo');
-  if (hi && d.hidden_clusters > 0) { hi.textContent = d.hidden_clusters + ' cluster gizli'; hi.classList.remove('d-none'); }
+  if (hi && d.hidden_clusters > 0) { hi.textContent = d.hidden_clusters + ' ' + t('dash.clustersHidden','cluster gizli'); hi.classList.remove('d-none'); }
   const uf = document.getElementById('usageFresh');
-  if (uf) uf.textContent = d.usage_updated ? 'kullanım: ' + App.fmtDate(d.usage_updated)
-                                           : 'kullanım: ilk senkronizasyon bekleniyor';
+  if (uf) uf.textContent = d.usage_updated ? t('dash.usagePrefix','kullanım: ') + App.fmtDate(d.usage_updated)
+                                           : t('dash.usageWaiting','kullanım: ilk senkronizasyon bekleniyor');
 
   /* ---- Premium grafik ortak ayarları (tema-duyarlı) ---- */
   const LIGHT = localStorage.getItem('vmi-dash-theme') === 'light';
@@ -181,11 +181,11 @@ function barGrad(chart, base, horizontal) {
 
   /* ---- Son değişiklikler ---- */
   const typeBadge = t => ({
-    created: '<span class="badge text-bg-success">Eklendi</span>',
-    updated: '<span class="badge text-bg-warning text-dark">Güncellendi</span>',
-    deleted: '<span class="badge text-bg-danger">Silindi</span>',
-    migrated: '<span class="badge text-bg-info text-dark">Göç</span>',
-    access: '<span class="badge text-bg-secondary">Erişim</span>',
+    created: '<span class="badge text-bg-success">' + t('ct.created','Eklendi') + '</span>',
+    updated: '<span class="badge text-bg-warning text-dark">' + t('ct.updated','Güncellendi') + '</span>',
+    deleted: '<span class="badge text-bg-danger">' + t('ct.deleted','Silindi') + '</span>',
+    migrated: '<span class="badge text-bg-info text-dark">' + t('ct.migrated','Göç') + '</span>',
+    access: '<span class="badge text-bg-secondary">' + t('ct.access','Erişim') + '</span>',
   }[t] || App.esc(t));
   const rc = document.getElementById('recentChanges');
   if (rc) rc.innerHTML = d.recent_changes.length ? d.recent_changes.map(c => '<tr>' +
@@ -196,19 +196,19 @@ function barGrad(chart, base, horizontal) {
     '<td class="small">' + (c.field ? App.esc(c.field) + ': <span class="text-muted">' +
       App.esc(c.old_value || '—') + '</span> → ' + App.esc(c.new_value || '—') : '—') +
     '</td></tr>').join('')
-    : '<tr><td colspan="4" class="text-muted p-3">Henüz değişiklik kaydı yok.</td></tr>';
+    : '<tr><td colspan="4" class="text-muted p-3">' + t('dash.noChanges','Henüz değişiklik kaydı yok.') + '</td></tr>';
 
   /* ---- Platform durumları ---- */
   const tbody = document.getElementById('platformStatus');
   if (tbody) tbody.innerHTML = d.platforms.length ? d.platforms.map(p => {
-    const badge = p.status === '-' ? '<span class="badge text-bg-secondary">Henüz yok</span>'
-      : p.status === 'success' ? '<span class="badge text-bg-success">Başarılı</span>'
-      : '<span class="badge text-bg-danger">Hata</span>';
+    const badge = p.status === '-' ? '<span class="badge text-bg-secondary">' + t('st.none','Henüz yok') + '</span>'
+      : p.status === 'success' ? '<span class="badge text-bg-success">' + t('st.success','Başarılı') + '</span>'
+      : '<span class="badge text-bg-danger">' + t('st.error','Hata') + '</span>';
     return '<tr><td>' + App.esc(p.name) + '</td><td>' + (p.type === 'vcenter' ? 'vCenter' : 'Proxmox') +
       '</td><td class="small">' + App.fmtDate(p.last_sync) + '</td><td>' + badge + '</td></tr>';
   }).join('')
-    : '<tr><td colspan="4" class="text-muted p-3">Henüz platform eklenmemiş. ' +
-      '<a href="/platforms">Platformlar</a> sayfasından ekleyebilirsiniz.</td></tr>';
+    : '<tr><td colspan="4" class="text-muted p-3">' + t('dash.noPlatforms','Henüz platform eklenmemiş.') + ' ' +
+      '<a href="/platforms">' + t('nav.platforms','Platformlar') + '</a> ' + t('dash.addFromPage','sayfasından ekleyebilirsiniz.') + '</td></tr>';
 
   /* ============== Akıllı paneller (insights) ============== */
   let ins;
@@ -217,58 +217,58 @@ function barGrad(chart, base, horizontal) {
 
   /** Kapasite öngörüsü + zombi + canlılık + sparkline render. */
   function renderInsights(ins) {
-    const STAT = {ok: ['text-success', 'bi-check-circle', 'Sağlıklı'],
-                  warn: ['text-warning', 'bi-exclamation-triangle', 'Yaklaşıyor'],
-                  crit: ['text-danger', 'bi-exclamation-octagon', 'Kritik'],
-                  stable: ['text-success', 'bi-check-circle', 'Kararlı'],
-                  collecting: ['text-info', 'bi-hourglass-split', 'Veri toplanıyor'],
-                  none: ['text-muted', 'bi-dash-circle', 'Yetersiz veri']};
+    const STAT = {ok: ['text-success', 'bi-check-circle', t('fc.healthy','Sağlıklı')],
+                  warn: ['text-warning', 'bi-exclamation-triangle', t('fc.warn','Yaklaşıyor')],
+                  crit: ['text-danger', 'bi-exclamation-octagon', t('fc.crit','Kritik')],
+                  stable: ['text-success', 'bi-check-circle', t('fc.stable','Kararlı')],
+                  collecting: ['text-info', 'bi-hourglass-split', t('fc.collecting','Veri toplanıyor')],
+                  none: ['text-muted', 'bi-dash-circle', t('fc.none','Yetersiz veri')]};
     const fc = ins.forecast;
     const fcWin = document.getElementById('fc-window');
     if (fcWin) fcWin.innerHTML = fc.method === 'trend'
-      ? `<i class="bi bi-activity"></i> ${fc.window_days} günlük gerçek trend`
-      : `<i class="bi bi-hourglass-split"></i> veri toplanıyor (${fc.days_collected}/${fc.days_needed} gün)`;
+      ? `<i class="bi bi-activity"></i> ${fc.window_days} ${t('fc.dayTrend','günlük gerçek trend')}`
+      : `<i class="bi bi-hourglass-split"></i> ${t('fc.collectingShort','veri toplanıyor')} (${fc.days_collected}/${fc.days_needed} ${t('unit.day','gün')})`;
 
     // Gün sayısını insanca biçimle (çok büyükse abartılı görünmesin)
     const daysHuman = (d) => {
-      if (d >= 1825) return '5+ yıl';
-      if (d >= 365) return `~${(d / 365).toFixed(1).replace('.0', '')} yıl`;
-      if (d >= 60) return `~${Math.round(d / 30)} ay`;
-      return `~${d} gün`;
+      if (d >= 1825) return '5+ ' + t('unit.year','yıl');
+      if (d >= 365) return `~${(d / 365).toFixed(1).replace('.0', '')} ${t('unit.year','yıl')}`;
+      if (d >= 60) return `~${Math.round(d / 30)} ${t('unit.month','ay')}`;
+      return `~${d} ${t('unit.day','gün')}`;
     };
     const fcRow = (title, icon, f, unit) => {
       const [cls, bi, txt] = STAT[f.status] || STAT.none;
       const fmt = (gb) => gb >= 1024 ? (gb / 1024).toFixed(1) + ' TB' : Math.round(gb) + ' GB';
       let daysTxt;
       if (f.status === 'collecting')
-        daysTxt = `<span class="text-info"><i class="bi bi-hourglass-split"></i> Doluluk trendi için veri toplanıyor.</span>`;
+        daysTxt = `<span class="text-info"><i class="bi bi-hourglass-split"></i> ${t('fc.collectingTrend','Doluluk trendi için veri toplanıyor.')}</span>`;
       else if (f.status === 'crit' && f.days_left == null)
-        daysTxt = `<strong class="text-danger">Kapasite dolu/aşıldı.</strong>`;
+        daysTxt = `<strong class="text-danger">${t('fc.full','Kapasite dolu/aşıldı.')}</strong>`;
       else if (f.days_left != null)
-        daysTxt = `Mevcut <strong>doluluk</strong> hızıyla <strong class="${cls}">${daysHuman(f.days_left)}</strong> sonra dolabilir`;
+        daysTxt = `${t('fc.atCurrent','Mevcut')} <strong>${t('fc.usage','Doluluk').toLowerCase()}</strong> ${t('fc.rate','hızıyla')} <strong class="${cls}">${daysHuman(f.days_left)}</strong> ${t('fc.mayFill','sonra dolabilir')}`;
       else
-        daysTxt = `<span class="text-success">Doluluk büyümesi kayda değer değil — kararlı.</span>`;
+        daysTxt = `<span class="text-success">${t('fc.negligible','Doluluk büyümesi kayda değer değil — kararlı.')}</span>`;
       const up = f.used_pct != null ? f.used_pct : 0;       // gerçek doluluk
       const barCls = up >= 90 ? 'bg-danger' : up >= 75 ? 'bg-warning' : 'bg-success';
       const rate = f.per_day_gb > 0 ? `<span>+${fmt(f.per_day_gb)}/gün</span>` : '<span></span>';
       // Tahsis (overcommit) satırı — ayrı kavram
       const ocCls = f.alloc_pct > 100 ? 'text-warning' : 'text-muted';
-      const ocBadge = f.overcommit ? ` <span class="badge bg-warning-subtle text-warning-emphasis" title="VM'lere fizikselden fazla ${unit} verilmiş — sanallaştırmada olağan">overcommit</span>` : '';
+      const ocBadge = f.overcommit ? ` <span class="badge bg-warning-subtle text-warning-emphasis" title="${t('fc.overcommitHint','VM\'lere fizikselden fazla')} ${unit} ${t('fc.overcommitHint2','verilmiş — sanallastirmada olagan')}">overcommit</span>` : '';
       return `<div class="forecast-row">
         <div class="d-flex align-items-center mb-1">
           <i class="bi ${icon} me-2"></i><strong>${title}</strong>
           <span class="ms-auto small ${cls}"><i class="bi ${bi}"></i> ${txt}</span></div>
         <div class="progress forecast-bar"><div class="progress-bar ${barCls}" style="width:${Math.min(100,up)}%"></div></div>
         <div class="d-flex justify-content-between small mt-1">
-          <span><strong>Doluluk:</strong> ${fmt(f.used_gb)} / ${fmt(f.capacity_gb)} <span class="text-muted">(%${up})</span></span>
+          <span><strong>${t('fc.usage','Doluluk')}:</strong> ${fmt(f.used_gb)} / ${fmt(f.capacity_gb)} <span class="text-muted">(%${up})</span></span>
           ${rate}</div>
-        <div class="small ${ocCls} mt-1"><strong>Tahsis:</strong> ${fmt(f.allocated_gb)}
+        <div class="small ${ocCls} mt-1"><strong>${t('fc.alloc','Tahsis')}:</strong> ${fmt(f.allocated_gb)}
           <span class="text-muted">(fizikselin %${f.alloc_pct ?? 0}'i)</span>${ocBadge}</div>
         <div class="small mt-1">${daysTxt}</div></div>`;
     };
     const fb = document.getElementById('forecastBody');
-    if (fb) fb.innerHTML = fcRow('Disk (Datastore)', 'bi-device-hdd', fc.disk, 'disk') +
-                           fcRow('RAM (Fiziksel)', 'bi-memory', fc.ram, 'RAM') +
+    if (fb) fb.innerHTML = fcRow(t('fc.diskTitle','Disk (Datastore)'), 'bi-device-hdd', fc.disk, 'disk') +
+                           fcRow(t('fc.ramTitle','RAM (Fiziksel)'), 'bi-memory', fc.ram, 'RAM') +
       `<div class="text-muted mt-1" style="font-size:.72rem; line-height:1.5">
         <i class="bi bi-info-circle"></i> <strong>Doluluk</strong> = gerçekte kullanılan / fiziksel kapasite
         (asıl tükenecek olan). <strong>Tahsis</strong> = VM'lere verilen; %100'ü aşması (overcommit)
@@ -285,8 +285,8 @@ function barGrad(chart, base, horizontal) {
       if (!ins.zombies.length) {
         zb.innerHTML = '<div class="text-success small p-2"><i class="bi bi-check-circle"></i> ' +
           (ins.zombie_basis === '14-30d'
-            ? 'Çok metrikli analizde (CPU+RAM+Disk+Ağ) zombi/şüpheli VM yok.'
-            : 'Boşta görünen çalışan VM yok. (Anlık örneğe göre)') + '</div>';
+            ? t('zb.none1','Çok metrikli analizde (CPU+RAM+Disk+Ağ) zombi/şüpheli VM yok.')
+            : t('zb.none2','Boşta görünen çalışan VM yok. (Anlık örneğe göre)')) + '</div>';
       } else {
         const scoreBg = z => z.score == null ? '#64748b'
           : (z.score >= 80 ? '#ef4444' : (z.score >= 55 ? '#f59e0b' : '#22c55e'));
@@ -294,10 +294,10 @@ function barGrad(chart, base, horizontal) {
           : ((k || '').startsWith('Şüpheli') ? '#f59e0b' : '#22c55e');
         zb.innerHTML =
           `<div class="zombie-savings mb-2"><i class="bi bi-piggy-bank"></i>
-            Geri kazanılabilir: <strong>${s.vcpu}</strong> vCPU ·
+            ${t('zb.recoverable','Geri kazanılabilir')}: <strong>${s.vcpu}</strong> vCPU ·
             <strong>${s.ram_gb}</strong> GB RAM · <strong>${s.disk_gb}</strong> GB disk</div>
           <div class="table-responsive"><table class="table table-sm table-hover align-middle mb-1">
-            <thead><tr><th>VM</th><th class="text-center">Skor</th><th>Sınıf</th><th class="text-end">RAM</th></tr></thead>
+            <thead><tr><th>VM</th><th class="text-center">${t('zb.score','Skor')}</th><th>${t('zb.class','Sınıf')}</th><th class="text-end">RAM</th></tr></thead>
             <tbody>` + ins.zombies.map(z =>
               `<tr>
                 <td><strong>${App.esc(z.name)}</strong>
@@ -305,7 +305,7 @@ function barGrad(chart, base, horizontal) {
                 </td>
                 <td class="text-center"><span style="display:inline-block;min-width:38px;padding:2px 8px;border-radius:999px;font-weight:700;color:#fff;background:${scoreBg(z)}">${z.score == null ? '—' : z.score}</span></td>
                 <td><span style="display:inline-block;padding:1px 8px;border-radius:6px;font-size:.72rem;font-weight:600;color:#fff;background:${klassBg(z.klass)}">${App.esc(z.klass || '')}</span>
-                  <div class="text-muted" style="font-size:.68rem">güven: ${App.esc(z.confidence || '')}</div></td>
+                  <div class="text-muted" style="font-size:.68rem">${t('zb.confidence','güven')}: ${App.esc(z.confidence || '')}</div></td>
                 <td class="text-end small">${z.ram_gb} GB</td>
               </tr>`).join('') +
           `</tbody></table></div>
@@ -321,8 +321,8 @@ function barGrad(chart, base, horizontal) {
     const lt = document.getElementById('liveText');
     if (lt) {
       const iv = ins.live.interval_minutes;
-      const last = ins.live.last_sync ? App.fmtDate(ins.live.last_sync) : 'henüz yok';
-      lt.innerHTML = `Canlı · her <strong>${iv} dk</strong> · son: ${last}`;
+      const last = ins.live.last_sync ? App.fmtDate(ins.live.last_sync) : t('common.never','henüz yok');
+      lt.innerHTML = `${t('dash.live','Canlı')} · ${t('dash.every','her')} <strong>${iv} ${t('unit.min','dk')}</strong> · ${t('dash.last','son')}: ${last}`;
     }
 
     /* Sparkline: Toplam VM kartı (14 günlük kümülatif) */
@@ -505,8 +505,8 @@ const DashGrid = {
     if (!menu) return;
     menu.innerHTML = hidden.length ? hidden.map(w =>
       `<li><button class="dropdown-item" type="button" onclick="DashGrid.unhide('${w.dataset.widget}')">
-        <i class="bi bi-plus-circle text-success"></i> ${App.esc(w.dataset.title || w.dataset.widget)}</button></li>`).join('')
-      : '<li><span class="dropdown-item-text text-muted small">Gizli kart yok</span></li>';
+        <i class="bi bi-plus-circle text-success"></i> ${App.esc(t('dashtitle.' + w.dataset.widget, w.dataset.title || w.dataset.widget))}</button></li>`).join('')
+      : '<li><span class="dropdown-item-text text-muted small">' + t('dash.noHidden','Gizli kart yok') + '</span></li>';
   },
 
   resizeCharts() { requestAnimationFrame(() => CHARTS.forEach(c => { try { c.resize(); } catch (e) {} })); },
@@ -518,13 +518,13 @@ const DashGrid = {
     let html = st.pages.map(p => {
       const act = p.id === st.active ? ' active' : '';
       const ed = DashGrid.editing
-        ? ` <span class="tab-ren" title="Yeniden adlandır" data-ren="${p.id}"><i class="bi bi-pencil"></i></span>`
-          + (st.pages.length > 1 ? ` <span class="tab-x" title="Sayfayı sil" data-del="${p.id}"><i class="bi bi-x-lg"></i></span>` : '')
+        ? ` <span class="tab-ren" title="${t('dash.rename','Yeniden adlandır')}" data-ren="${p.id}"><i class="bi bi-pencil"></i></span>`
+          + (st.pages.length > 1 ? ` <span class="tab-x" title="${t('dash.deletePageT','Sayfayı sil')}" data-del="${p.id}"><i class="bi bi-x-lg"></i></span>` : '')
         : '';
       return `<button class="dash-tab${act}" data-page="${p.id}">${App.esc(p.name)}${ed}</button>`;
     }).join('');
     if (DashGrid.editing)
-      html += `<button class="dash-tab dash-tab-add" id="dashAddPage" title="Sayfa ekle"><i class="bi bi-plus-lg"></i> Sayfa</button>`;
+      html += `<button class="dash-tab dash-tab-add" id="dashAddPage" title="${t('dash.addPageT','Sayfa ekle')}"><i class="bi bi-plus-lg"></i> ${t('dash.pageWord','Sayfa')}</button>`;
     bar.innerHTML = html;
   },
 
@@ -534,7 +534,7 @@ const DashGrid = {
     DashGrid.renderTabs(); DashGrid.applyView();
   },
   addPage() {
-    const name = (prompt('Yeni sayfa adı:', 'Sayfa ' + (DashGrid.state.pages.length + 1)) || '').trim();
+    const name = (prompt(t('dash.newPageName','Yeni sayfa adı:'), t('dash.pageWord','Sayfa') + ' ' + (DashGrid.state.pages.length + 1)) || '').trim();
     if (!name) return;
     const id = newId();
     DashGrid.state.pages.push({ id, name }); DashGrid.state.order[id] = [];
@@ -543,13 +543,13 @@ const DashGrid = {
   },
   renamePage(pid) {
     const p = DashGrid.state.pages.find(x => x.id === pid); if (!p) return;
-    const name = (prompt('Sayfa adı:', p.name) || '').trim();
+    const name = (prompt(t('dash.pageName','Sayfa adı:'), p.name) || '').trim();
     if (name) { p.name = name; DashGrid.save(); DashGrid.renderTabs(); }
   },
   deletePage(pid) {
     const st = DashGrid.state;
     if (st.pages.length <= 1) return;
-    if (!confirm('Bu sayfa silinsin mi? Kartları ilk sayfaya taşınır.')) return;
+    if (!confirm(t('dash.deletePageConfirm','Bu sayfa silinsin mi? Kartları ilk sayfaya taşınır.'))) return;
     const target = st.pages.find(p => p.id !== pid).id;
     (st.order[pid] || []).forEach(id => { st.assign[id] = target;
       st.order[target] = st.order[target] || []; if (!st.order[target].includes(id)) st.order[target].push(id); });
@@ -567,7 +567,7 @@ const DashGrid = {
     document.getElementById('btnResetDash').classList.toggle('d-none', !DashGrid.editing);
     document.getElementById('hiddenCardsWrap').classList.toggle('d-none', !DashGrid.editing);
     const btn = document.getElementById('btnEditDash');
-    btn.querySelector('span').textContent = DashGrid.editing ? 'Bitti' : "Dashboard'u Düzenle";
+    btn.querySelector('span').textContent = DashGrid.editing ? t('dash.done','Bitti') : t('dash.edit',"Dashboard'u Düzenle");
     btn.querySelector('i').className = DashGrid.editing ? 'bi bi-check2' : 'bi bi-grid-1x2';
     grid.querySelectorAll('.dash-widget').forEach(w => { w.draggable = DashGrid.editing; });
     grid.querySelectorAll('.wt-page').forEach(s => { s.classList.toggle('d-none', !DashGrid.editing); });
@@ -575,7 +575,7 @@ const DashGrid = {
   },
 
   reset() {
-    if (!confirm('Tüm dashboard yerleşimi (sayfalar dahil) sıfırlansın mı?')) return;
+    if (!confirm(t('dash.resetConfirm','Tüm dashboard yerleşimi (sayfalar dahil) sıfırlansın mı?'))) return;
     try { localStorage.removeItem(LS_KEY2); localStorage.removeItem(LS_KEY); } catch (e) {}
     location.reload();
   },
@@ -619,14 +619,14 @@ const DashGrid = {
       const tools = document.createElement('div');
       tools.className = 'widget-tools';
       tools.innerHTML =
-        '<span class="wt wt-drag" title="Taşı (sürükle)"><i class="bi bi-grip-vertical"></i></span>' +
-        '<select class="wt wt-page d-none" title="Sayfaya taşı"></select>' +
-        '<button type="button" class="wt wt-size" title="Genişliği hızlı değiştir"><i class="bi bi-aspect-ratio"></i></button>' +
-        '<button type="button" class="wt wt-hide" title="Kartı gizle"><i class="bi bi-x-lg"></i></button>';
+        '<span class="wt wt-drag" title="' + t('wt.move','Taşı (sürükle)') + '"><i class="bi bi-grip-vertical"></i></span>' +
+        '<select class="wt wt-page d-none" title="' + t('wt.page','Sayfaya taşı') + '"></select>' +
+        '<button type="button" class="wt wt-size" title="' + t('wt.width','Genişliği hızlı değiştir') + '"><i class="bi bi-aspect-ratio"></i></button>' +
+        '<button type="button" class="wt wt-hide" title="' + t('wt.hide','Kartı gizle') + '"><i class="bi bi-x-lg"></i></button>';
       w.appendChild(tools);
       // Köşe boyutlandırma kolu (hem genişlik hem yükseklik)
       const rz = document.createElement('span');
-      rz.className = 'wt-resize'; rz.title = 'Boyutlandır (sürükle: yana/aşağı)';
+      rz.className = 'wt-resize'; rz.title = t('wt.resize','Boyutlandır (sürükle: yana/aşağı)');
       rz.innerHTML = '<i class="bi bi-arrows-angle-expand"></i>';
       w.appendChild(rz);
     });
@@ -706,29 +706,28 @@ const Clusters = {
     try { data = await App.api('/api/clusters'); } catch (e) { return; }
     const ul = document.getElementById('clusterList');
     if (!data.items.length) {
-      ul.innerHTML = '<li class="list-group-item text-muted">Henüz cluster verisi yok — ' +
-        'önce bir platform senkronize edin.</li>';
+      ul.innerHTML = '<li class="list-group-item text-muted">' + t('cl.noData','Henüz cluster verisi yok — önce bir platform senkronize edin.') + '</li>';
       return;
     }
     ul.innerHTML = data.items.map(c => {
-      const label = c.is_none ? "(Cluster'sız)" : c.name;
+      const label = c.is_none ? t('cl.noCluster',"(Cluster'sız)") : c.name;
       return '<li class="list-group-item d-flex align-items-center gap-2">' +
       '<div class="form-check form-switch mb-0">' +
       '<input class="form-check-input" type="checkbox" role="switch" ' + (c.visible ? 'checked ' : '') +
       'onchange="Clusters.toggle(\'' + App.esc(c.name).replace(/'/g, "\\'") + '\', this.checked)"></div>' +
       '<div class="flex-grow-1"><strong>' + App.esc(label) +
       (c.is_none ? ' <i class="bi bi-info-circle text-muted"></i>' : '') + '</strong>' +
-      (!c.in_inventory ? ' <span class="badge text-bg-light border">envanterde yok</span>' : '') +
+      (!c.in_inventory ? ' <span class="badge text-bg-light border">' + t('cl.notInInv','envanterde yok') + '</span>' : '') +
       '<br><small class="text-muted">' + c.vm_count + ' VM · ' + c.host_count + ' host</small></div>' +
-      (c.visible ? '<span class="badge text-bg-success">Görünür</span>'
-                 : '<span class="badge text-bg-secondary">Gizli</span>') + '</li>';
+      (c.visible ? '<span class="badge text-bg-success">' + t('cl.visible','Görünür') + '</span>'
+                 : '<span class="badge text-bg-secondary">' + t('cl.hidden','Gizli') + '</span>') + '</li>';
     }).join('');
   },
   async toggle(name, visible) {
     try {
       await App.api('/api/clusters/visibility', {method: 'POST', body: {name, visible}});
-      const label = name === '__none__' ? "(Cluster'sız)" : name;
-      App.toast('"' + label + '" ' + (visible ? 'görünür yapıldı' : 'gizlendi') + ' — güncelleniyor', 'info');
+      const label = name === '__none__' ? t('cl.noCluster',"(Cluster'sız)") : name;
+      App.toast('"' + label + '" ' + (visible ? t('cl.madeVisible','görünür yapıldı') : t('cl.hiddenDone','gizlendi')) + ' — ' + t('cl.updating','güncelleniyor'), 'info');
       await Clusters.render();
       setTimeout(() => location.reload(), 900);
     } catch (e) { Clusters.render(); }

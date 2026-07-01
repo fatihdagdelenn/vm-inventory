@@ -6,21 +6,21 @@
   <div id="dashControls" class="dash-controls">
     <div class="live-indicator" id="liveWrap" title="Arka planda otomatik senkronizasyon">
       <span class="live-dot"></span>
-      <span class="live-text" id="liveText">Canlı</span>
+      <span class="live-text" id="liveText" data-i18n="dash.live">Canlı</span>
     </div>
     <div class="dropdown d-none" id="hiddenCardsWrap">
       <button class="btn btn-sm btn-edit-ghost dropdown-toggle" data-bs-toggle="dropdown">
-        <i class="bi bi-eye-slash"></i> Gizli Kartlar <span class="badge bg-secondary" id="hiddenCount">0</span>
+        <i class="bi bi-eye-slash"></i> <span data-i18n="dash.hiddenCards">Gizli Kartlar</span> <span class="badge bg-secondary" id="hiddenCount">0</span>
       </button>
       <ul class="dropdown-menu dropdown-menu-end dash-hidden-menu" id="hiddenCardsMenu">
-        <li><span class="dropdown-item-text text-muted small">Gizli kart yok</span></li>
+        <li><span class="dropdown-item-text text-muted small" data-i18n="dash.noHidden">Gizli kart yok</span></li>
       </ul>
     </div>
     <button class="btn btn-sm btn-edit-ghost d-none" id="btnResetDash" title="Varsayılan yerleşime dön">
-      <i class="bi bi-arrow-counterclockwise"></i> Sıfırla
+      <i class="bi bi-arrow-counterclockwise"></i> <span data-i18n="dash.reset">Sıfırla</span>
     </button>
     <button class="btn btn-sm btn-edit-primary" id="btnEditDash">
-      <i class="bi bi-grid-1x2"></i> <span>Dashboard'u Düzenle</span>
+      <i class="bi bi-grid-1x2"></i> <span data-i18n="dash.edit">Dashboard'u Düzenle</span>
     </button>
   </div>
 
@@ -41,148 +41,148 @@
     </div>
     <div class="dash-widget" data-widget="stat-host" data-w="2" data-title="Host sayısı">
       <a class="stat-card" href="/hosts"><div class="stat-icon bg-host"><i class="bi bi-server"></i></div>
-        <div><div class="stat-value" id="st-host">—</div><div class="stat-label">Host</div></div></a>
+        <div><div class="stat-value" id="st-host">—</div><div class="stat-label" data-i18n="dash.host">Host</div></div></a>
     </div>
     <div class="dash-widget" data-widget="stat-vm" data-w="2" data-title="Toplam VM (trend)">
       <a class="stat-card stat-card-spark" href="/vms"><canvas class="stat-spark" id="spark-vm"></canvas>
         <div class="stat-icon bg-vm"><i class="bi bi-pc-display"></i></div>
-        <div><div class="stat-value" id="st-vm">—</div><div class="stat-label">Toplam VM</div></div></a>
+        <div><div class="stat-value" id="st-vm">—</div><div class="stat-label" data-i18n="dash.totalVm">Toplam VM</div></div></a>
     </div>
     <div class="dash-widget" data-widget="stat-running" data-w="2" data-title="Çalışan VM">
       <a class="stat-card" href="/vms?q=status:running"><div class="stat-icon bg-run"><i class="bi bi-play-circle"></i></div>
-        <div><div class="stat-value" id="st-running">—</div><div class="stat-label">Çalışan VM</div></div></a>
+        <div><div class="stat-value" id="st-running">—</div><div class="stat-label" data-i18n="dash.runningVm">Çalışan VM</div></div></a>
     </div>
     <div class="dash-widget" data-widget="stat-stopped" data-w="2" data-title="Kapalı VM">
       <a class="stat-card" href="/vms?q=status:stopped"><div class="stat-icon bg-stop"><i class="bi bi-stop-circle"></i></div>
-        <div><div class="stat-value" id="st-stopped">—</div><div class="stat-label">Kapalı VM</div></div></a>
+        <div><div class="stat-value" id="st-stopped">—</div><div class="stat-label" data-i18n="dash.stoppedVm">Kapalı VM</div></div></a>
     </div>
 
     <!-- ===== Kaynak toplamları ===== -->
     <div class="dash-widget" data-widget="mini-vcpu" data-w="3" data-title="Toplam vCPU">
-      <div class="mini-stat"><i class="bi bi-cpu"></i><div><span id="st-vcpu">—</span><small>Toplam vCPU</small></div></div>
+      <div class="mini-stat"><i class="bi bi-cpu"></i><div><span id="st-vcpu">—</span><small data-i18n="dash.totalVcpu">Toplam vCPU</small></div></div>
     </div>
     <div class="dash-widget" data-widget="mini-ram" data-w="3" data-title="Tahsisli RAM">
-      <div class="mini-stat"><i class="bi bi-memory"></i><div><span id="st-ram">—</span><small>Tahsisli RAM</small></div></div>
+      <div class="mini-stat"><i class="bi bi-memory"></i><div><span id="st-ram">—</span><small data-i18n="dash.allocRam">Tahsisli RAM</small></div></div>
     </div>
     <div class="dash-widget" data-widget="mini-disk" data-w="3" data-title="Tahsisli Disk">
-      <div class="mini-stat"><i class="bi bi-device-hdd"></i><div><span id="st-disk">—</span><small>Tahsisli Disk</small></div></div>
+      <div class="mini-stat"><i class="bi bi-device-hdd"></i><div><span id="st-disk">—</span><small data-i18n="dash.allocDisk">Tahsisli Disk</small></div></div>
     </div>
     <div class="dash-widget" data-widget="mini-suspended" data-w="3" data-title="Askıdaki VM">
-      <div class="mini-stat"><i class="bi bi-pause-circle"></i><div><span id="st-suspended">—</span><small>Askıdaki VM</small></div></div>
+      <div class="mini-stat"><i class="bi bi-pause-circle"></i><div><span id="st-suspended">—</span><small data-i18n="dash.suspendedVm">Askıdaki VM</small></div></div>
     </div>
 
     <!-- ===== Kapasite Öngörüsü (yeni) ===== -->
     <div class="dash-widget" data-widget="forecast" data-w="6" data-title="Kapasite Öngörüsü">
-      <div class="card panel h-100"><div class="card-header"><i class="bi bi-graph-up-arrow text-info"></i> Kapasite Öngörüsü
+      <div class="card panel h-100"><div class="card-header"><i class="bi bi-graph-up-arrow text-info"></i> <span data-i18n="dash.forecast">Kapasite Öngörüsü</span>
         <small class="ms-auto fw-normal text-muted" id="fc-window"></small></div>
         <div class="card-body" id="forecastBody">
-          <div class="text-muted small p-2">Yükleniyor…</div>
+          <div class="text-muted small p-2"><span data-i18n="common.loading">Yükleniyor…</span></div>
         </div>
       </div>
     </div>
 
     <!-- ===== Zombi (Boşta) VM'ler (yeni) ===== -->
     <div class="dash-widget" data-widget="zombie" data-w="6" data-title="Zombi (Boşta) VM'ler">
-      <div class="card panel h-100"><div class="card-header"><i class="bi bi-moon-stars text-warning"></i> Zombi (Boşta) VM'ler
+      <div class="card panel h-100"><div class="card-header"><i class="bi bi-moon-stars text-warning"></i> <span data-i18n="dash.zombie">Zombi (Boşta) VM'ler</span>
         <span class="badge bg-warning-subtle text-warning-emphasis ms-2" id="zombieCount">—</span></div>
         <div class="card-body" id="zombieBody">
-          <div class="text-muted small p-2">Yükleniyor…</div>
+          <div class="text-muted small p-2"><span data-i18n="common.loading">Yükleniyor…</span></div>
         </div>
       </div>
     </div>
 
     <!-- ===== Dikkat gerektirenler ===== -->
     <div class="dash-widget" data-widget="attention" data-w="4" data-title="Dikkat Gerektirenler">
-      <div class="card panel h-100"><div class="card-header"><i class="bi bi-exclamation-triangle text-warning"></i> Dikkat Gerektirenler</div>
+      <div class="card panel h-100"><div class="card-header"><i class="bi bi-exclamation-triangle text-warning"></i> <span data-i18n="dash.attention">Dikkat Gerektirenler</span></div>
         <div class="list-group list-group-flush" id="attentionList">
-          <a href="/vms?q=ip:yok" class="list-group-item attention-item"><i class="bi bi-wifi-off"></i> IP adresi alınamayan VM <span class="badge" id="at-noip">—</span></a>
-          <a href="/vms?q=tools:yok" class="list-group-item attention-item"><i class="bi bi-plug"></i> Agent / Tools kurulu olmayan <span class="badge" id="at-notools">—</span></a>
-          <a href="/vms?q=owner:yok" class="list-group-item attention-item"><i class="bi bi-person-x"></i> Sahibi atanmamış VM <span class="badge" id="at-noowner">—</span></a>
-          <a href="/snapshots?old=1" class="list-group-item attention-item"><i class="bi bi-camera"></i> 30 günden eski snapshot <span class="badge" id="at-oldsnap">—</span></a>
-          <a href="/backups" class="list-group-item attention-item"><i class="bi bi-shield-exclamation"></i> Yedeği olmayan VM <span class="badge" id="at-nobackup">—</span></a>
+          <a href="/vms?q=ip:yok" class="list-group-item attention-item"><i class="bi bi-wifi-off"></i> <span data-i18n="dash.at.noip">IP adresi alınamayan VM</span> <span class="badge" id="at-noip">—</span></a>
+          <a href="/vms?q=tools:yok" class="list-group-item attention-item"><i class="bi bi-plug"></i> <span data-i18n="dash.at.notools">Agent / Tools kurulu olmayan</span> <span class="badge" id="at-notools">—</span></a>
+          <a href="/vms?q=owner:yok" class="list-group-item attention-item"><i class="bi bi-person-x"></i> <span data-i18n="dash.at.noowner">Sahibi atanmamış VM</span> <span class="badge" id="at-noowner">—</span></a>
+          <a href="/snapshots?old=1" class="list-group-item attention-item"><i class="bi bi-camera"></i> <span data-i18n="dash.at.oldsnap">30 günden eski snapshot</span> <span class="badge" id="at-oldsnap">—</span></a>
+          <a href="/backups" class="list-group-item attention-item"><i class="bi bi-shield-exclamation"></i> <span data-i18n="dash.at.nobackup">Yedeği olmayan VM</span> <span class="badge" id="at-nobackup">—</span></a>
         </div>
       </div>
     </div>
 
     <!-- ===== Pasta grafikler ===== -->
     <div class="dash-widget" data-widget="chartEnv" data-w="4" data-title="Ortam Dağılımı">
-      <div class="card panel h-100"><div class="card-header">Ortam Dağılımı</div>
+      <div class="card panel h-100"><div class="card-header" data-i18n="dash.envDist">Ortam Dağılımı</div>
         <div class="card-body chart-box d-flex justify-content-center"><canvas id="chartEnv"></canvas></div></div>
     </div>
     <div class="dash-widget" data-widget="chartOs" data-w="4" data-title="İşletim Sistemi Ailesi">
-      <div class="card panel h-100"><div class="card-header">İşletim Sistemi Ailesi</div>
+      <div class="card panel h-100"><div class="card-header" data-i18n="dash.osFamily">İşletim Sistemi Ailesi</div>
         <div class="card-body chart-box d-flex justify-content-center"><canvas id="chartOs"></canvas></div></div>
     </div>
 
     <!-- ===== En çok kaynak tüketen VM'ler ===== -->
     <div class="dash-widget" data-widget="chartTopCpu" data-w="4" data-title="En Çok CPU Kullanan VM">
-      <div class="card panel h-100"><div class="card-header"><i class="bi bi-cpu text-primary"></i> En Çok CPU Kullanan VM</div>
+      <div class="card panel h-100"><div class="card-header"><i class="bi bi-cpu text-primary"></i> <span data-i18n="dash.topCpu">En Çok CPU Kullanan VM</span></div>
         <div class="card-body chart-box"><canvas id="chartTopCpu"></canvas></div></div>
     </div>
     <div class="dash-widget" data-widget="chartTopRam" data-w="4" data-title="En Çok RAM Kullanan VM">
-      <div class="card panel h-100"><div class="card-header"><i class="bi bi-memory text-success"></i> En Çok RAM Kullanan VM</div>
+      <div class="card panel h-100"><div class="card-header"><i class="bi bi-memory text-success"></i> <span data-i18n="dash.topRam">En Çok RAM Kullanan VM</span></div>
         <div class="card-body chart-box"><canvas id="chartTopRam"></canvas></div></div>
     </div>
     <div class="dash-widget" data-widget="chartTopDisk" data-w="4" data-title="En Çok Disk Kullanan VM">
-      <div class="card panel h-100"><div class="card-header"><i class="bi bi-device-hdd text-warning"></i> En Çok Disk Kullanan VM</div>
+      <div class="card panel h-100"><div class="card-header"><i class="bi bi-device-hdd text-warning"></i> <span data-i18n="dash.topDisk">En Çok Disk Kullanan VM</span></div>
         <div class="card-body chart-box"><canvas id="chartTopDisk"></canvas></div></div>
     </div>
 
     <!-- ===== Cluster / OS bar ===== -->
     <div class="dash-widget" data-widget="chartCluster" data-w="6" data-title="Cluster Bazında VM Dağılımı">
-      <div class="card panel h-100"><div class="card-header d-flex align-items-center">Cluster Bazında VM Dağılımı
+      <div class="card panel h-100"><div class="card-header d-flex align-items-center"><span data-i18n="dash.vmByCluster">Cluster Bazında VM Dağılımı</span>
           <span id="hiddenInfo" class="badge text-bg-secondary ms-2 d-none"></span>
           <button class="btn btn-sm btn-outline-secondary ms-auto" id="btnClusters" onclick="Clusters.open()"
-                  title="Cluster görünürlüğünü yönet"><i class="bi bi-eye"></i> Yönet</button></div>
+                  title="Cluster görünürlüğünü yönet"><i class="bi bi-eye"></i> <span data-i18n="dash.manage">Yönet</span></button></div>
         <div class="card-body chart-box"><canvas id="chartCluster"></canvas></div></div>
     </div>
     <div class="dash-widget" data-widget="chartTopOs" data-w="6" data-title="En Çok Kullanılan İşletim Sistemleri">
-      <div class="card panel h-100"><div class="card-header">En Çok Kullanılan İşletim Sistemleri</div>
+      <div class="card panel h-100"><div class="card-header" data-i18n="dash.topOs">En Çok Kullanılan İşletim Sistemleri</div>
         <div class="card-body chart-box"><canvas id="chartTopOs"></canvas></div></div>
     </div>
 
     <!-- ===== Host CPU / RAM ===== -->
     <div class="dash-widget" data-widget="chartCpu" data-w="6" data-title="Host CPU Kullanımı">
-      <div class="card panel h-100"><div class="card-header d-flex align-items-center">Host CPU Kullanımı (%)
+      <div class="card panel h-100"><div class="card-header d-flex align-items-center"><span data-i18n="dash.hostCpu">Host CPU Kullanımı (%)</span>
         <small id="usageFresh" class="text-muted ms-auto fw-normal"></small></div>
         <div class="card-body chart-box"><canvas id="chartCpu"></canvas></div></div>
     </div>
     <div class="dash-widget" data-widget="chartRam" data-w="6" data-title="Host RAM Kullanımı">
-      <div class="card panel h-100"><div class="card-header">Host RAM Kullanımı (%)</div>
+      <div class="card panel h-100"><div class="card-header" data-i18n="dash.hostRam">Host RAM Kullanımı (%)</div>
         <div class="card-body chart-box"><canvas id="chartRam"></canvas></div></div>
     </div>
 
     <!-- ===== Host VM / Cluster kaynak ===== -->
     <div class="dash-widget" data-widget="chartHostVm" data-w="6" data-title="Host Bazında VM Dağılımı">
-      <div class="card panel h-100"><div class="card-header"><i class="bi bi-server"></i> Host Bazında VM Dağılımı</div>
+      <div class="card panel h-100"><div class="card-header"><i class="bi bi-server"></i> <span data-i18n="dash.vmByHost">Host Bazında VM Dağılımı</span></div>
         <div class="card-body chart-box"><canvas id="chartHostVm"></canvas></div></div>
     </div>
     <div class="dash-widget" data-widget="chartClusterRes" data-w="6" data-title="Cluster Bazında Kaynak">
-      <div class="card panel h-100"><div class="card-header"><i class="bi bi-diagram-3"></i> Cluster Bazında Kaynak (vCPU / RAM)</div>
+      <div class="card panel h-100"><div class="card-header"><i class="bi bi-diagram-3"></i> <span data-i18n="dash.clusterRes">Cluster Bazında Kaynak (vCPU / RAM)</span></div>
         <div class="card-body chart-box"><canvas id="chartClusterRes"></canvas></div></div>
     </div>
 
     <!-- ===== Datastore ===== -->
     <div class="dash-widget" data-widget="chartDatastore" data-w="12" data-title="Datastore Doluluk">
-      <div class="card panel h-100"><div class="card-header d-flex align-items-center"><i class="bi bi-hdd-stack"></i> Datastore Doluluk (%)
-          <a href="/datastores" class="ms-auto small">Tümü <i class="bi bi-arrow-right"></i></a></div>
+      <div class="card panel h-100"><div class="card-header d-flex align-items-center"><i class="bi bi-hdd-stack"></i> <span data-i18n="dash.datastoreUsage">Datastore Doluluk (%)</span>
+          <a href="/datastores" class="ms-auto small"><span data-i18n="common.all">Tümü</span> <i class="bi bi-arrow-right"></i></a></div>
         <div class="card-body chart-box"><canvas id="chartDatastore"></canvas></div></div>
     </div>
 
     <!-- ===== Son değişiklikler / platform durumu ===== -->
     <div class="dash-widget" data-widget="recentChanges" data-w="8" data-title="Son Envanter Değişiklikleri">
-      <div class="card panel h-100"><div class="card-header d-flex align-items-center">Son Envanter Değişiklikleri
-          <a href="/history" class="ms-auto small">Tümü <i class="bi bi-arrow-right"></i></a></div>
+      <div class="card panel h-100"><div class="card-header d-flex align-items-center"><span data-i18n="dash.recentChanges">Son Envanter Değişiklikleri</span>
+          <a href="/history" class="ms-auto small"><span data-i18n="common.all">Tümü</span> <i class="bi bi-arrow-right"></i></a></div>
         <div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">
-          <thead><tr><th>Tarih</th><th>Nesne</th><th>Değişiklik</th><th>Alan</th></tr></thead>
-          <tbody id="recentChanges"><tr><td colspan="4" class="text-muted p-3">Yükleniyor…</td></tr></tbody>
+          <thead><tr><th data-i18n="th.date">Tarih</th><th data-i18n="th.object">Nesne</th><th data-i18n="th.change">Değişiklik</th><th data-i18n="th.field">Alan</th></tr></thead>
+          <tbody id="recentChanges"><tr><td colspan="4" class="text-muted p-3"><span data-i18n="common.loading">Yükleniyor…</span></td></tr></tbody>
         </table></div></div>
     </div>
     <div class="dash-widget" data-widget="platformStatus" data-w="4" data-title="Platform Bağlantı Durumu">
-      <div class="card panel h-100"><div class="card-header">Platform Bağlantı Durumu</div>
+      <div class="card panel h-100"><div class="card-header" data-i18n="dash.platformStatus">Platform Bağlantı Durumu</div>
         <div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">
-          <thead><tr><th>Platform</th><th>Tip</th><th>Son Senk.</th><th>Durum</th></tr></thead>
-          <tbody id="platformStatus"><tr><td colspan="4" class="text-muted p-3">Yükleniyor…</td></tr></tbody>
+          <thead><tr><th data-i18n="th.platform">Platform</th><th data-i18n="th.type">Tip</th><th data-i18n="th.lastSync">Son Senk.</th><th data-i18n="th.status">Durum</th></tr></thead>
+          <tbody id="platformStatus"><tr><td colspan="4" class="text-muted p-3"><span data-i18n="common.loading">Yükleniyor…</span></td></tr></tbody>
         </table></div></div>
     </div>
 
@@ -193,14 +193,12 @@
 <div class="modal fade" id="clusterModal" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
-      <div class="modal-header"><h5 class="modal-title"><i class="bi bi-eye"></i> Cluster Görünürlüğü</h5>
+      <div class="modal-header"><h5 class="modal-title"><i class="bi bi-eye"></i> <span data-i18n="dash.clusterVisibility">Cluster Görünürlüğü</span></h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
       <div class="modal-body">
-        <p class="text-muted small mb-3">Kapattığınız cluster'lar dashboard sayılarına ve grafiklerine
-        dahil edilmez, VM listesinde varsayılan olarak görünmez. Veri silinmez — anahtarı açınca
-        her şey geri gelir.</p>
+        <p class="text-muted small mb-3" data-i18n="dash.clusterVisibilityDesc">Kapattığınız cluster'lar dashboard sayılarına ve grafiklerine dahil edilmez, VM listesinde varsayılan olarak görünmez. Veri silinmez — anahtarı açınca her şey geri gelir.</p>
         <ul class="list-group" id="clusterList">
-          <li class="list-group-item text-muted">Yükleniyor…</li>
+          <li class="list-group-item text-muted"><span data-i18n="common.loading">Yükleniyor…</span></li>
         </ul>
       </div>
     </div>
