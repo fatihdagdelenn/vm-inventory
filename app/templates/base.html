@@ -4,14 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{ title }} — VM Envanter</title>
-  <!-- Bootstrap 5 + ikonlar + DataTables + Chart.js (CDN) -->
+  <!-- Bootstrap 5 + icons + DataTables + Chart.js (CDN) -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <link href="https://cdn.datatables.net/1.13.8/css/dataTables.bootstrap5.min.css" rel="stylesheet">
   <link href="/static/css/custom.css?v={{ asset_version }}" rel="stylesheet">
   <script>
-    /* Tema sınıfını boyamadan önce <html>'e ekle (flash önleme). Varsayılan: koyu. */
+    // Apply theme class before paint to avoid flash. Default: dark.
     (function () {
       try {
         var t = localStorage.getItem('vmi-dash-theme');
@@ -22,41 +22,41 @@
 </head>
 <body>
 <div class="layout">
-  <!-- ====== Kenar çubuğu ====== -->
+  <!-- Sidebar -->
   <nav class="sidebar" id="sidebar">
     <div class="sidebar-brand">
       <i class="bi bi-hdd-network"></i>
       <span>VM Envanter</span>
     </div>
     <ul class="sidebar-nav">
-      <li><a href="/" class="{{ 'active' if active == '/' }}"><i class="bi bi-speedometer2"></i> Dashboard</a></li>
-      <li><a href="/vms" class="{{ 'active' if active == '/vms' }}"><i class="bi bi-pc-display"></i> Sanal Makineler</a></li>
-      <li><a href="/hosts" class="{{ 'active' if active == '/hosts' }}"><i class="bi bi-server"></i> Host'lar</a></li>
-      <li><a href="/datastores" class="{{ 'active' if active == '/datastores' }}"><i class="bi bi-hdd-stack"></i> Datastore'lar</a></li>
-      <li><a href="/snapshots" class="{{ 'active' if active == '/snapshots' }}"><i class="bi bi-camera"></i> Snapshot'lar</a></li>
-      <li><a href="/backups" class="{{ 'active' if active == '/backups' }}"><i class="bi bi-archive"></i> Yedekler</a></li>
-      <li><a href="/networks" class="{{ 'active' if active == '/networks' }}"><i class="bi bi-diagram-3"></i> Ağlar</a></li>
-      <li><a href="/platforms" class="{{ 'active' if active == '/platforms' }}"><i class="bi bi-plug"></i> Platformlar</a></li>
-      <li><a href="/reports" class="{{ 'active' if active == '/reports' }}"><i class="bi bi-file-earmark-spreadsheet"></i> Raporlar</a></li>
-      <li><a href="/history" class="{{ 'active' if active == '/history' }}"><i class="bi bi-clock-history"></i> Değişiklik Geçmişi</a></li>
-      <li><a href="/topology" class="{{ 'active' if active == '/topology' }}"><i class="bi bi-diagram-3-fill"></i> Topoloji</a></li>
+      <li><a href="/" class="{{ 'active' if active == '/' }}"><i class="bi bi-speedometer2"></i> <span data-i18n="nav.dashboard">Dashboard</span></a></li>
+      <li><a href="/vms" class="{{ 'active' if active == '/vms' }}"><i class="bi bi-pc-display"></i> <span data-i18n="nav.vms">Sanal Makineler</span></a></li>
+      <li><a href="/hosts" class="{{ 'active' if active == '/hosts' }}"><i class="bi bi-server"></i> <span data-i18n="nav.hosts">Host'lar</span></a></li>
+      <li><a href="/datastores" class="{{ 'active' if active == '/datastores' }}"><i class="bi bi-hdd-stack"></i> <span data-i18n="nav.datastores">Datastore'lar</span></a></li>
+      <li><a href="/snapshots" class="{{ 'active' if active == '/snapshots' }}"><i class="bi bi-camera"></i> <span data-i18n="nav.snapshots">Snapshot'lar</span></a></li>
+      <li><a href="/backups" class="{{ 'active' if active == '/backups' }}"><i class="bi bi-archive"></i> <span data-i18n="nav.backups">Yedekler</span></a></li>
+      <li><a href="/networks" class="{{ 'active' if active == '/networks' }}"><i class="bi bi-diagram-3"></i> <span data-i18n="nav.networks">Ağlar</span></a></li>
+      <li><a href="/platforms" class="{{ 'active' if active == '/platforms' }}"><i class="bi bi-plug"></i> <span data-i18n="nav.platforms">Platformlar</span></a></li>
+      <li><a href="/reports" class="{{ 'active' if active == '/reports' }}"><i class="bi bi-file-earmark-spreadsheet"></i> <span data-i18n="nav.reports">Raporlar</span></a></li>
+      <li><a href="/history" class="{{ 'active' if active == '/history' }}"><i class="bi bi-clock-history"></i> <span data-i18n="nav.history">Değişiklik Geçmişi</span></a></li>
+      <li><a href="/topology" class="{{ 'active' if active == '/topology' }}"><i class="bi bi-diagram-3-fill"></i> <span data-i18n="nav.topology">Topoloji</span></a></li>
       {% if user.role == 'admin' %}
-      <li><a href="/settings" class="{{ 'active' if active == '/settings' }}"><i class="bi bi-gear"></i> Yönetim</a></li>
+      <li><a href="/settings" class="{{ 'active' if active == '/settings' }}"><i class="bi bi-gear"></i> <span data-i18n="nav.settings">Yönetim</span></a></li>
       {% endif %}
     </ul>
     <div class="sidebar-footer">
       <div class="small text-truncate"><i class="bi bi-person-circle"></i> {{ user.full_name or user.username }}</div>
       <div class="d-flex justify-content-between align-items-center mt-1">
-        <span class="badge role-badge">{{ {'admin':'Admin','operator':'Operatör','viewer':'Görüntüleyici'}[user.role] }}</span>
-        <a href="/logout" class="text-decoration-none small text-light"><i class="bi bi-box-arrow-right"></i> Çıkış</a>
+        <span class="badge role-badge" data-i18n="role.{{ user.role }}">{{ {'admin':'Admin','operator':'Operatör','viewer':'Görüntüleyici'}[user.role] }}</span>
+        <a href="/logout" class="text-decoration-none small text-light"><i class="bi bi-box-arrow-right"></i> <span data-i18n="action.logout">Çıkış</span></a>
       </div>
-      <div class="text-muted mt-1" style="font-size:.68rem;opacity:.7" title="Uygulama sürümü">
+      <div class="app-version mt-1" data-i18n-title="version.title" title="Uygulama sürümü">
         <i class="bi bi-tag"></i> v{{ app_version }}
       </div>
     </div>
   </nav>
 
-  <!-- ====== Ana içerik ====== -->
+  <!-- Main content -->
   <main class="content">
     <header class="topbar">
       <button class="btn btn-link d-lg-none p-0 me-2" onclick="document.getElementById('sidebar').classList.toggle('open')">
@@ -64,12 +64,15 @@
       </button>
       <h1 class="page-title">{{ title }}</h1>
       <div class="ms-auto d-flex align-items-center gap-2">
-        <button class="btn btn-sm btn-theme-toggle" id="btnThemeGlobal" title="Açık / Koyu tema" type="button">
+        <button class="btn btn-sm btn-theme-toggle" id="btnLang" type="button" data-i18n-title="lang.toggle" title="Language / Dil">
+          <span id="langLabel">TR</span>
+        </button>
+        <button class="btn btn-sm btn-theme-toggle" id="btnThemeGlobal" data-i18n-title="theme.toggle" title="Açık / Koyu tema" type="button">
           <i class="bi bi-moon-stars"></i>
         </button>
         {% if user.role != 'viewer' %}
         <button class="btn btn-sm btn-outline-primary" onclick="App.syncAll(this)">
-          <i class="bi bi-arrow-repeat"></i> <span class="d-none d-md-inline">Tümünü Yenile</span>
+          <i class="bi bi-arrow-repeat"></i> <span class="d-none d-md-inline" data-i18n="action.syncAll">Tümünü Yenile</span>
         </button>
         {% endif %}
       </div>
@@ -82,29 +85,28 @@
 
 <div class="toast-container position-fixed bottom-0 end-0 p-3" id="toasts"></div>
 
-<!-- Ortak VM detay paneli: VM ve Host sayfaları aynı paneli kullanır (App.vmDetail) -->
+<!-- Shared VM detail panel (used by VM and Host pages via App.vmDetail) -->
 <div class="offcanvas offcanvas-end offcanvas-wide" tabindex="-1" id="vmDetail">
   <div class="offcanvas-header border-bottom">
-    <h5 class="offcanvas-title" id="vmDetailTitle">VM Detayı</h5>
+    <h5 class="offcanvas-title" id="vmDetailTitle" data-i18n="modal.vmDetail">VM Detayı</h5>
     <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
   </div>
   <div class="offcanvas-body" id="vmDetailBody"></div>
 </div>
 
-<!-- Global VM-listesi modalı: bir host'un veya datastore'un VM'lerini gösterir
-     (Host'lar ve Datastore'lar sayfaları ortak kullanır). Satıra tıklayınca VM detayı. -->
+<!-- Shared VM-list modal: shows VMs of a host or datastore -->
 <div class="modal fade" id="hostVmsModal" tabindex="-1">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-pc-display"></i> <span id="hostVmsTitle">Sanal Makineler</span></h5>
+        <h5 class="modal-title"><i class="bi bi-pc-display"></i> <span id="hostVmsTitle" data-i18n="modal.vms">Sanal Makineler</span></h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body p-0">
         <div class="table-responsive">
           <table class="table table-hover table-sm align-middle mb-0" id="hostVmsTable">
             <thead><tr>
-              <th>VM Adı</th><th>IP Adresi</th><th>Durum</th><th>CPU</th><th>RAM</th>
+              <th data-i18n="th.vmName">VM Adı</th><th data-i18n="th.ip">IP Adresi</th><th data-i18n="th.status">Durum</th><th data-i18n="th.cpu">CPU</th><th data-i18n="th.ram">RAM</th>
             </tr></thead>
             <tbody id="hostVmsBody"></tbody>
           </table>
@@ -112,18 +114,18 @@
       </div>
       <div class="modal-footer py-2">
         <span class="small text-muted me-auto">
-          <i class="bi bi-info-circle"></i> Satıra tıklayarak VM detayını görüntüleyin.</span>
+          <i class="bi bi-info-circle"></i> <span data-i18n="hint.clickRowVm">Satıra tıklayarak VM detayını görüntüleyin.</span></span>
       </div>
     </div>
   </div>
 </div>
 
-<!-- Global Host-listesi modalı: bir datastore'u kullanan host'lar; tıklayınca o host'un VM'leri -->
+<!-- Shared host-list modal: hosts using a datastore -->
 <div class="modal fade" id="hostListModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-hdd-rack"></i> <span id="hostListTitle">Host'lar</span></h5>
+        <h5 class="modal-title"><i class="bi bi-hdd-rack"></i> <span id="hostListTitle" data-i18n="modal.hosts">Host'lar</span></h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body"><div class="list-group" id="hostListBody"></div></div>
@@ -137,6 +139,7 @@
 <script src="https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap5.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>window.APP_TZ = "{{ app_tz }}";</script>
+<script src="/static/js/i18n.js?v={{ asset_version }}"></script>
 <script src="/static/js/app.js?v={{ asset_version }}"></script>
 {% block scripts %}{% endblock %}
 </body>
