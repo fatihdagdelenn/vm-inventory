@@ -6,22 +6,22 @@
     <div class="search-box flex-grow-1" style="max-width:380px">
       <i class="bi bi-search"></i>
       <input type="text" id="histSearch" class="form-control"
-             placeholder="VM/host ara…  hariç tutmak için -yedek veya !yedek"
-             title="Birden çok kelime yazabilirsiniz. Başına - veya ! koyduğunuz kelimeyi İÇEREN kayıtlar gizlenir (ör. gürültülü yedek makinesini hariç tutmak için -yedek).">
+             data-i18n-ph="hi.searchPh" placeholder="VM/host ara…  hariç tutmak için -yedek veya !yedek"
+             data-i18n-title="hi.searchHint" title="Birden çok kelime yazabilirsiniz. Başına - veya ! koyduğunuz kelimeyi İÇEREN kayıtlar gizlenir (ör. gürültülü yedek makinesini hariç tutmak için -yedek).">
     </div>
     <select id="histEntity" class="form-select form-select-sm w-auto">
-      <option value="">Tüm Varlıklar</option><option value="vm">VM</option><option value="host">Host</option>
+      <option value="" data-i18n="hi.allEntities">Tüm Varlıklar</option><option value="vm">VM</option><option value="host">Host</option>
     </select>
     <select id="histCategory" class="form-select form-select-sm w-auto">
-      <option value="">Tüm Kategoriler</option>
-      <option value="hardware">Donanım (vCPU/RAM)</option>
-      <option value="disk">Disk &amp; Depolama</option>
-      <option value="network">Ağ</option>
-      <option value="power">Güç</option>
-      <option value="migrate">Göç (Migrate)</option>
-      <option value="lifecycle">Yaşam Döngüsü</option>
-      <option value="os">İşletim Sistemi</option>
-      <option value="console">Konsol Erişimi</option>
+      <option value="" data-i18n="hi.allCats">Tüm Kategoriler</option>
+      <option value="hardware" data-i18n="hi.cat.hardware">Donanım (vCPU/RAM)</option>
+      <option value="disk" data-i18n="hi.cat.disk">Disk &amp; Depolama</option>
+      <option value="network" data-i18n="hi.cat.network">Ağ</option>
+      <option value="power" data-i18n="hi.cat.power">Güç</option>
+      <option value="migrate" data-i18n="hi.cat.migrate">Göç (Migrate)</option>
+      <option value="lifecycle" data-i18n="hi.cat.lifecycle">Yaşam Döngüsü</option>
+      <option value="os" data-i18n="vm.os">İşletim Sistemi</option>
+      <option value="console" data-i18n="hi.cat.console">Konsol Erişimi</option>
     </select>
     <span id="histCount" class="text-muted small ms-auto"></span>
   </div>
@@ -31,24 +31,22 @@
     <div class="table-responsive">
       <table class="table table-sm table-hover align-middle mb-0 hist-table">
         <thead><tr>
-          <th>Tarih</th>
-          <th>Kaynak</th>
-          <th>Varlık</th>
-          <th>Kategori</th>
-          <th>İşlem</th>
-          <th>Alan / Değer</th>
-          <th>Kullanıcı</th>
+          <th data-i18n="th.date">Tarih</th>
+          <th data-i18n="hi.source">Kaynak</th>
+          <th data-i18n="hi.entity">Varlık</th>
+          <th data-i18n="hi.category">Kategori</th>
+          <th data-i18n="hi.operation">İşlem</th>
+          <th data-i18n="hi.fieldValue">Alan / Değer</th>
+          <th data-i18n="hi.user">Kullanıcı</th>
         </tr></thead>
-        <tbody id="histBody"><tr><td colspan="7" class="text-center text-muted p-4">Yükleniyor…</td></tr></tbody>
+        <tbody id="histBody"><tr><td colspan="7" class="text-center text-muted p-4" data-i18n="common.loading">Yükleniyor…</td></tr></tbody>
       </table>
     </div>
   </div>
 
   <p class="text-muted small mt-2 mb-0">
     <i class="bi bi-info-circle"></i>
-    "Kullanıcı" bilgisi platformun kendi görev/olay kaydından gelir (uygulama kullanıcısı değil).
-    Düzeltmeden önce kaydedilmiş eski satırlarda kullanıcı "—" kalabilir; istemci IP/User-Agent
-    bilgisini vCenter ve Proxmox görev kayıtları genellikle vermez.
+    <span data-i18n="hi.footnote">"Kullanıcı" bilgisi platformun kendi görev/olay kaydından gelir (uygulama kullanıcısı değil). Düzeltmeden önce kaydedilmiş eski satırlarda kullanıcı "—" kalabilir; istemci IP/User-Agent bilgisini vCenter ve Proxmox görev kayıtları genellikle vermez.</span>
   </p>
 </div>
 {% endblock %}

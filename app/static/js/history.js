@@ -6,33 +6,33 @@
  */
 const History = {
   FIELD_LABELS: {
-    ram_mb: 'Bellek (RAM)', cpu_count: 'vCPU', guest_os: 'İşletim Sistemi',
-    disk_total_gb: 'Disk Boyutu', datastore: 'Depolama (Datastore)',
-    vlans: 'VLAN / Ağ', ip_addresses: 'IP Adresi', name: 'Ad',
-    networks: 'Ağ (Köprü/Portgrup)',
-    cluster: 'Cluster', power_state: 'Güç Durumu', host: 'Host (Göç)',
-    console: 'Konsol Erişimi',
+    ram_mb: t('hi.f.ram','Bellek (RAM)'), cpu_count: 'vCPU', guest_os: t('vm.os','İşletim Sistemi'),
+    disk_total_gb: t('hi.f.disk','Disk Boyutu'), datastore: t('hi.f.ds','Depolama (Datastore)'),
+    vlans: t('hi.f.vlan','VLAN / Ağ'), ip_addresses: t('th.ip','IP Adresi'), name: t('hi.f.name','Ad'),
+    networks: t('hi.f.net','Ağ (Köprü/Portgrup)'),
+    cluster: 'Cluster', power_state: t('hi.f.power','Güç Durumu'), host: t('hi.f.host','Host (Göç)'),
+    console: t('hi.cat.console','Konsol Erişimi'),
   },
   CATS: {
-    hardware:  { l: 'Donanım',        i: 'cpu',              c: 'cat-badge cat-hardware' },
+    hardware:  { l: t('hi.c.hardware','Donanım'),        i: 'cpu',              c: 'cat-badge cat-hardware' },
     disk:      { l: 'Disk',           i: 'hdd',              c: 'cat-badge cat-disk' },
-    network:   { l: 'Ağ',             i: 'diagram-3',        c: 'cat-badge cat-network' },
-    power:     { l: 'Güç',            i: 'power',            c: 'cat-badge cat-power' },
-    migrate:   { l: 'Göç',            i: 'arrow-left-right', c: 'cat-badge cat-migrate' },
-    lifecycle: { l: 'Yaşam Döngüsü',  i: 'box-seam',         c: 'cat-badge cat-lifecycle' },
-    os:        { l: 'İşletim Sistemi', i: 'window-stack',    c: 'cat-badge cat-os' },
-    console:   { l: 'Konsol',         i: 'terminal',         c: 'cat-badge cat-console' },
-    other:     { l: 'Diğer',          i: 'pencil-square',    c: 'cat-badge cat-other' },
+    network:   { l: t('hi.c.network','Ağ'),             i: 'diagram-3',        c: 'cat-badge cat-network' },
+    power:     { l: t('hi.c.power','Güç'),            i: 'power',            c: 'cat-badge cat-power' },
+    migrate:   { l: t('ct.migrated','Göç'),            i: 'arrow-left-right', c: 'cat-badge cat-migrate' },
+    lifecycle: { l: t('hi.c.lifecycle','Yaşam Döngüsü'),  i: 'box-seam',         c: 'cat-badge cat-lifecycle' },
+    os:        { l: t('vm.os','İşletim Sistemi'), i: 'window-stack',    c: 'cat-badge cat-os' },
+    console:   { l: t('hi.c.console','Konsol'),         i: 'terminal',         c: 'cat-badge cat-console' },
+    other:     { l: t('hi.c.other','Diğer'),          i: 'pencil-square',    c: 'cat-badge cat-other' },
   },
   TYPE_BADGE: {
-    created:  '<span class="op-badge op-created">Eklendi</span>',
-    updated:  '<span class="op-badge op-updated">Güncellendi</span>',
-    deleted:  '<span class="op-badge op-deleted">Silindi</span>',
-    migrated: '<span class="op-badge op-migrated">Göç</span>',
-    access:   '<span class="op-badge op-access">Erişim</span>',
+    created:  '<span class="op-badge op-created">' + t('ct.created','Eklendi') + '</span>',
+    updated:  '<span class="op-badge op-updated">' + t('ct.updated','Güncellendi') + '</span>',
+    deleted:  '<span class="op-badge op-deleted">' + t('ct.deleted','Silindi') + '</span>',
+    migrated: '<span class="op-badge op-migrated">' + t('ct.migrated','Göç') + '</span>',
+    access:   '<span class="op-badge op-access">' + t('ct.access','Erişim') + '</span>',
   },
-  POWER: { running: 'Çalışıyor', stopped: 'Kapalı', suspended: 'Askıda',
-           poweredOn: 'Çalışıyor', poweredOff: 'Kapalı' },
+  POWER: { running: t('st.running','Çalışıyor'), stopped: t('st.stopped','Kapalı'), suspended: t('st.suspended','Askıda'),
+           poweredOn: t('st.running','Çalışıyor'), poweredOff: t('st.stopped','Kapalı') },
 
   /** Alan değerini okunaklı biçimle (RAM→GB, disk→GB, güç→TR). */
   fmtVal(field, v) {
@@ -82,8 +82,8 @@ const History = {
   valueCell(r) {
     const label = History.FIELD_LABELS[r.field] || App.esc(r.field || '');
     if (r.category === 'console')
-      return '<strong>Konsol erişimi</strong><div class="small text-muted">~ ' +
-             App.fmtDate(r.new_value) + ' <span class="text-muted">(30 dk pencere)</span></div>';
+      return '<strong>' + t('hi.consoleAccess','Konsol erişimi') + '</strong><div class="small text-muted">~ ' +
+             App.fmtDate(r.new_value) + ' <span class="text-muted">(' + t('hi.window30','30 dk pencere') + ')</span></div>';
     if (r.change_type === 'migrated')
       return '<strong>' + label + '</strong><div class="small">' +
              '<span class="text-muted">' + History.fmtVal(r.field, r.old_value) + '</span>' +
@@ -121,24 +121,24 @@ const History = {
     const wrap = document.getElementById('histFilters');
     const chips = [];
     const terms = q.match(/[-!]?"[^"]*"|[-!]?\S+/g) || [];
-    terms.forEach((t, i) => {
-      const neg = t.startsWith('-') || t.startsWith('!');
+    terms.forEach((tok, i) => {
+      const neg = tok.startsWith('-') || tok.startsWith('!');
       chips.push('<span class="filter-badge' + (neg ? ' negative' : '') + '">' +
-        (neg ? '<i class="bi bi-dash-circle"></i> ' : '') + App.esc(t) +
-        '<button title="Kaldır" onclick="History.removeTerm(' + i + ')"><i class="bi bi-x"></i></button></span>');
+        (neg ? '<i class="bi bi-dash-circle"></i> ' : '') + App.esc(tok) +
+        '<button title="' + t('vm.remove','Kaldır') + '" onclick="History.removeTerm(' + i + ')"><i class="bi bi-x"></i></button></span>');
     });
     if (entity)
-      chips.push('<span class="filter-badge">Varlık: ' + (entity === 'vm' ? 'VM' : 'Host') +
-        '<button title="Kaldır" onclick="History.clearSel(\'histEntity\')"><i class="bi bi-x"></i></button></span>');
+      chips.push('<span class="filter-badge">' + t('hi.entity','Varlık') + ': ' + (entity === 'vm' ? 'VM' : 'Host') +
+        '<button title="' + t('vm.remove','Kaldır') + '" onclick="History.clearSel(\'histEntity\')"><i class="bi bi-x"></i></button></span>');
     if (category) {
       const lbl = (History.CATS[category] || {}).l || category;
-      chips.push('<span class="filter-badge">Kategori: ' + App.esc(lbl) +
-        '<button title="Kaldır" onclick="History.clearSel(\'histCategory\')"><i class="bi bi-x"></i></button></span>');
+      chips.push('<span class="filter-badge">' + t('hi.category','Kategori') + ': ' + App.esc(lbl) +
+        '<button title="' + t('vm.remove','Kaldır') + '" onclick="History.clearSel(\'histCategory\')"><i class="bi bi-x"></i></button></span>');
     }
     if (!chips.length) { wrap.classList.add('d-none'); wrap.innerHTML = ''; return; }
     wrap.classList.remove('d-none');
-    wrap.innerHTML = '<span class="text-muted small me-1">Aktif filtreler:</span>' + chips.join('') +
-      (chips.length > 1 ? '<button class="btn btn-link btn-sm p-0 ms-1" onclick="History.clearAllFilters()">tümünü temizle</button>' : '');
+    wrap.innerHTML = '<span class="text-muted small me-1">' + t('vm.activeFilters','Aktif:') + '</span>' + chips.join('') +
+      (chips.length > 1 ? '<button class="btn btn-link btn-sm p-0 ms-1" onclick="History.clearAllFilters()">' + t('vm.clearAll','tümünü temizle') + '</button>' : '');
   },
 
   removeTerm(i) {
@@ -169,9 +169,9 @@ const History = {
                            '&q=' + encodeURIComponent(q));
     } catch (e) { return; }
     document.getElementById('histCount').textContent =
-      data.items.length ? data.items.length + ' kayıt' : '';
+      data.items.length ? data.items.length + ' ' + t('hi.records','kayıt') : '';
     if (!data.items.length) {
-      body.innerHTML = '<tr><td colspan="7" class="text-center text-muted p-4">Kayıt bulunamadı.</td></tr>';
+      body.innerHTML = '<tr><td colspan="7" class="text-center text-muted p-4">' + t('hi.noRecords','Kayıt bulunamadı.') + '</td></tr>';
       return;
     }
     body.innerHTML = data.items.map(r => '<tr>' +

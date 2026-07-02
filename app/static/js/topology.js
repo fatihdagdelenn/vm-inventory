@@ -177,7 +177,7 @@ const Topo = {
   },
 
   async init() {
-    if (!window.cytoscape) { this.fatal('Cytoscape kütüphanesi yüklenemedi (CDN).'); return; }
+    if (!window.cytoscape) { this.fatal(t('tp.cdnFail','Cytoscape kütüphanesi yüklenemedi (CDN).')); return; }
     try { cytoscape.use(window.cytoscapeFcose || window.fcose); } catch (e) { /* fcose ops. */ }
 
     this.cy = cytoscape({
@@ -221,7 +221,7 @@ const Topo = {
   async loadBase() {
     let data;
     try { data = await App.api('/api/topology'); }
-    catch (e) { this.fatal('Topoloji verisi alınamadı.'); return; }
+    catch (e) { this.fatal(t('tp.dataFail','Topoloji verisi alınamadı.')); return; }
     this.cy.add({ nodes: this.prep(data.nodes), edges: data.edges });
     document.getElementById('topoLoading').classList.add('d-none');
     const s = data.stats || {};
@@ -443,7 +443,7 @@ const Topo = {
     this._matches = res.matches || [];
     const box = document.getElementById('topoSuggest');
     if (!this._matches.length) {
-      box.innerHTML = '<div class="topo-sg-empty">Eşleşme yok</div>';
+      box.innerHTML = '<div class="topo-sg-empty">' + t('tp.noMatch','Eşleşme yok') + '</div>';
       box.classList.remove('d-none'); return;
     }
     box.innerHTML = this._matches.slice(0, 10).map((m, i) =>
@@ -497,8 +497,8 @@ const Topo = {
       etype: 'host-vm' } });
     vm.move({ parent: host.data('parent') });
     vm.data('host', host.id());
-    App.toast('Göç simülasyonu: ' + vm.data('label') + ' → ' + host.data('label') +
-              ' (gerçek migrate gelecek sürümde; ' + fromName + '’tan taşındı)');
+    App.toast(t('tp.migSim','Göç simülasyonu') + ': ' + vm.data('label') + ' → ' + host.data('label') +
+              ' (' + t('tp.migNote','gerçek migrate gelecek sürümde') + ')');
     this.savePos();
   },
   hostUnder(vm) {   // VM merkezinin üzerine geldiği host düğümü
@@ -520,9 +520,9 @@ const Topo = {
       live.querySelector('span').textContent = txt;
     };
     try { this.es = new EventSource('/api/topology/stream'); }
-    catch (e) { setLive(false, 'canlı yok'); return; }
-    this.es.onopen = () => setLive(true, 'canlı');
-    this.es.onerror = () => setLive(false, 'yeniden bağlanıyor…');
+    catch (e) { setLive(false, t('tp.liveNo','canlı yok')); return; }
+    this.es.onopen = () => setLive(true, t('tp.liveOn','canlı'));
+    this.es.onerror = () => setLive(false, t('tp.reconnecting','yeniden bağlanıyor…'));
     this.es.addEventListener('sync', () => {
       clearTimeout(this._refreshTimer);
       this._refreshTimer = setTimeout(() => this.softRefresh(), 800);

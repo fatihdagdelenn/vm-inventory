@@ -6,53 +6,53 @@
     <div class="search-box topo-search">
       <i class="bi bi-search"></i>
       <input type="text" id="topoSearch" class="form-control"
-             placeholder="VM adı ara → haritada bul ve odaklan…" autocomplete="off">
+             data-i18n-ph="tp.searchPh" placeholder="VM adı ara → haritada bul ve odaklan…" autocomplete="off">
       <div id="topoSuggest" class="topo-suggest d-none"></div>
     </div>
-    <button class="btn btn-sm btn-outline-secondary" id="topoExpandAll" title="Tüm host'ların VM'lerini aç">
-      <i class="bi bi-arrows-angle-expand"></i> <span class="d-none d-lg-inline">Tümünü Aç</span></button>
-    <button class="btn btn-sm btn-outline-secondary" id="topoCollapseAll" title="Tüm VM'leri gizle">
-      <i class="bi bi-arrows-angle-contract"></i> <span class="d-none d-lg-inline">Daralt</span></button>
-    <button class="btn btn-sm btn-outline-secondary" id="topoFit" title="Haritayı ekrana sığdır">
+    <button class="btn btn-sm btn-outline-secondary" id="topoExpandAll" data-i18n-title="tp.expandAllT" title="Tüm host'ların VM'lerini aç">
+      <i class="bi bi-arrows-angle-expand"></i> <span class="d-none d-lg-inline" data-i18n="tp.expandAll">Tümünü Aç</span></button>
+    <button class="btn btn-sm btn-outline-secondary" id="topoCollapseAll" data-i18n-title="tp.collapseT" title="Tüm VM'leri gizle">
+      <i class="bi bi-arrows-angle-contract"></i> <span class="d-none d-lg-inline" data-i18n="tp.collapse">Daralt</span></button>
+    <button class="btn btn-sm btn-outline-secondary" id="topoFit" data-i18n-title="tp.fit" title="Haritayı ekrana sığdır">
       <i class="bi bi-aspect-ratio"></i></button>
-    <button class="btn btn-sm btn-outline-secondary" id="topoRelayout" title="Yeniden yerleştir">
+    <button class="btn btn-sm btn-outline-secondary" id="topoRelayout" data-i18n-title="tp.relayout" title="Yeniden yerleştir">
       <i class="bi bi-diagram-2"></i></button>
     <span class="topo-stats text-muted small ms-auto" id="topoStats"></span>
-    <span class="topo-live small" id="topoLive" title="Canlı bağlantı durumu">
-      <i class="bi bi-circle-fill"></i> <span>bağlanıyor…</span></span>
+    <span class="topo-live small" id="topoLive" data-i18n-title="tp.liveT" title="Canlı bağlantı durumu">
+      <i class="bi bi-circle-fill"></i> <span data-i18n="tp.connecting">bağlanıyor…</span></span>
   </div>
 
   <!-- Sol üst: Görünüm Filtreleri (katmanlar) — spaghetti efektini önler -->
   <div class="topo-panel topo-filters">
-    <div class="topo-panel-title"><i class="bi bi-layers"></i> Görünüm Filtreleri</div>
+    <div class="topo-panel-title"><i class="bi bi-layers"></i> <span data-i18n="tp.viewFilters">Görünüm Filtreleri</span></div>
     <label class="topo-switch"><input type="checkbox" id="lyHardware" checked disabled>
-      <span><i class="bi bi-hdd-network"></i> Donanım Hiyerarşisi</span></label>
+      <span><i class="bi bi-hdd-network"></i> <span data-i18n="tp.hw">Donanım Hiyerarşisi</span></span></label>
     <label class="topo-switch"><input type="checkbox" id="lyStorage">
-      <span><i class="bi bi-hdd-stack"></i> Depolama İlişkileri</span></label>
+      <span><i class="bi bi-hdd-stack"></i> <span data-i18n="tp.storage">Depolama İlişkileri</span></span></label>
     <label class="topo-switch"><input type="checkbox" id="lyNetwork">
-      <span><i class="bi bi-diagram-3"></i> Ağ İlişkileri</span></label>
+      <span><i class="bi bi-diagram-3"></i> <span data-i18n="tp.net">Ağ İlişkileri</span></span></label>
     <label class="topo-switch"><input type="checkbox" id="lyFlow" checked>
-      <span><i class="bi bi-activity"></i> Hareketli kablolar</span></label>
-    <div class="topo-hint small text-muted">VM'ler host'a tıklayınca yüklenir (lazy).</div>
+      <span><i class="bi bi-activity"></i> <span data-i18n="tp.flow">Hareketli kablolar</span></span></label>
+    <div class="topo-hint small text-muted" data-i18n="tp.lazyHint">VM'ler host'a tıklayınca yüklenir (lazy).</div>
   </div>
 
   <!-- Sağ alt: Lejant -->
   <div class="topo-panel topo-legend">
-    <div class="topo-panel-title"><i class="bi bi-info-circle"></i> Lejant</div>
+    <div class="topo-panel-title"><i class="bi bi-info-circle"></i> <span data-i18n="tp.legend">Lejant</span></div>
     <div class="lg-row"><span class="lg-dot" style="background:#6366f1"></span> Platform</div>
     <div class="lg-row"><span class="lg-dot" style="background:#0ea5e9"></span> Cluster</div>
-    <div class="lg-row"><i class="bi bi-hdd-network lg-ico" style="color:#2f81f7"></i> Host (sunucu, sınır=CPU yükü)</div>
+    <div class="lg-row"><i class="bi bi-hdd-network lg-ico" style="color:#2f81f7"></i> <span data-i18n="tp.lgHost">Host (sunucu, sınır=CPU yükü)</span></div>
     <div class="lg-row"><i class="bi bi-database lg-ico" style="color:#f59e0b"></i> Datastore</div>
-    <div class="lg-row"><span class="lg-line"></span> Sunucular arası ağ</div>
-    <div class="lg-row"><span class="lg-line" style="border-top-color:#22c55e;border-top-style:dashed"></span> VM erişilebilir (agent)</div>
-    <div class="lg-row"><span class="lg-line" style="border-top-color:#ef4444;border-top-style:dashed"></span> VM erişilemiyor</div>
-    <div class="lg-row"><span class="lg-dot" style="background:#22c55e"></span> VM çalışıyor</div>
-    <div class="lg-row"><span class="lg-dot" style="background:#ef4444"></span> VM durmuş</div>
-    <div class="lg-row"><span class="lg-dot" style="background:#f59e0b"></span> VM askıda</div>
+    <div class="lg-row"><span class="lg-line"></span> <span data-i18n="tp.lgHostNet">Sunucular arası ağ</span></div>
+    <div class="lg-row"><span class="lg-line" style="border-top-color:#22c55e;border-top-style:dashed"></span> <span data-i18n="tp.lgVmOk">VM erişilebilir (agent)</span></div>
+    <div class="lg-row"><span class="lg-line" style="border-top-color:#ef4444;border-top-style:dashed"></span> <span data-i18n="tp.lgVmBad">VM erişilemiyor</span></div>
+    <div class="lg-row"><span class="lg-dot" style="background:#22c55e"></span> <span data-i18n="tp.lgVmRun">VM çalışıyor</span></div>
+    <div class="lg-row"><span class="lg-dot" style="background:#ef4444"></span> <span data-i18n="tp.lgVmStop">VM durmuş</span></div>
+    <div class="lg-row"><span class="lg-dot" style="background:#f59e0b"></span> <span data-i18n="tp.lgVmSusp">VM askıda</span></div>
   </div>
 
   <div id="topoLoading" class="topo-loading"><div class="spinner-border text-primary"></div>
-    <div class="mt-2 small text-muted">Topoloji yükleniyor…</div></div>
+    <div class="mt-2 small text-muted" data-i18n="tp.loading">Topoloji yükleniyor…</div></div>
   <div id="cy"></div>
 </div>
 {% endblock %}
