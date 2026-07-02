@@ -1,9 +1,9 @@
 """
-Proxmox VE veri toplayıcısı (proxmoxer - resmi REST API istemcisi, SSH KULLANILMAZ).
+Proxmox VE data collector (proxmoxer - the official REST API client, NO SSH).
 
-Kimlik doğrulama: API Token (önerilen) veya kullanıcı/parola.
-Toplananlar: node'lar (host), QEMU VM'leri, ağ (bridge/VLAN), storage.
-QEMU Guest Agent kuruluysa VM içi IP adresleri de alınır.
+Authentication: API Token (recommended) or user/password.
+Collected: nodes (hosts), QEMU VMs, network (bridge/VLAN), storage.
+If the QEMU Guest Agent is installed, in-guest IP addresses are read too.
 """
 import json
 import logging
@@ -14,10 +14,10 @@ from proxmoxer import ProxmoxAPI
 
 logger = logging.getLogger("collector.proxmox")
 
-# Proxmox'un iç "ostype" kodları -> okunaklı isimler.
-# Guest Agent çalışıyorsa gerçek OS adı misafirden alınır ve bu değeri ezer.
+# Proxmox internal "ostype" codes -> readable names.
+# If the Guest Agent runs, the real OS name from the guest overrides this.
 OSTYPE_MAP = {
-    "l26": "Linux",                  # Proxmox 'l26' = modern Linux ipucu (gerçek dağıtım değil)
+    "l26": "Linux",                  # Proxmox 'l26' = modern Linux hint (not the actual distro)
     "l24": "Linux (eski çekirdek)",
     "win11": "Windows 11 / Server 2022+",
     "win10": "Windows 10 / Server 2016-2019",
@@ -38,8 +38,8 @@ class ProxmoxCollector:
                  username: str = None, password: str = None,
                  token_name: str = None, token_value: str = None):
         """
-        token_name biçimi: kullanici@realm!tokenid  (örn: api@pam!envanter)
-        Token verilirse parola yöntemi yok sayılır.
+        token_name format: user@realm!tokenid  (e.g. api@pam!inventory)
+        If a token is given, the password method is ignored.
         """
         self.host = host
         self.port = port
@@ -50,7 +50,7 @@ class ProxmoxCollector:
         self.token_value = token_value
         self.api = None
 
-    # ---------- Bağlantı ----------
+    # ---------- Connection ----------
     def connect(self):
         if self.token_name and self.token_value:
             # "user@realm!tokenid" -> user="user@realm", token_name="tokenid"
@@ -64,7 +64,7 @@ class ProxmoxCollector:
         return self.api
 
     def test_connection(self) -> dict:
-        """Bağlantı testi: sürüm bilgisini sorgular."""
+        """Connection test: queries version info."""
         try:
             self.connect()
             version = self.api.version.get()
@@ -72,13 +72,13 @@ class ProxmoxCollector:
                     "message": f"Bağlantı başarılı: Proxmox VE {version.get('version')}",
                     "version": version.get("version")}
         except Exception as exc:
-            return {"success": False, "message": f"Bağlantı hatası: {exc}"}
+            return {"success": False, "message": f"Connection error: {exc}"}
 
-    # ---------- Cluster adı ----------
+    # ---------- Cluster name ----------
     def _cluster_name(self) -> str:
         """
-        Proxmox cluster adını döndürür. Cluster kurulu değilse (tek node)
-        node adı kullanılır ki arayüzde Cluster kolonu boş kalmasın.
+        Returns the Proxmox cluster name. Without a cluster (single node)
+        the node name is used so the Cluster column is never empty.
         """
         try:
             for item in self.api.cluster.status.get():
@@ -86,7 +86,7 @@ class ProxmoxCollector:
                     return item.get("name", "")
         except Exception:
             pass
-        try:  # bağımsız node: ilk node'un adını cluster gibi kullan
+        try:  # standalone node: use the first node's name as the cluster
             nodes = self.api.nodes.get()
             if len(nodes) == 1:
                 return nodes[0]["node"]
@@ -94,31 +94,30 @@ class ProxmoxCollector:
             pass
         return ""
 
-    # ---------- Yönetim IP'si seçimi ----------
+    # ---------- Management IP selection ----------
     @staticmethod
     def _pick_mgmt_ip(ifaces: list) -> str:
         """
-        Node'un yönetim IP'sini DETERMİNİSTİK seç.
+        Pick the node's management IP DETERMINISTICALLY.
 
-        Proxmox API ağ arayüzlerini sabit sırada döndürmez. Önceki sürümde
-        'ilk adresli arayüz' alındığı için çok kartlı node'larda her
-        senkronizasyonda IP değişebiliyor ve değişiklik geçmişi kirleniyordu.
-        Sabit öncelik:
-          1) Varsayılan rota (gateway tanımlı) arayüzü — gerçek yönetim IP'si
-          2) vmbr0 yönetim köprüsü
-          3) Geri düşüş: arayüz adına göre sıralı ilk adresli arayüz
+        The Proxmox API does not return interfaces in a stable order. The old
+        'first interface with an address' approach made the IP flip on every
+        sync on multi-NIC nodes, polluting the change history. Fixed priority:
+          1) Interface with the default route (gateway) - the real mgmt IP
+          2) The vmbr0 management bridge
+          3) Fallback: first addressed interface sorted by name
         """
         addressed = [i for i in (ifaces or []) if i.get("address")]
         if not addressed:
             return ""
         ordered = sorted(addressed, key=lambda x: str(x.get("iface", "")))
-        for i in ordered:                       # 1) gateway tanımlı arayüz
+        for i in ordered:                       # 1) interface with a gateway
             if i.get("gateway"):
                 return i["address"]
         for i in ordered:                       # 2) vmbr0
             if i.get("iface") == "vmbr0":
                 return i["address"]
-        return ordered[0]["address"]            # 3) sıralı ilk
+        return ordered[0]["address"]            # 3) first in order
 
     # ---------- Host'lar (node'lar) ----------
     def collect_hosts(self) -> list[dict]:
@@ -143,34 +142,34 @@ class ProxmoxCollector:
                     int(datetime.utcnow().timestamp()) - int(node["uptime"]))
                     if node.get("uptime") else None),
             }
-            # Çevrimiçi node'lardan detay bilgisi al (CPU modeli, sürüm, IP)
+            # Fetch details from online nodes (CPU model, version, IP)
             if entry["status"] == "online":
                 try:
                     status = self.api.nodes(name).status.get()
                     cpuinfo = status.get("cpuinfo", {})
                     entry["cpu_model"] = cpuinfo.get("model", "")
                     entry["os_version"] = f"Proxmox VE {status.get('pveversion', '')}"
-                    # Yönetim IP'si: ağ arayüzlerini DETERMİNİSTİK seç.
-                    # API arayüz sırasını garanti etmediğinden, çok kartlı
-                    # node'larda eskiden her senkronizasyonda farklı IP seçilip
-                    # değişiklik geçmişi gereksiz yere kirleniyordu. Sabit
-                    # öncelik uygulanır (bkz. _pick_mgmt_ip).
+                    # Management IP: pick network interfaces DETERMINISTICALLY.
+                    # The API does not guarantee interface order, so multi-NIC
+                    # nodes used to get a different IP on every sync, polluting
+                    # the change history. A fixed priority is applied
+                    # (see _pick_mgmt_ip).
                     entry["mgmt_ip"] = self._pick_mgmt_ip(
                         self.api.nodes(name).network.get())
                 except Exception as exc:
-                    logger.warning("Node detayı alınamadı %s: %s", name, exc)
+                    logger.warning("Could not fetch node details %s: %s", name, exc)
             hosts.append(entry)
 
-        # Cluster adını öğren ve tüm node'lara ata
+        # Resolve the cluster name and assign it to all nodes
         cluster = self._cluster_name()
         for h in hosts:
             h["cluster"] = cluster
         return hosts
 
-    # ---------- VLAN eşleme yardımcıları ----------
+    # ---------- VLAN mapping helpers ----------
     @staticmethod
     def _vlan_from_name(iface_name: str) -> str:
-        """'bond0.205' veya 'eno1.100' gibi isimden VLAN ID'sini çıkar."""
+        """Extract the VLAN ID from a name like 'bond0.205' or 'eno1.100'."""
         if "." in iface_name:
             suffix = iface_name.rsplit(".", 1)[1]
             if suffix.isdigit():
@@ -179,12 +178,12 @@ class ProxmoxCollector:
 
     def _bridge_vlan_map(self) -> dict:
         """
-        Köprü -> VLAN eşlemesi üretir. Proxmox'ta VLAN üç yerde tanımlı olabilir:
-          1) VM ağ kartında tag=  (collect_vms içinde doğrudan okunur)
-          2) Node ağ yapısında: vmbr1 köprüsü bond0.205 üzerine kuruluysa
-             o köprüye bağlı her VM aslında VLAN 205'tedir
-          3) SDN vnet'lerinde: vnet'in tag alanı VLAN ID'sidir
-        Dönüş: {"node/köprü": vlan, "vnet_adı": vlan}
+        Builds a bridge -> VLAN map. In Proxmox a VLAN can be defined in 3 places:
+          1) tag= on the VM NIC (read directly inside collect_vms)
+          2) In the node network layout: if bridge vmbr1 sits on bond0.205,
+             every VM attached to that bridge is effectively on VLAN 205
+          3) In SDN vnets: the vnet's tag field is the VLAN ID
+        Returns: {"node/bridge": vlan, "vnet_name": vlan}
         """
         mapping = {}
         try:
@@ -196,7 +195,7 @@ class ProxmoxCollector:
                     ifaces = self.api.nodes(nname).network.get()
                 except Exception:
                     continue
-                # önce vlan tipindeki arayüzleri topla: ad -> vlan id
+                # first collect vlan-type interfaces: name -> vlan id
                 vlan_ifaces = {}
                 for i in ifaces:
                     if i.get("type") == "vlan":
@@ -204,7 +203,7 @@ class ProxmoxCollector:
                               self._vlan_from_name(i.get("iface", ""))
                         if vid:
                             vlan_ifaces[i["iface"]] = vid
-                # köprüleri tara: portları vlan arayüzüne bağlıysa eşle
+                # scan bridges: map ports attached to a vlan interface
                 for i in ifaces:
                     if i.get("type") not in ("bridge", "OVSBridge"):
                         continue
@@ -218,24 +217,24 @@ class ProxmoxCollector:
                     if vid:
                         mapping[f"{nname}/{bridge}"] = vid
         except Exception as exc:
-            logger.warning("Bridge VLAN eşlemesi yapılamadı: %s", exc)
+            logger.warning("Bridge VLAN mapping failed: %s", exc)
 
-        # SDN vnet'leri (cluster genelinde): vnet adı -> tag
+        # SDN vnets (cluster-wide): vnet name -> tag
         try:
             for vnet in self.api.cluster.sdn.vnets.get():
                 if vnet.get("tag"):
                     mapping[vnet.get("vnet", "")] = str(vnet["tag"])
         except Exception:
-            pass  # SDN yapılandırılmamış olabilir, normal durum
+            pass  # SDN may be unconfigured; that's normal
         return mapping
 
-    # ---------- Disk boyutu ayrıştırma ----------
+    # ---------- Disk size parsing ----------
     @staticmethod
     def _size_to_gb(size: str) -> float:
         """
-        Proxmox disk boyutunu GB (float) değerine çevir.
-        Kabul edilen biçimler: '32G', '512M', '1T', '1024K' veya çıplak bayt.
-        Çözülemezse 0.0 döner.
+        Convert a Proxmox disk size to GB (float).
+        Accepted forms: '32G', '512M', '1T', '1024K' or bare bytes.
+        Returns 0.0 if unparsable.
         """
         if not size:
             return 0.0
@@ -252,9 +251,9 @@ class ProxmoxCollector:
     # ---------- Sanal makineler ----------
     def collect_vms(self) -> list[dict]:
         vms = []
-        cluster = self._cluster_name()           # tüm VM'lere atanacak
-        vlan_map = self._bridge_vlan_map()       # köprü/vnet -> VLAN eşlemesi
-        # cluster/resources tek çağrıda tüm VM özetini verir (500+ VM için verimli)
+        cluster = self._cluster_name()           # assigned to all VMs
+        vlan_map = self._bridge_vlan_map()       # bridge/vnet -> VLAN mapping
+        # cluster/resources returns all VM summaries in one call (efficient for 500+ VMs)
         resources = self.api.cluster.resources.get(type="vm")
         for r in resources:
             rtype = r.get("type")
@@ -287,31 +286,31 @@ class ProxmoxCollector:
                 "platform_tags": "",
                 "is_template": bool(r.get("template", 0)),
             }
-            # LXC konteynerleri: yapılandırma/IP/disk biçimi qemu'dan farklı,
-            # QEMU Guest Agent yoktur → ayrı zenginleştirme.
+            # LXC containers: config/IP/disk format differs from qemu and
+            # there is no QEMU Guest Agent -> separate enrichment.
             if rtype == "lxc":
                 try:
                     self._enrich_lxc(entry, node, vmid, vlan_map)
                 except Exception as exc:
                     entry["enrich_failed"] = True
-                    logger.warning("Konteyner detayı alınamadı %s/%s: %s", node, vmid, exc)
+                    logger.warning("Could not fetch container details %s/%s: %s", node, vmid, exc)
                 vms.append(entry)
                 continue
             try:
-                # VM yapılandırması: OS tipi, ağ kartları, diskler, VLAN
+                # VM config: OS type, NICs, disks, VLAN
                 cfg = self.api.nodes(node).qemu(vmid).config.get()
                 ostype = cfg.get("ostype", "")
                 entry["guest_os"] = OSTYPE_MAP.get(ostype, ostype)
-                # Yapılandırılmış RAM: config 'memory' (MB) STABİL kaynaktır.
-                # cluster/resources.maxmem, ballooning açık çalışan VM'lerde host
-                # baskısına göre YÜZER (ör. 12188↔10035) → her senkronda sahte
-                # "RAM değişti" kaydı üretir. Onun yerine config 'memory' kullan.
+                # Configured RAM: config 'memory' (MB) is the STABLE source.
+                # cluster/resources.maxmem FLOATS with host pressure on VMs
+                # with ballooning (e.g. 12188<->10035) -> produces fake
+                # "RAM changed" records every sync. Use config 'memory' instead.
                 if cfg.get("memory") not in (None, ""):
                     try:
                         entry["ram_mb"] = int(cfg["memory"])
                     except (TypeError, ValueError):
                         pass
-                # Proxmox "Notlar" alanı (Notes); URL-encode'lu gelebilir
+                # Proxmox "Notes" field; may arrive URL-encoded
                 desc = cfg.get("description", "") or ""
                 if desc:
                     try:
@@ -320,15 +319,15 @@ class ProxmoxCollector:
                     except Exception:
                         pass
                 entry["guest_notes"] = desc
-                # Proxmox VM etiketleri (config 'tags' alanı; ';' ile ayrık)
+                # Proxmox VM tags (config 'tags' field; ';'-separated)
                 entry["platform_tags"] = (cfg.get("tags") or "").replace(";", ",")
-                if cfg.get("meta"):  # ctime=... oluşturulma zamanı
+                if cfg.get("meta"):  # ctime=... creation time
                     for part in cfg["meta"].split(","):
                         if part.startswith("ctime="):
                             entry["created_date"] = datetime.utcfromtimestamp(int(part[6:]))
 
                 macs, vlans, bridges, disks, stores = [], [], [], [], []
-                cloudinit_ips = []   # agent yoksa geri düşüş: cloud-init statik IP'leri
+                cloudinit_ips = []   # fallback when no agent: cloud-init static IPs
                 for key, val in cfg.items():
                     sval = str(val)
                     if key.startswith("ipconfig"):  # ipconfig0: ip=10.0.0.5/24,gw=10.0.0.1
@@ -350,8 +349,8 @@ class ProxmoxCollector:
                         if nic_tag:
                             vlans.append(nic_tag)
                         elif nic_bridge:
-                            # NIC'te tag yok: köprünün kendisi bir VLAN'a bağlıysa
-                            # (örn. vmbr1 -> bond0.205) veya SDN vnet ise onu kullan
+                            # NIC has no tag: if the bridge itself sits on a VLAN
+                            # (e.g. vmbr1 -> bond0.205) or is an SDN vnet, use that
                             mapped = vlan_map.get(f"{node}/{nic_bridge}") or \
                                      vlan_map.get(nic_bridge)
                             if mapped:
@@ -374,16 +373,16 @@ class ProxmoxCollector:
                     "networks": ",".join(sorted(set(bridges))),
                     "datastore": ",".join(sorted(set(stores))),
                     "disks_json": json.dumps(disks, ensure_ascii=False),
-                    # Tüm disklerin toplamı; ayrıştırılamazsa maxdisk'e geri düş
+                    # Sum of all disks; fall back to maxdisk if unparsable
                     "disk_total_gb": round(sum(d["size_gb"] for d in disks), 1)
                                      or entry["disk_total_gb"],
                 })
 
-                # Çalışan VM'lerde QEMU Guest Agent ile IP adresleri ve uptime.
-                # ÖNEMLİ: status/agent çağrıları AYRI try içinde — geçici hata
-                # verseler bile yukarıda config'ten okunan ram_mb/networks/vlans/disk
-                # KAYBOLMAZ (enrich_failed tetiklenmez). Aksi halde bir agent hatası
-                # tüm config değişikliklerini o senkronda gizler ("geç/eksik geldi").
+                # IPs and uptime via QEMU Guest Agent on running VMs.
+                # IMPORTANT: status/agent calls are in a SEPARATE try - even if
+                # they fail transiently, ram_mb/networks/vlans/disk read from
+                # config above are NOT lost (enrich_failed is not triggered).
+                # Otherwise one agent hiccup hides all config changes that sync.
                 if entry["power_state"] == "running":
                     try:
                         status = self.api.nodes(node).qemu(vmid).status.current.get()
@@ -391,7 +390,7 @@ class ProxmoxCollector:
                             entry["last_boot"] = datetime.utcfromtimestamp(
                                 int(datetime.utcnow().timestamp()) - int(status["uptime"]))
                     except Exception as exc:
-                        logger.debug("status.current alınamadı %s/%s: %s", node, vmid, exc)
+                        logger.debug("Could not fetch status.current %s/%s: %s", node, vmid, exc)
                     agent_ok = False
                     try:
                         agent = self.api.nodes(node).qemu(vmid).agent(
@@ -407,11 +406,11 @@ class ProxmoxCollector:
                         entry["tools_status"] = "guestToolsRunning"
                         agent_ok = True
                     except Exception:
-                        entry["tools_status"] = "guestToolsNotRunning"  # Agent kurulu değil
+                        entry["tools_status"] = "guestToolsNotRunning"  # Agent not installed
 
-                    # Agent'tan gerçek OS adı (örn: "Ubuntu 22.04.3 LTS").
-                    # Ağ çağrısından BAĞIMSIZ denenir: bazı misafirlerde
-                    # network-get-interfaces engellidir ama get-osinfo çalışır.
+                    # Real OS name from the agent (e.g. "Ubuntu 22.04.3 LTS").
+                    # Tried INDEPENDENTLY of the network call: some guests block
+                    # network-get-interfaces but get-osinfo still works.
                     os_from_agent = False
                     try:
                         osinfo = self.api.nodes(node).qemu(vmid).agent(
@@ -431,16 +430,16 @@ class ProxmoxCollector:
                         if result.get("machine"):
                             entry["arch"] = result.get("machine", "")
                     except Exception:
-                        pass  # agent osinfo yanıt vermedi; ostype çevirisi kullanılır
-                    # Provenance: guest_os/IP agent'tan mı geldi yoksa fallback mı?
-                    # Sync, agent başarısızsa eski (agent kaynaklı) değeri korur.
+                        pass  # agent osinfo did not answer; ostype translation is used
+                    # Provenance: did guest_os/IP come from the agent or a fallback?
+                    # Sync keeps the old (agent-sourced) value if the agent fails.
                     entry["os_from_agent"] = os_from_agent
                     entry["ip_from_agent"] = agent_ok
 
-                    # GERÇEK kullanılan disk — guest agent dosya sistemi bilgisinden.
-                    # cluster/resources 'disk' alanı agent'sız 0 döner; thin disklerde
-                    # qcow2 ayak izi gerçek kullanımdan büyük olur. Misafir FS'i gerçeği
-                    # verir (ör. 80 GB tahsis, 40 GB kullanım). Yalnız agent varsa.
+                    # REAL used disk - from guest agent filesystem info.
+                    # cluster/resources 'disk' is 0 without an agent; on thin disks
+                    # the qcow2 footprint exceeds real usage. The guest FS tells the
+                    # truth (e.g. 80 GB allocated, 40 GB used). Agent-only.
                     if agent_ok:
                         try:
                             fs = self.api.nodes(node).qemu(vmid).agent(
@@ -450,34 +449,34 @@ class ProxmoxCollector:
                             for f in (fs.get("result", []) if isinstance(fs, dict) else []):
                                 ub = f.get("used-bytes")
                                 tb = f.get("total-bytes")
-                                # Sanal/özel FS'leri (tmpfs vb. total=0) atla
+                                # Skip virtual/special FS (tmpfs etc., total=0)
                                 if ub is not None and tb:
                                     used_b += int(ub)
                                     seen = True
                             if seen:
                                 entry["disk_used_gb"] = round(used_b / 1024**3, 1)
                         except Exception:
-                            pass  # agent fsinfo desteklemiyor → disk_used boş kalır
+                            pass  # agent does not support fsinfo -> disk_used stays empty
 
-                # Agent'tan IP gelmediyse cloud-init statik IP'lerine geri düş
-                # (kapalı VM'ler ve agent kurulu olmayan misafirler için)
+                # If the agent gave no IPs, fall back to cloud-init static IPs
+                # (for stopped VMs and guests without an agent)
                 if not entry["ip_addresses"] and cloudinit_ips:
                     entry["ip_addresses"] = ",".join(sorted(set(cloudinit_ips)))
             except Exception as exc:
                 entry["enrich_failed"] = True
-                logger.warning("VM detayı alınamadı %s/%s: %s", node, vmid, exc)
+                logger.warning("Could not fetch VM details %s/%s: %s", node, vmid, exc)
             vms.append(entry)
         return vms
 
     def _enrich_lxc(self, entry, node, vmid, vlan_map):
-        """LXC konteyneri detayı: OS tipi, etiketler, not, ağ (IP/MAC/VLAN),
-        mount-point diskleri, uptime ve çalışan konteynerde canlı IP'ler.
-        Konteynerlerde QEMU Guest Agent yoktur; IP doğrudan yapılandırmadan
-        veya çalışırken /lxc/{id}/interfaces ucundan alınır."""
+        """LXC container details: OS type, tags, notes, network (IP/MAC/VLAN),
+        mount-point disks, uptime and live IPs on running containers.
+        Containers have no QEMU Guest Agent; IPs come straight from the config
+        or, while running, from the /lxc/{id}/interfaces endpoint."""
         cfg = self.api.nodes(node).lxc(vmid).config.get()
         ostype = cfg.get("ostype", "") or ""
         entry["guest_os"] = OSTYPE_MAP.get(ostype, ostype.capitalize()) or "Linux"
-        # Yapılandırılmış RAM: LXC config 'memory' (MB) — stabil kaynak.
+        # Configured RAM: LXC config 'memory' (MB) - stable source.
         if cfg.get("memory") not in (None, ""):
             try:
                 entry["ram_mb"] = int(cfg["memory"])
@@ -546,7 +545,7 @@ class ProxmoxCollector:
                         int(datetime.utcnow().timestamp()) - int(status["uptime"]))
             except Exception:
                 pass
-            # Çalışan konteynerin canlı IP'leri (agent gerekmez)
+            # Live IPs of a running container (no agent needed)
             try:
                 live = []
                 for iface in (self.api.nodes(node).lxc(vmid).interfaces.get() or []):
@@ -561,7 +560,7 @@ class ProxmoxCollector:
         if not entry["ip_addresses"] and static_ips:
             entry["ip_addresses"] = ",".join(sorted(set(static_ips)))
 
-    # ---------- Ağlar ----------
+    # ---------- Networks ----------
     def collect_networks(self) -> list[dict]:
         nets = []
         vlan_map = self._bridge_vlan_map()
@@ -573,7 +572,7 @@ class ProxmoxCollector:
                 for iface in self.api.nodes(name).network.get():
                     itype = iface.get("type")
                     iname = iface.get("iface", "")
-                    # Fiziksel / bağ kartları (host'un kendi NIC'leri)
+                    # Physical / bond NICs (the host's own interfaces)
                     if itype in ("eth", "bond"):
                         nets.append({
                             "name": iname, "host_name": name, "kind": "pnic",
@@ -584,12 +583,12 @@ class ProxmoxCollector:
                         continue
                     if itype not in ("bridge", "vlan", "OVSBridge"):
                         continue
-                    # VLAN ID: önce alanın kendisi, sonra isimden (bond0.205),
-                    # sonra köprü->VLAN eşlemesinden (vmbr1 -> 205)
+                    # VLAN ID: the field itself first, then from the name (bond0.205),
+                    # then from the bridge->VLAN map (vmbr1 -> 205)
                     vlan = str(iface.get("vlan-id", "") or "") or \
                            self._vlan_from_name(iname) or \
                            vlan_map.get(f"{name}/{iname}", "")
-                    # VLAN-aware köprüler birden çok VLAN taşır; not olarak belirt
+                    # VLAN-aware bridges carry multiple VLANs; note it
                     portgroup = ""
                     if str(iface.get("bridge_vlan_aware", "")) in ("1", "True", "true"):
                         portgroup = "VLAN-aware (çoklu VLAN)"
@@ -605,9 +604,9 @@ class ProxmoxCollector:
                         "kind": "bridge",
                     })
             except Exception as exc:
-                logger.warning("Node ağı alınamadı %s: %s", name, exc)
+                logger.warning("Could not fetch node network %s: %s", name, exc)
 
-        # SDN vnet'leri de ağ envanterine ekle
+        # Also add SDN vnets to the network inventory
         try:
             for vnet in self.api.cluster.sdn.vnets.get():
                 nets.append({
@@ -620,16 +619,16 @@ class ProxmoxCollector:
                     "kind": "vnet",
                 })
         except Exception:
-            pass  # SDN yapılandırılmamış olabilir
+            pass  # SDN may be unconfigured
         return nets
 
     # ---------- Storage ----------
     def collect_datastores(self) -> list[dict]:
-        # Paylaşımlı depolar (NFS / Ceph / PBS …) her node'da tekrarlanır → tek satıra
-        # indir, host_count'ı artır. Yerel depolar (local, local-lvm …) her node'da
-        # AYRI fiziksel depodur (ad aynı olsa bile) → node bazında ayrı satır.
-        # 'shared' bayrağı bu ayrımı sağlar (mükerrer kayıt önlenir).
-        # Paylaşımlı depoda 'node' yerine cluster adı gösterilir (çoklu cluster ayrımı).
+        # Shared stores (NFS / Ceph / PBS ...) repeat on every node -> collapse to
+        # one row, bump host_count. Local stores (local, local-lvm ...) are SEPARATE
+        # physical stores per node (even with the same name) -> one row per node.
+        # The 'shared' flag drives this distinction (prevents duplicates).
+        # Shared stores show the cluster name instead of 'node' (multi-cluster).
         cluster = self._cluster_name()
         rows = {}
         for s in self.api.cluster.resources.get(type="storage"):
@@ -651,7 +650,7 @@ class ProxmoxCollector:
         return list(rows.values())
 
     def collect_snapshots(self) -> list[dict]:
-        """Her qemu/lxc misafiri için snapshot listesi. 'current' (canlı durum) hariç."""
+        """Snapshot list per qemu/lxc guest, excluding 'current' (the live state)."""
         result = []
         for r in self.api.cluster.resources.get(type="vm"):
             rtype = r.get("type")
@@ -665,9 +664,9 @@ class ProxmoxCollector:
                             else self.api.nodes(node).lxc(vmid))
                 snaps = endpoint.snapshot.get()
             except Exception as exc:
-                logger.warning("Snapshot listesi alınamadı %s: %s", ext, exc)
+                logger.warning("Could not fetch snapshot list %s: %s", ext, exc)
                 continue
-            # 'current' girdisinin parent'ı = VM'in şu an üstünde olduğu aktif snapshot
+            # parent of the 'current' entry = the snapshot the VM currently sits on
             active = ""
             for s in snaps:
                 if s.get("name") == "current":
@@ -675,7 +674,7 @@ class ProxmoxCollector:
                     break
             for s in snaps:
                 nm = s.get("name")
-                if not nm or nm == "current":   # 'current' gerçek snapshot değil
+                if not nm or nm == "current":   # 'current' is not a real snapshot
                     continue
                 st = s.get("snaptime")
                 result.append({
@@ -688,9 +687,9 @@ class ProxmoxCollector:
         return result
 
     def _fetch_content(self, node: str, name: str):
-        """Depo içeriğini çek. PBS'te bazı sürümlerde filtresiz sorgu boş döner,
-        bazılarında content=backup boş döner — bu yüzden HER İKİSİ denenir ve
-        DAHA ÇOK satır döndüren sonuç kullanılır. (content_list, error) döndürür."""
+        """Fetch storage content. On some PBS versions the unfiltered query is
+        empty, on others content=backup is - so BOTH are tried and the result
+        with MORE rows wins. Returns (content_list, error)."""
         best, err = None, None
         for kwargs in ({"content": "backup"}, {}):
             try:
@@ -702,9 +701,9 @@ class ProxmoxCollector:
         return best, (None if best is not None else err)
 
     def _all_storage_configs(self):
-        """Tüm depo yapılandırmalarını /storage listesinden bir kez oku
-        (per-id /storage/{name} bazı kurulum/izinlerde boş dönebiliyor).
-        ({ad: cfg}, hata) döndürür."""
+        """Read all storage configs once from the /storage list (per-id
+        /storage/{name} can come back empty on some setups/permissions).
+        Returns ({name: cfg}, error)."""
         try:
             rows = self.api.storage.get() or []
             return {r.get("storage", ""): r for r in rows}, ""
@@ -712,7 +711,7 @@ class ProxmoxCollector:
             return {}, str(exc)
 
     def _storage_config(self, name: str) -> dict:
-        """/storage/{name} yapılandırması (PBS namespace/datastore/server/kullanıcı)."""
+        """/storage/{name} config (PBS namespace/datastore/server/user)."""
         try:
             return self.api.storage(name).get() or {}
         except Exception:
@@ -725,8 +724,8 @@ class ProxmoxCollector:
             or (plugin == "pbs" and ctype in (None, "", "backup"))
 
     def _storage_groups(self):
-        """cluster/resources storage satırlarını ad bazında grupla.
-        ad -> {shared, plugin, content_field, nodes:[(node,status), ...]}."""
+        """Group cluster/resources storage rows by name.
+        name -> {shared, plugin, content_field, nodes:[(node,status), ...]}."""
         groups = {}
         for s in self.api.cluster.resources.get(type="storage"):
             name, node = s.get("storage", ""), s.get("node", "")
@@ -741,7 +740,7 @@ class ProxmoxCollector:
         return groups
 
     def _online_nodes(self):
-        """Cluster'daki online node adları (paylaşımlı depo tüm node'larda denenir)."""
+        """Online node names in the cluster (shared stores are tried on all nodes)."""
         try:
             return [n.get("node") for n in self.api.nodes.get()
                     if n.get("node") and n.get("status", "online") != "offline"]
@@ -749,12 +748,12 @@ class ProxmoxCollector:
             return []
 
     def _candidate_nodes(self, g):
-        """Sorgulanacak node sırası.
-        - Yerel depo: yalnız tanımlı olduğu node('lar).
-        - Paylaşımlı depo (PBS dahil): TÜM online node'lar denenir. Çünkü PBS
-          içeriğini REST API yalnız PBS'e gerçekten bağlanabilen node'da döndürür;
-          cluster/resources 'available' bilgisi yanıltıcı olabilir (pvesm list bir
-          node'da çalışırken REST başka node'da boş dönebiliyor)."""
+        """Node order to query.
+        - Local store: only the node(s) it is defined on.
+        - Shared store (incl. PBS): ALL online nodes are tried, because the REST
+          API only returns PBS content on a node that can actually reach the PBS;
+          the cluster/resources 'available' flag can mislead (pvesm list may work
+          on one node while REST returns empty on another)."""
         if not g["shared"]:
             return [(n, st) for n, st in g["nodes"]]
         res_avail = [n for n, st in g["nodes"] if st == "available"]
@@ -764,12 +763,12 @@ class ProxmoxCollector:
         return [(n, "") for n in (res_avail + res_other + online)]
 
     def collect_backups(self) -> list[dict]:
-        """Depo içeriğinden yedekleri topla (vzdump + PBS).
+        """Collect backups from storage content (vzdump + PBS).
 
-        - Depo ADINA göre gruplar; paylaşımlı depoyu (aktif node öncelikli) birden
-          çok node'da dener, ilk içerik dönen node yeterli; yerel depoyu her node'da.
-        - İçeriği FİLTRESİZ çeker, yedekleri kendisi süzer (filtreli sorgu bazı
-          sürüm/izinlerde boş döndüğü için).
+        - Groups by storage NAME; shared stores are tried on multiple nodes
+          (active node first, first node returning content wins); local on each node.
+        - Fetches content UNFILTERED and filters backups itself (the filtered
+          query is empty on some versions/permissions).
         """
         result, seen_vol = [], set()
         try:
@@ -779,7 +778,7 @@ class ProxmoxCollector:
             return result
 
         for name, g in groups.items():
-            # Yedek tutamayan depoyu atla (hız) — PBS hariç (içeriği hep backup'tır)
+            # Skip stores that cannot hold backups (speed) - except PBS (all content is backup)
             if g["plugin"] != "pbs" and "backup" not in g["content"]:
                 continue
             for node, _status in self._candidate_nodes(g):
@@ -810,7 +809,7 @@ class ProxmoxCollector:
                     })
                 logger.info("Yedek tarama: depo=%s node=%s tip=%s icerik=%d yedek=%d",
                             name, node, g["plugin"] or "?", len(content), found)
-                # Paylaşımlı depoda içerik dönen ilk node yeterli; yerelde tümünü tara
+                # On shared stores the first node returning content is enough; scan all for local
                 if g["shared"] and len(content) > 0:
                     break
         logger.info("Yedek taramasi tamamlandi: toplam %d yedek", len(result))
@@ -919,9 +918,9 @@ class ProxmoxCollector:
         "qmrestore": ("lifecycle", "restore"), "vzrestore": ("lifecycle", "restore"),
         "qmdestroy": ("lifecycle", "destroy"), "vzdestroy": ("lifecycle", "destroy"),
         "qmtemplate": ("lifecycle", "template"), "vztemplate": ("lifecycle", "template"),
-        # Migration: Proxmox'ta QEMU göç görev tipi 'qmigrate' (tek m), CT 'vzmigrate'
-        # veya 'pctmigrate'. Önceki 'qmmigrate' (çift m) HİÇBİR göreve uymuyordu →
-        # "migration kim yaptı" boş kalıyordu. Tümünü kapsa:
+        # Migration: the QEMU migrate task type is 'qmigrate' (single m), CT 'vzmigrate'
+        # or 'pctmigrate'. The old 'qmmigrate' (double m) matched NO task ->
+        # "who migrated" stayed empty. Cover all:
         "qmigrate": ("migrate", "migrate"), "qmmigrate": ("migrate", "migrate"),
         "vzmigrate": ("migrate", "migrate"), "pctmigrate": ("migrate", "migrate"),
         "qmconfig": ("config", None), "vzconfig": ("config", None),
@@ -942,15 +941,15 @@ class ProxmoxCollector:
     }
 
     def _clone_newid_from_log(self, node, upid):
-        """Klon görevinin log'undan YENİ vmid'i çıkar.
+        """Extract the NEW vmid from a clone task's log.
 
-        qmclone/vzclone görev log'u "… to vm-<NNN>-disk-X" (ya da subvol-<NNN>-…)
-        satırları içerir; buradan klonun oluşturduğu yeni vmid okunur. Bulunamazsa
-        None döner. (Görev log'u Sys.Audit ile okunabilir.)"""
+        qmclone/vzclone task logs contain "... to vm-<NNN>-disk-X" (or
+        subvol-<NNN>-...) lines, giving the vmid the clone created. Returns
+        None if not found. (Task logs are readable with Sys.Audit.)"""
         try:
             lines = self.api.nodes(node).tasks(upid).log.get(limit=400) or []
         except Exception as exc:
-            logger.warning("Klon görev log'u okunamadı (%s): %s", upid[:40], exc)
+            logger.warning("Could not read clone task log (%s): %s", upid[:40], exc)
             return None
         pat = re.compile(r"\bto (?:vm|subvol|base)-(\d+)-disk")
         for ln in lines:
@@ -961,43 +960,43 @@ class ProxmoxCollector:
         return None
 
     def collect_recent_actors(self) -> dict:
-        """'VM'i kim, neyi, ne zaman değiştirdi' — VM başına işlem listesi.
+        """'Who changed what, and when' - an operation list per VM.
 
-        Geriye {external_id: [op, ...]} döner; her op:
+        Returns {external_id: [op, ...]}; each op:
           {ts, op, category, direction, actor, actor_ip, host, detail}
-        Liste en yeniden eskiye sıralıdır. sync_service her saptanan alan
-        değişimini KATEGORİYE göre doğru işlemle eşler (örn. RAM değişimi yalnız
-        'config', power_state değişimi yalnız 'power' işlemiyle); böylece bir
-        kullanıcının işlemi başka bir kullanıcının işlemine atfedilmez.
+        The list is sorted newest to oldest. sync_service matches every detected
+        field change to the right operation BY CATEGORY (e.g. a RAM change only
+        matches 'config', a power_state change only 'power'), so one user's
+        action is never attributed to another user.
 
-        Proxmox görev kaydı istemci IP / User-Agent tutmaz → actor_ip boş kalır.
+        Proxmox task records keep no client IP / User-Agent -> actor_ip stays empty.
         UPID: UPID:node:pid:pstart:starttime:type:id:user:
         """
         ops: dict[str, list] = {}
-        # /nodes/{node}/tasks 'limit' destekler (geniş geçmiş); /cluster/tasks ~50 ile sınırlı.
+        # /nodes/{node}/tasks supports 'limit' (wide history); /cluster/tasks caps at ~50.
         tasks = []
         try:
             nodes = [r["node"] for r in self.api.cluster.resources.get(type="node")
                      if r.get("node")]
         except Exception as exc:
-            logger.warning("Node listesi alınamadı: %s", exc)
+            logger.warning("Could not fetch node list: %s", exc)
             nodes = []
         for node in nodes:
             try:
                 nt = self.api.nodes(node).tasks.get(limit=500) or []
             except Exception as exc:
-                logger.warning("Node %s görevleri alınamadı: %s", node, exc)
+                logger.warning("Could not fetch tasks of node %s: %s", node, exc)
                 continue
             for t in nt:
                 t.setdefault("node", node)
             tasks.extend(nt)
-        if not tasks:   # geri dönüş: küme geneli son görevler (limit'siz)
+        if not tasks:   # fallback: cluster-wide recent tasks (no limit)
             try:
                 tasks = self.api.cluster.tasks.get() or []
             except Exception as exc:
-                logger.warning("Görev kaydı alınamadı (Sys.Audit izni gerekebilir): %s", exc)
+                logger.warning("Could not fetch task records (Sys.Audit permission may be required): %s", exc)
                 return ops
-        tasks.sort(key=lambda t: t.get("starttime", 0) or 0, reverse=True)  # en yeni önce
+        tasks.sort(key=lambda t: t.get("starttime", 0) or 0, reverse=True)  # newest first
 
         def parse(t):
             node = t.get("node") or ""
@@ -1033,20 +1032,20 @@ class ProxmoxCollector:
                 "category": category,
                 "direction": direction,
                 "actor": user or None,
-                "actor_ip": None,     # Proxmox görev kaydı istemci IP tutmaz
+                "actor_ip": None,     # Proxmox task records keep no client IP
                 "actor_agent": None,
-                "host": node,         # VM'in bulunduğu node
+                "host": node,         # the node the VM lives on
                 "detail": None,
             })
-            # Klon görevinin UPID'i KAYNAK vmid'i taşır, yeni vmid'i DEĞİL.
-            # Yeni vmid yalnız görev LOG'unda ("... to vm-<NNN>-disk") geçer.
+            # A clone task's UPID carries the SOURCE vmid, NOT the new one.
+            # The new vmid only appears in the task LOG ("... to vm-<NNN>-disk").
             if direction == "clone" and user and t.get("upid"):
                 clone_tasks.append((node, t["upid"], ttype, vmid, user, ts))
 
-        # Klonlar için yeni vmid'i görev log'undan çöz → klon op'unu YENİ vm'e
-        # (node/newid) iliştir; böylece yeni VM kendi klon kaydını/cloner'ını bulur.
+        # Resolve the new vmid from the task log -> attach the clone op to the NEW
+        # vm (node/newid) so the new VM finds its own clone record/cloner.
         clone_resolved = 0
-        for node, upid, ttype, src, user, ts in clone_tasks[:40]:   # son 40 klonla sınırla
+        for node, upid, ttype, src, user, ts in clone_tasks[:40]:   # cap at the last 40 clones
             newid = self._clone_newid_from_log(node, upid)
             if not newid or newid == src:
                 continue
@@ -1057,32 +1056,32 @@ class ProxmoxCollector:
                 "host": node, "detail": f"kaynak vmid {src}",
             })
 
-        # --- faz36: /cluster/log'dan config işlemleri ---
-        # Proxmox'ta web arayüzü/API ile yapılan yapılandırma değişiklikleri (RAM,
-        # CPU, ağ, disk ekleme…) çoğu zaman /nodes/{node}/tasks listesine GÖREV
-        # olarak düşmez; yalnız cluster log'a "update VM <id>: …" satırı olarak
-        # yazılır. Bu satırlardan config-aktör çıkarırız (RAM '—' kalmasın).
+        # --- phase36: config operations from /cluster/log ---
+        # In Proxmox, config changes made via the web UI/API (RAM, CPU,
+        # network, disk add...) usually do NOT land in /nodes/{node}/tasks;
+        # they are only written to the cluster log as "update VM <id>: ...".
+        # We extract config-actors from those lines (so RAM isn't '-').
         log_scanned = 0
         log_err = False
         try:
             logs = self.api.cluster.log.get(max=1500) or []
         except Exception as exc:
             log_err = True
-            logger.warning("Cluster log alınamadı: %s", exc)
+            logger.warning("Could not fetch cluster log: %s", exc)
             logs = []
         if not logs and not log_err:
-            # Boş dizi (hata değil) → token rolünde Sys.Syslog yok demektir.
-            # /cluster/log, PVEAuditor/Sys.Audit ile BOŞ döner; Sys.Syslog ('/')
-            # gerekir. Config (RAM/CPU/ağ) değişiklikleri GÖREV üretmediğinden
-            # bunların kullanıcısı YALNIZCA bu kaynaktan okunabilir.
+            # Empty array (not an error) -> token role lacks Sys.Syslog.
+            # /cluster/log returns EMPTY with PVEAuditor/Sys.Audit; Sys.Syslog ('/')
+            # is required. Config (RAM/CPU/net) changes produce NO task, so
+            # their user can ONLY be read from this source.
             logger.warning("Cluster log BOS dondu — token rolune 'Sys.Syslog' (/) "
                            "ekleyin; aksi halde config degisikliklerinin kullanicisi "
                            "'—' kalir.")
-        # "update VM 109: …", "update CT 110: …" → vmid; node satırda mevcut.
+        # "update VM 109: ...", "update CT 110: ..." -> vmid; node is on the line.
         log_re = re.compile(r"\bupdate\s+(?:VM|CT)\s+(\d+)\b", re.IGNORECASE)
-        # Cluster log'daki görev satırlarındaki UPID'den göç işlemleri (qmigrate):
-        # UPID:node:pid:pstart:start:type:id:user:  → görev penceresinden düşmüş
-        # ya da user'ı boş gelmiş göçler için bağımsız/geniş kaynak.
+        # Migration ops from UPIDs in cluster-log task lines (qmigrate):
+        # UPID:node:pid:pstart:start:type:id:user: -> independent/wide source for
+        # migrations that fell out of the task window or had an empty user.
         upid_re = re.compile(
             r"UPID:([^:\s]+):[^:]+:[^:]+:[^:]+:(qmigrate|vzmigrate):(\d+):([^:\s]+):")
         for entry in logs:
@@ -1119,38 +1118,38 @@ class ProxmoxCollector:
                 "detail": msg[:200],
             })
 
-        # Her VM'in işlem listesini en yeni → en eski sırala (task + log birleşik)
+        # Sort each VM's op list newest -> oldest (tasks + log merged)
         for lst in ops.values():
             lst.sort(key=lambda o: o.get("ts") or 0, reverse=True)
 
-        logger.info("Proxmox islem yapan kullanicilar: %d VM eslendi "
-                    "(%d gorev + %d log satiri + %d klon cozuldu)",
+        logger.info("Proxmox actors: %d VMs mapped "
+                    "(%d tasks + %d log lines + %d clones resolved)",
                     len(ops), scanned, log_scanned, clone_resolved)
         return ops
 
-    # ---------- Hafif kullanım senkronizasyonu ----------
+    # ---------- Lightweight usage sync ----------
     def collect_usage(self) -> dict:
         """
-        Anlık CPU/RAM/disk kullanım oranları — TEK API çağrısı (cluster/resources).
+        Instant CPU/RAM/disk usage ratios - a SINGLE API call (cluster/resources).
 
-        Tam senkronizasyondan bağımsız, çok daha sık (örn. 3 dk'da bir) çalışır.
-        Config/agent sorgusu yapılmadığı için 500+ VM'de bile saniyeler sürer
-        ve canlı ortama ölçülebilir yük bindirmez.
+        Runs independently of the full sync and much more often (e.g. every
+        3 min). With no config/agent queries it takes seconds even at 500+ VMs
+        and puts no measurable load on the live environment.
         """
         vms, hosts = [], []
         for res in self.api.cluster.resources.get():
             if res.get("type") in ("qemu", "lxc") and not res.get("template"):
                 vms.append({
-                    # VM'ler node/vmid ile kayıtlı (collect_vms ile aynı anahtar)
+                    # VMs are keyed by node/vmid (same key as collect_vms)
                     "external_id": f"{res.get('node', '')}/{res.get('vmid', '')}",
                     "cpu_pct": round((res.get("cpu") or 0) * 100, 1),
                     "ram_used_mb": int((res.get("mem") or 0) / (1024 * 1024)),
-                    # disk_used_gb BİLEREK None: cluster/resources 'disk' agent'sız 0
-                    # döner, thin'de ayak izi şişer → yanlış. Gerçek kullanım tam
-                    # senkronizasyonda guest-agent get-fsinfo ile gelir; usage onu EZMESİN.
+                    # disk_used_gb is INTENTIONALLY None: cluster/resources 'disk' is 0
+                    # without an agent and thin footprints inflate -> wrong. Real usage
+                    # comes from guest-agent get-fsinfo in the full sync; usage must NOT overwrite it.
                     "disk_used_gb": None,
-                    # Kümülatif IO sayaçları (VM açılışından beri, byte). Oran (KB/s)
-                    # ardışık örneklerin farkından sync tarafında hesaplanır.
+                    # Cumulative IO counters (bytes since VM start). The rate (KB/s)
+                    # is computed on the sync side from consecutive sample deltas.
                     "net_bytes": int((res.get("netin") or 0) + (res.get("netout") or 0)),
                     "disk_bytes": int((res.get("diskread") or 0) + (res.get("diskwrite") or 0)),
                 })
