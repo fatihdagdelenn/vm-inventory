@@ -26,10 +26,10 @@ const Networks = {
   /** Mod için (anahtar fonksiyonu, boş etiket, satır türü) belirle. */
   _grouping() {
     switch (Networks.mode) {
-      case 'cluster': return { key: n => n.cluster, empty: '(cluster atanmamış)', pnic: false };
-      case 'vlan':    return { key: n => (n.vlan || ''), empty: 'VLAN yok / native', pnic: false };
-      case 'pnic':    return { key: n => n.host_name, empty: '(host atanmamış)', pnic: true };
-      default:        return { key: n => n.host_name, empty: '(host atanmamış)', pnic: false };
+      case 'cluster': return { key: n => n.cluster, empty: t('nt.noCluster','(cluster atanmamış)'), pnic: false };
+      case 'vlan':    return { key: n => (n.vlan || ''), empty: t('nt.noVlan','VLAN yok / native'), pnic: false };
+      case 'pnic':    return { key: n => n.host_name, empty: t('nt.noHost','(host atanmamış)'), pnic: true };
+      default:        return { key: n => n.host_name, empty: t('nt.noHost','(host atanmamış)'), pnic: false };
     }
   },
 
@@ -40,7 +40,7 @@ const Networks = {
       g.pnic ? n.kind === 'pnic' : n.kind !== 'pnic');
 
     if (!rows.length) {
-      wrap.innerHTML = '<div class="text-center text-muted p-4">Sonuç bulunamadı.</div>';
+      wrap.innerHTML = '<div class="text-center text-muted p-4">' + t('vm.noResults','Sonuç bulunamadı.') + '</div>';
       return;
     }
 
@@ -88,7 +88,7 @@ const Networks = {
     const showVlan = mode !== 'vlan';
     const showHost = mode !== 'host';
     const head = '<tr>' +
-      '<th>Ad</th>' +
+      '<th>' + t('hi.f.name','Ad') + '</th>' +
       (showVlan ? '<th>VLAN</th>' : '') +
       '<th>vSwitch / Bridge</th><th>Port Group</th><th>IP Subnet</th>' +
       (showHost ? '<th>Host</th>' : '') +
@@ -109,10 +109,10 @@ const Networks = {
       '<td><strong>' + App.esc(n.name || '—') + '</strong></td>' +
       '<td class="small mono">' + App.esc(n.mac || '—') + '</td>' +
       '<td>' + App.esc(n.link_speed || '—') + '</td>' +
-      '<td>' + (n.vswitch === 'bond' ? '<span class="badge text-bg-secondary">Bond</span>' : 'Fiziksel') + '</td>' +
+      '<td>' + (n.vswitch === 'bond' ? '<span class="badge text-bg-secondary">Bond</span>' : t('nt.physical','Fiziksel')) + '</td>' +
       '<td class="small text-muted">' + App.esc(n.platform || '—') + '</td></tr>').join('');
     return '<table class="table table-hover align-middle mb-0"><thead><tr>' +
-      '<th>Kart</th><th>MAC</th><th>Hız</th><th>Tür</th><th>Platform</th>' +
+      '<th>' + t('nt.nic','Kart') + '</th><th>MAC</th><th>' + t('nt.speed','Hız') + '</th><th>' + t('th.type','Tür') + '</th><th>Platform</th>' +
       '</tr></thead><tbody>' + body + '</tbody></table>';
   },
 

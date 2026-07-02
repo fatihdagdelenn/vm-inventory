@@ -39,7 +39,7 @@ const Bk = {
     let cls = 'text-bg-light text-dark border';
     if (age >= 30) cls = 'text-bg-danger'; else if (age >= 14) cls = 'text-bg-warning text-dark';
     else if (age >= 7) cls = 'text-bg-info text-dark';
-    return '<span class="badge ' + cls + '">' + age + ' gün</span>';
+    return '<span class="badge ' + cls + '">' + age + ' ' + t('unit.day','gün') + '</span>';
   },
 
   render() {
@@ -48,9 +48,9 @@ const Bk = {
     const body = document.getElementById('bkBody');
     if (!rows.length) {
       body.innerHTML = '<tr><td colspan="9" class="text-center text-muted p-4">' +
-        'Yedek bulunamadı. ' +
+        t('bk.notFound','Yedek bulunamadı.') + ' ' +
         '<button class="btn btn-sm btn-outline-secondary ms-2" id="bkDiag">' +
-        '<i class="bi bi-search"></i> Neden? Tanıla</button>' +
+        '<i class="bi bi-search"></i> ' + t('bk.diagnose','Neden? Tanıla') + '</button>' +
         '<div id="bkDiagOut" class="mt-3 text-start small"></div></td></tr>';
       document.getElementById('bkCount').textContent = '';
       const btn = document.getElementById('bkDiag');
@@ -65,7 +65,7 @@ const Bk = {
         ? '<span class="badge text-bg-primary">PBS</span>'
         : '<span class="badge text-bg-secondary">vzdump</span>';
       const prot = b.protected
-        ? ' <i class="bi bi-shield-lock-fill text-success" title="Korumalı"></i>' : '';
+        ? ' <i class="bi bi-shield-lock-fill text-success" title="' + t('bk.protected','Korumalı') + '"></i>' : '';
       const notes = b.notes
         ? '<span class="text-muted small" title="' + App.esc(b.notes) + '">' +
           App.esc(b.notes.length > 50 ? b.notes.slice(0, 50) + '…' : b.notes) + '</span>'
@@ -86,47 +86,46 @@ const Bk = {
 
     const totalGb = rows.reduce((a, b) => a + (b.size_gb || 0), 0);
     document.getElementById('bkCount').innerHTML =
-      rows.length + ' yedek · toplam ' + App.fmtGb(Math.round(totalGb * 10) / 10);
+      rows.length + ' ' + t('bk.backups','yedek') + ' · ' + t('bk.total','toplam') + ' ' + App.fmtGb(Math.round(totalGb * 10) / 10);
   },
 
   async diagnose() {
     const out = document.getElementById('bkDiagOut');
-    out.innerHTML = '<span class="text-muted">Depolar taranıyor…</span>';
+    out.innerHTML = '<span class="text-muted">' + t('bk.scanning','Depolar taranıyor…') + '</span>';
     let d;
     try { d = await App.api('/api/backups/diagnose'); }
-    catch (e) { out.innerHTML = '<span class="text-danger">Tanılama başarısız.</span>'; return; }
+    catch (e) { out.innerHTML = '<span class="text-danger">' + t('bk.diagFail','Tanılama başarısız.') + '</span>'; return; }
     if (d.error) { out.innerHTML = '<span class="text-warning">' + App.esc(d.error) + '</span>'; return; }
     if (!d.platforms || !d.platforms.length) {
-      out.innerHTML = '<span class="text-muted">' + App.esc(d.hint || 'Proxmox platformu yok.') + '</span>';
+      out.innerHTML = '<span class="text-muted">' + App.esc(d.hint || t('bk.noProxmox','Proxmox platformu yok.')) + '</span>';
       return;
     }
     let html = '';
     d.platforms.forEach(p => {
       html += '<div class="fw-semibold mt-2">' + App.esc(p.platform) + '</div>';
       if (p.error) { html += '<div class="text-danger">' + App.esc(p.error) + '</div>'; return; }
-      html += '<table class="table table-sm mb-1"><thead><tr><th>Depo</th><th>Tip</th><th>Node</th>' +
-        '<th>İçerik alanı</th><th>Öğe</th><th>Yedek</th><th>Durum</th></tr></thead><tbody>';
+      html += '<table class="table table-sm mb-1"><thead><tr><th>' + t('bk.storage','Depo') + '</th><th>' + t('th.type','Tip') + '</th><th>Node</th>' +
+        '<th>' + t('bk.contentField','İçerik alanı') + '</th><th>' + t('bk.items','Öğe') + '</th><th>' + t('bk.backup','Yedek') + '</th><th>' + t('th.status','Durum') + '</th></tr></thead><tbody>';
       (p.storages || []).forEach(s => {
         const status = s.error ? '<span class="text-danger">' + App.esc(s.error) + '</span>'
-          : (s.backups > 0 ? '<span class="text-success">' + s.backups + ' yedek</span>'
-                           : '<span class="text-muted">yedek yok</span>');
+          : (s.backups > 0 ? '<span class="text-success">' + s.backups + ' ' + t('bk.backups','yedek') + '</span>'
+                           : '<span class="text-muted">' + t('bk.noBackup','yedek yok') + '</span>');
         const nodeTxt = App.esc(s.node || '') + (s.shared && s.nodes_tried > 1
-          ? ' <span class="text-muted small">(' + s.nodes_tried + ' node denendi)</span>' : '');
+          ? ' <span class="text-muted small">(' + s.nodes_tried + ' ' + t('bk.nodesTried','node denendi') + ')</span>' : '');
         html += '<tr><td>' + App.esc(s.storage || '—') + '</td>' +
           '<td class="small">' + App.esc(s.plugin || '—') + '</td><td>' + nodeTxt + '</td>' +
           '<td class="small">' + App.esc(s.content_field || '—') + '</td>' +
           '<td>' + (s.items || 0) + '</td><td>' + (s.backups || 0) + '</td><td>' + status + '</td></tr>';
-        if (s.pernode) html += '<tr><td colspan="7" class="small" style="color:#94a3b8">node başına: ' + App.esc(s.pernode) + '</td></tr>';
+        if (s.pernode) html += '<tr><td colspan="7" class="small" style="color:#94a3b8">' + t('bk.perNode','node başına') + ': ' + App.esc(s.pernode) + '</td></tr>';
         if (s.config) html += '<tr><td colspan="7" class="small" style="color:#0ea5e9">⚙ PBS: ' + App.esc(s.config) +
           (s.n_unfiltered != null ? '  ·  filtresiz=' + s.n_unfiltered + ' / content=backup=' + s.n_backup_filter : '') + '</td></tr>';
-        if (s.ctypes) html += '<tr><td colspan="7" class="text-muted small">içerik: ' + App.esc(s.ctypes) + '</td></tr>';
+        if (s.ctypes) html += '<tr><td colspan="7" class="text-muted small">' + t('bk.content','içerik') + ': ' + App.esc(s.ctypes) + '</td></tr>';
         if (s.note) html += '<tr><td colspan="7" class="small" style="color:#f59e0b">↳ ' + App.esc(s.note) + '</td></tr>';
-        if (s.sample) html += '<tr><td colspan="7" class="text-muted small">örnek: ' + App.esc(s.sample) + '</td></tr>';
+        if (s.sample) html += '<tr><td colspan="7" class="text-muted small">' + t('bk.sample','örnek') + ': ' + App.esc(s.sample) + '</td></tr>';
       });
       html += '</tbody></table>';
     });
-    html += '<div class="text-muted mt-1">İzin hatası görüyorsan API kullanıcı/token rolüne ' +
-      '<code>Datastore.Audit</code> ekle. Bu çıktıyı paylaşırsan kalan sorunu birlikte kapatırız.</div>';
+    html += '<div class="text-muted mt-1">' + t('bk.permHint','İzin hatası görüyorsan API kullanıcı/token rolüne Datastore.Audit ekle.') + '</div>';
     out.innerHTML = html;
   },
 

@@ -5,25 +5,25 @@
     <div class="search-box flex-grow-1" style="min-width:260px;max-width:520px">
       <i class="bi bi-search"></i>
       <input type="text" id="snapSearch" class="form-control"
-             placeholder="vm:web  snap:upgrade  age:>30  current:yes  parent:yok …">
+             data-i18n-ph="sn.searchPh" placeholder="vm:web  snap:upgrade  age:>30  current:yes  parent:yok …">
     </div>
     <button class="btn btn-outline-secondary btn-sm" type="button" id="snapHelpBtn"
-            title="Arama söz dizimi"><i class="bi bi-question-circle"></i></button>
+            data-i18n-title="vm.searchHelp" title="Arama söz dizimi"><i class="bi bi-question-circle"></i></button>
     <select id="snapPlatform" class="form-select form-select-sm" style="width:auto">
-      <option value="">Tüm platformlar</option>
+      <option value="" data-i18n="sn.allPlatforms">Tüm platformlar</option>
     </select>
     <select id="snapCluster" class="form-select form-select-sm" style="width:auto">
-      <option value="">Tüm cluster'lar</option>
+      <option value="" data-i18n="sn.allClusters">Tüm cluster'lar</option>
     </select>
     <select id="snapAge" class="form-select form-select-sm" style="width:auto">
-      <option value="">Tüm yaşlar</option>
+      <option value="" data-i18n="sn.allAges">Tüm yaşlar</option>
       <option value="7">7+ gün</option>
       <option value="14">14+ gün</option>
       <option value="30">30+ gün</option>
     </select>
     <div class="form-check form-switch mb-0">
       <input class="form-check-input" type="checkbox" id="snapActive">
-      <label class="form-check-label small" for="snapActive">Yalnızca aktif</label>
+      <label class="form-check-label small" for="snapActive" data-i18n="sn.activeOnly">Yalnızca aktif</label>
     </div>
     <div class="ms-auto d-flex gap-2">
       <button class="btn btn-outline-success btn-sm" onclick="location='/api/reports/snapshots/export?fmt=xlsx'"><i class="bi bi-file-earmark-excel"></i> Excel</button>
@@ -33,10 +33,10 @@
   </div>
   <div id="snapHelp" class="small text-muted mt-3 d-none">
     <div class="row g-2">
-      <div class="col-md-6"><code>vm:web01</code> · <code>snap:upgrade</code> · <code>platform:"merkez"</code> — alanlarda ara</div>
-      <div class="col-md-6"><code>age:&gt;30</code> · <code>age:&lt;7</code> · <code>age:&gt;=14</code> — yaşa göre (gün)</div>
-      <div class="col-md-6"><code>current:yes</code> / <code>current:no</code> — aktif snapshot · <code>parent:yok</code> — kök snapshot</div>
-      <div class="col-md-6"><code>-snap:test</code> dışla · <code>snap:a,b</code> (virgül = veya) · boş kelime = her yerde ara</div>
+      <div class="col-md-6"><code>vm:web01</code> · <code>snap:upgrade</code> · <code>platform:"merkez"</code> — <span data-i18n="sn.h.fields">alanlarda ara</span></div>
+      <div class="col-md-6"><code>age:&gt;30</code> · <code>age:&lt;7</code> · <code>age:&gt;=14</code> — <span data-i18n="sn.h.age">yaşa göre (gün)</span></div>
+      <div class="col-md-6"><code>current:yes</code> / <code>current:no</code> — <span data-i18n="sn.h.current">aktif snapshot</span> · <code>parent:yok</code> — <span data-i18n="sn.h.root">kök snapshot</span></div>
+      <div class="col-md-6"><span data-i18n="sn.h.misc"><code>-snap:test</code> dışla · <code>snap:a,b</code> (virgül = veya) · boş kelime = her yerde ara</span></div>
     </div>
   </div>
 </div></div>
@@ -49,12 +49,12 @@
         <th data-sort="name" class="sortable">Snapshot</th>
         <th data-sort="platform" class="sortable">Platform</th>
         <th data-sort="cluster" class="sortable">Cluster</th>
-        <th data-sort="created_at" class="sortable">Oluşturma</th>
-        <th data-sort="age" class="sortable">Yaş</th>
-        <th>Üst</th>
-        <th>Açıklama</th>
+        <th data-sort="created_at" class="sortable" data-i18n="bk.created">Oluşturma</th>
+        <th data-sort="age" class="sortable" data-i18n="bk.age">Yaş</th>
+        <th data-i18n="sn.parent">Üst</th>
+        <th data-i18n="vm.description">Açıklama</th>
       </tr></thead>
-      <tbody id="snapBody"><tr><td colspan="8" class="text-center text-muted p-4">Yükleniyor…</td></tr></tbody>
+      <tbody id="snapBody"><tr><td colspan="8" class="text-center text-muted p-4" data-i18n="common.loading">Yükleniyor…</td></tr></tbody>
     </table>
   </div>
 </div>

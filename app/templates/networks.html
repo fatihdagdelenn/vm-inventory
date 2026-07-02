@@ -4,21 +4,21 @@
   <div class="search-box">
     <i class="bi bi-search"></i>
     <input type="text" id="netSearch" class="form-control"
-           placeholder="Ad, VLAN, vSwitch, subnet, MAC veya host ara…">
+           data-i18n-ph="nt.searchPh" placeholder="Ad, VLAN, vSwitch, subnet, MAC veya host ara…">
   </div>
   <div class="btn-group net-modes" role="group" aria-label="Gruplama">
-    <button class="btn btn-sm active" data-mode="host">Host'a göre</button>
-    <button class="btn btn-sm" data-mode="cluster">Cluster'a göre</button>
-    <button class="btn btn-sm" data-mode="vlan">VLAN'a göre</button>
-    <button class="btn btn-sm" data-mode="pnic">Fiziksel Kartlar</button>
+    <button class="btn btn-sm active" data-mode="host" data-i18n="nt.byHost">Host'a göre</button>
+    <button class="btn btn-sm" data-mode="cluster" data-i18n="vm.byCluster">Cluster'a göre</button>
+    <button class="btn btn-sm" data-mode="vlan" data-i18n="vm.byVlan">VLAN'a göre</button>
+    <button class="btn btn-sm" data-mode="pnic" data-i18n="nt.pnics">Fiziksel Kartlar</button>
   </div>
   <div class="net-actions">
-    <button class="btn btn-sm btn-link" id="netExpandAll">Tümünü aç</button>
-    <button class="btn btn-sm btn-link" id="netCollapseAll">Tümünü kapat</button>
+    <button class="btn btn-sm btn-link" id="netExpandAll" data-i18n="nt.expandAll">Tümünü aç</button>
+    <button class="btn btn-sm btn-link" id="netCollapseAll" data-i18n="nt.collapseAll">Tümünü kapat</button>
   </div>
 </div>
 <div id="netGroups">
-  <div class="text-center text-muted p-4">Yükleniyor…</div>
+  <div class="text-center text-muted p-4" data-i18n="common.loading">Yükleniyor…</div>
 </div>
 {% endblock %}
 {% block scripts %}<script src="/static/js/networks.js?v={{ asset_version }}"></script>{% endblock %}

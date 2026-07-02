@@ -51,13 +51,13 @@ const Snap = {
     if (age >= 30) cls = 'text-bg-danger';
     else if (age >= 14) cls = 'text-bg-warning text-dark';
     else if (age >= 7) cls = 'text-bg-info text-dark';
-    return '<span class="badge ' + cls + '">' + age + ' gün</span>';
+    return '<span class="badge ' + cls + '">' + age + ' ' + t('unit.day','gün') + '</span>';
   },
 
   render() {
     const body = document.getElementById('snapBody');
     if (!this.items.length) {
-      body.innerHTML = '<tr><td colspan="7" class="text-center text-muted p-4">Snapshot bulunamadı.</td></tr>';
+      body.innerHTML = '<tr><td colspan="7" class="text-center text-muted p-4">' + t('sn.notFound','Snapshot bulunamadı.') + '</td></tr>';
       document.getElementById('snapCount').textContent = '';
       return;
     }
@@ -66,7 +66,7 @@ const Snap = {
         ? '<i class="bi bi-cloud text-primary" title="vCenter"></i>'
         : '<i class="bi bi-box text-warning" title="Proxmox"></i>';
       const cur = s.is_current
-        ? ' <span class="badge text-bg-success" title="Aktif/çalışılan snapshot">aktif</span>' : '';
+        ? ' <span class="badge text-bg-success" title="' + t('sn.currentHint','Aktif/çalışılan snapshot') + '">' + t('sn.current','aktif') + '</span>' : '';
       const desc = s.description
         ? '<span class="text-muted small" title="' + App.esc(s.description) + '">' +
           App.esc(s.description.length > 60 ? s.description.slice(0, 60) + '…' : s.description) +
@@ -87,7 +87,7 @@ const Snap = {
     const old30 = this.items.filter(s => (s.age_days || 0) >= 30).length;
     document.getElementById('snapCount').innerHTML =
       this.items.length + ' snapshot' +
-      (old30 ? ' · <span class="text-danger">' + old30 + ' adet 30+ gün</span>' : '');
+      (old30 ? ' · <span class="text-danger">' + old30 + ' ' + t('sn.over30','adet 30+ gün') + '</span>' : '');
   },
 
   setSort(col) {
