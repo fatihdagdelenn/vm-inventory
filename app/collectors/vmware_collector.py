@@ -1,15 +1,15 @@
 """
-VMware vCenter veri toplayıcısı (pyVmomi - resmi vSphere SDK, SSH KULLANILMAZ).
+VMware vCenter data collector (pyVmomi - the official vSphere SDK, NO SSH).
 
-Toplananlar:
-- Host: ad, yönetim IP, ESXi sürümü, CPU modeli/çekirdek, RAM, cluster, durum
-- VM: ad, MoRef ID, IP/MAC, OS, CPU/RAM/disk, güç durumu, datastore, VLAN,
-  oluşturulma tarihi, son açılış, VMware Tools durumu
+Collected:
+- Host: name, mgmt IP, ESXi version, CPU model/cores, RAM, cluster, status
+- VM: name, MoRef ID, IP/MAC, OS, CPU/RAM/disk, power state, datastore, VLAN,
+  creation date, last boot, VMware Tools status
 - Network: Port Group, vSwitch, VLAN
-- Datastore: kapasite/kullanım
+- Datastore: capacity/usage
 
-Performans: PropertyCollector tabanlı toplu görünüm (ContainerView) kullanılır;
-500+ VM ortamında nesne nesne sorgu yerine tek geçişte veri çekilir.
+Performance: PropertyCollector-based bulk views (ContainerView); at 500+ VMs
+data is pulled in one pass instead of per-object queries.
 """
 import ssl
 import json
@@ -22,15 +22,15 @@ from pyVmomi import vim
 
 logger = logging.getLogger("collector.vmware")
 
-# guestInfo.detailed.data biçimi: anahtar='değer' çiftleri, boşlukla ayrık
+# guestInfo.detailed.data format: key='value' pairs, space-separated
 _DETAILED_RE = re.compile(r"(\w+)='([^']*)'")
 
 
 def _parse_detailed(raw: str) -> str:
     """
-    vSphere 8.0 U2+ ayrıntılı guest verisini ('guestInfo.detailed.data' veya
-    guest.guestDetailedData) çözüp en iyi tam adı döndürür.
-    Örn: prettyName='Ubuntu 24.04.1 LTS'  ->  "Ubuntu 24.04.1 LTS".
+    Parses vSphere 8.0 U2+ detailed guest data ('guestInfo.detailed.data' or
+    guest.guestDetailedData) and returns the best full name.
+    E.g. prettyName='Ubuntu 24.04.1 LTS'  ->  "Ubuntu 24.04.1 LTS".
     """
     if not raw:
         return ""
@@ -44,22 +44,22 @@ def _parse_detailed(raw: str) -> str:
 
 def _best_guest_os(vm, guest, summary_config) -> str:
     """
-    En ayrıntılı işletim sistemi adını katmanlı olarak bul:
-      1) guest.guestDetailedData              (VM açık, Tools 11.2+ — tam sürüm)
-      2) config.extraConfig['guestInfo.detailed.data']  (kalıcı; VM kapalı olsa da)
-      3) config.guestFullName                 (VM ayarındaki katalog adı)
-      4) guest.guestFullName                  (Tools'un bildirdiği çalışan OS)
-    Sürüm gereksinimi: vSphere 8.0 U2+ ve VMware Tools 11.2+ (1-2. adımlar için).
-    NOT: 3-4 sırası bilinçli — katalog adı (örn. "VMware Photon OS") çoğu zaman
-    Tools'un çalışma anında bildirdiği jenerik addan ("Other 3.x Linux") daha
-    belirgindir; bu yüzden ayrıntılı veri yoksa önce katalog adı kullanılır.
+    Find the most detailed OS name, layered:
+      1) guest.guestDetailedData              (VM on, Tools 11.2+ - full version)
+      2) config.extraConfig['guestInfo.detailed.data']  (persistent; even when off)
+      3) config.guestFullName                 (catalog name in the VM config)
+      4) guest.guestFullName                  (running OS reported by Tools)
+    Version requirement: vSphere 8.0 U2+ and VMware Tools 11.2+ (for steps 1-2).
+    NOTE: the 3-4 order is deliberate - the catalog name (e.g. "VMware Photon OS")
+    is usually more specific than the generic runtime name Tools reports
+    ("Other 3.x Linux"), so the catalog name wins when detailed data is absent.
     """
-    # 1) Canlı ayrıntılı veri (tam sürüm)
+    # 1) Live detailed data (full version)
     detailed = _parse_detailed(getattr(guest, "guestDetailedData", None) or "")
     if detailed:
         return detailed
-    # 2) Kalıcı ayrıntılı veri (extraConfig) — VM kapalıyken bile
-    #    Anahtar adı kaynaklarda guestinfo/guestInfo olarak geçebiliyor → harf duyarsız
+    # 2) Persistent detailed data (extraConfig) - even while the VM is off
+    #    The key appears as guestinfo/guestInfo in sources -> case-insensitive
     try:
         full_cfg = vm.config
         if full_cfg and getattr(full_cfg, "extraConfig", None):
@@ -71,17 +71,17 @@ def _best_guest_os(vm, guest, summary_config) -> str:
                     break
     except Exception:
         pass
-    # 3) Katalog adı (config)  4) Tools'un bildirdiği OS  — eski (gerilemeyen) sıra
+    # 3) Catalog name (config)  4) OS reported by Tools - old (non-regressing) order
     return (summary_config.guestFullName if summary_config else "") or \
            (getattr(guest, "guestFullName", "") if guest else "") or ""
 
 
 def _fetch_vcenter_tags(host, port, username, password, verify_ssl) -> dict:
     """
-    vCenter REST (vAPI) tagging servisinden  MoRef -> "etiket1,etiket2"  eşlemesi.
-    pyVmomi/SOAP etiketleri vermediği için ayrı bir REST oturumu açılır.
-    Tamamen defensive: herhangi bir hata olursa boş sözlük döner, sync'in
-    geri kalanını etkilemez. (Endpoint sürümü: legacy /rest, 8.0'da da çalışır.)
+    MoRef -> "tag1,tag2" mapping from the vCenter REST (vAPI) tagging service.
+    pyVmomi/SOAP does not expose tags, so a separate REST session is opened.
+    Fully defensive: any error returns an empty dict and never affects the
+    rest of the sync. (Endpoint: legacy /rest, still works on 8.0.)
     """
     import requests
     base = f"https://{host}:{port}"
@@ -125,7 +125,7 @@ def _fetch_vcenter_tags(host, port, username, password, verify_ssl) -> dict:
         return {mo: ",".join(sorted(set(t for t in tags if t)))
                 for mo, tags in result.items()}
     except Exception as exc:
-        logger.warning("vCenter etiketleri (REST) alınamadı: %s", exc)
+        logger.warning("Could not fetch vCenter tags (REST): %s", exc)
         return {}
     finally:
         try:
@@ -144,9 +144,9 @@ class VMwareCollector:
         self.verify_ssl = verify_ssl
         self.si = None  # ServiceInstance
 
-    # ---------- Bağlantı ----------
+    # ---------- Connection ----------
     def connect(self):
-        """vCenter'a bağlan. verify_ssl=False ise sertifika doğrulaması atlanır."""
+        """Connect to vCenter. With verify_ssl=False certificate checks are skipped."""
         context = ssl.create_default_context()
         if not self.verify_ssl:
             context.check_hostname = False
@@ -161,36 +161,36 @@ class VMwareCollector:
             self.si = None
 
     def test_connection(self) -> dict:
-        """Bağlantı testi ekranı için: sürüm bilgisiyle birlikte sonuç döner."""
+        """For the connection-test screen: returns the result with version info."""
         try:
             self.connect()
             about = self.si.content.about
             info = {"success": True,
-                    "message": f"Bağlantı başarılı: {about.fullName}",
+                    "message": f"Connection successful: {about.fullName}",
                     "version": about.version}
             self.disconnect()
             return info
         except Exception as exc:
-            return {"success": False, "message": f"Bağlantı hatası: {exc}"}
+            return {"success": False, "message": f"Connection error: {exc}"}
 
-    # ---------- Yardımcılar ----------
+    # ---------- Helpers ----------
     def _get_objects(self, vimtype):
-        """ContainerView ile belirtilen tipteki tüm nesneleri getir."""
+        """Fetch all objects of the given type via ContainerView."""
         content = self.si.RetrieveContent()
         view = content.viewManager.CreateContainerView(content.rootFolder, vimtype, True)
         objs = list(view.view)
         view.Destroy()
         return objs
 
-    # ---------- Cluster eşlemesi ----------
+    # ---------- Cluster mapping ----------
     def _cluster_map(self) -> dict:
         """
-        host MoRef ID -> cluster adı eşlemesi.
+        host MoRef ID -> cluster name mapping.
 
-        Cluster adları doğrudan ClusterComputeResource nesnelerinden okunur;
-        bu, her host/VM için parent zincirini gezmekten hem daha hızlıdır
-        (uzak/yüksek gecikmeli vCenter'larda önemli) hem de daha güvenilirdir:
-        tek bir host'un parent okuması hata verse bile cluster adı kaybolmaz.
+        Cluster names are read straight from ClusterComputeResource objects;
+        faster than walking each host/VM parent chain (matters on remote,
+        high-latency vCenters) and more reliable:
+        even if one host's parent read fails, the cluster name is not lost.
         """
         mapping = {}
         try:
@@ -200,35 +200,35 @@ class VMwareCollector:
                     for h in cl.host:
                         mapping[h._moId] = cname
                 except Exception as exc:
-                    logger.warning("Cluster okunamadı %s: %s",
+                    logger.warning("Could not read cluster %s: %s",
                                    getattr(cl, "name", "?"), exc)
         except Exception as exc:
-            logger.warning("Cluster eşlemesi kurulamadı: %s", exc)
+            logger.warning("Could not build cluster mapping: %s", exc)
         return mapping
 
     def _pool_map(self) -> dict:
-        """VM MoRef -> resource pool adı (toplu; her VM için ayrı sorgu yok).
-        Kök 'Resources' havuzu gürültü olduğu için boş bırakılır."""
+        """VM MoRef -> resource pool name (bulk; no per-VM queries).
+        The root 'Resources' pool is noise, so it is left blank."""
         mapping = {}
         try:
             for rp in self._get_objects([vim.ResourcePool]):
                 try:
                     name = rp.name
-                    if name == "Resources":   # gizli kök havuz
+                    if name == "Resources":   # hidden root pool
                         continue
                     for vm in rp.vm:
                         mapping[vm._moId] = name
                 except Exception:
                     continue
         except Exception as exc:
-            logger.warning("Pool eşlemesi kurulamadı: %s", exc)
+            logger.warning("Could not build pool mapping: %s", exc)
         return mapping
 
     @staticmethod
     def _vm_folder(vm) -> str:
-        """VM'in doğrudan içinde bulunduğu klasör adı (vm.parent).
-        Kanonik yöntem: VM'in envanterdeki üst öğesi klasördür. Kök 'vm'
-        klasörü gizli olduğundan boş döndürülür (VM doğrudan kökteyse)."""
+        """Name of the folder the VM sits in directly (vm.parent).
+        Canonical: the VM's inventory parent is a folder. The root 'vm'
+        folder is hidden, so blank is returned when the VM is at root."""
         try:
             parent = vm.parent
             if isinstance(parent, vim.Folder):
@@ -247,8 +247,8 @@ class VMwareCollector:
             try:
                 summary = h.summary
                 hw = summary.hardware
-                # Yönetim IP'si: vmk arayüzlerinden ilki
-                # (bağlantısı kopuk host'larda config None olabilir)
+                # Management IP: first of the vmk interfaces
+                # (config can be None on disconnected hosts)
                 mgmt_ip = ""
                 try:
                     if h.config and h.config.network and h.config.network.vnic:
@@ -256,8 +256,8 @@ class VMwareCollector:
                 except Exception:
                     pass
                 cluster = cluster_map.get(h._moId, "")
-                # Disk kapasitesi: bağlı datastore'ların toplamı.
-                # Erişilemeyen datastore tüm host kaydını düşürmesin.
+                # Disk capacity: sum of attached datastores.
+                # An unreachable datastore must not drop the whole host record.
                 disk_total = disk_free = 0
                 try:
                     disk_total = sum((ds.summary.capacity or 0)
@@ -285,13 +285,13 @@ class VMwareCollector:
                     "last_boot": getattr(summary.runtime, "bootTime", None),
                 })
             except Exception as exc:
-                logger.warning("Host okunamadı %s: %s", getattr(h, "name", "?"), exc)
+                logger.warning("Could not read host %s: %s", getattr(h, "name", "?"), exc)
         return hosts
 
     # ---------- Sanal makineler ----------
     def collect_vms(self) -> list[dict]:
         vms = []
-        cluster_map = self._cluster_map()   # host MoRef -> cluster adı
+        cluster_map = self._cluster_map()   # host MoRef -> cluster name
         pool_map = self._pool_map()         # VM MoRef -> resource pool
         tag_map = _fetch_vcenter_tags(      # VM MoRef -> "etiket1,etiket2" (REST)
             self.host, self.port, self.username, self.password, self.verify_ssl)
@@ -301,18 +301,18 @@ class VMwareCollector:
                 config = summary.config
                 guest = vm.guest
 
-                # IP'ler VMware Tools'tan; MAC'ler ise AŞAĞIDA cihaz YAPILANDIRMASINDAN
-                # toplanır (guest.net'teki canlı/sanal arayüzler değişim izlemede
-                # gürültü yapar — Docker/Hyper-V vb. arayüzler gelip gider).
+                # IPs come from VMware Tools; MACs are collected BELOW from the device
+                # CONFIG (live/virtual interfaces in guest.net are noisy for change
+                # tracking - Docker/Hyper-V etc. interfaces come and go).
                 ips, macs = [], []
                 if guest and guest.net:
                     for nic in guest.net:
                         if nic.ipAddress:
-                            ips.extend(ip for ip in nic.ipAddress if ":" not in ip)  # IPv4 öncelik
+                            ips.extend(ip for ip in nic.ipAddress if ":" not in ip)  # IPv4 first
                 if not ips and guest and guest.ipAddress:
                     ips.append(guest.ipAddress)
 
-                # Disk detayları + ağ/VLAN bilgisi (donanım listesinden)
+                # Disk details + network/VLAN info (from the hardware list)
                 disks, networks, vlans = [], [], []
                 if vm.config and vm.config.hardware:
                     for dev in vm.config.hardware.device:
@@ -332,7 +332,7 @@ class VMwareCollector:
                                 pg_key = backing.port.portgroupKey
                                 networks.append(pg_key or "")
 
-                # Port group adlarından VLAN çözümleme
+                # Resolve VLANs from port group names
                 for net in vm.network:
                     if isinstance(net, vim.dvs.DistributedVirtualPortgroup):
                         vlan_cfg = net.config.defaultPortConfig.vlan
@@ -342,8 +342,8 @@ class VMwareCollector:
                             networks.append(net.name)
 
                 host_name = summary.runtime.host.name if summary.runtime.host else ""
-                # Cluster: önceden kurulan eşlemeden (her VM için parent
-                # zincirini gezmek uzak vCenter'larda hem yavaş hem kırılgan)
+                # Cluster: from the prebuilt map (walking each VM's parent
+                # chain is slow and fragile on remote vCenters)
                 cluster = cluster_map.get(
                     summary.runtime.host._moId, "") if summary.runtime.host else ""
 
@@ -381,13 +381,13 @@ class VMwareCollector:
                     "is_template": bool(config.template) if config else False,
                 })
             except Exception as exc:
-                logger.warning("VM okunamadı %s: %s", getattr(vm, "name", "?"), exc)
+                logger.warning("Could not read VM %s: %s", getattr(vm, "name", "?"), exc)
         return vms
 
-    # ---------- Ağlar ----------
+    # ---------- Networks ----------
     def collect_networks(self) -> list[dict]:
         nets = []
-        # Standart vSwitch port group'ları (host bazında)
+        # Standard vSwitch port groups (per host)
         for h in self._get_objects([vim.HostSystem]):
             try:
                 if not h.config or not h.config.network:
@@ -399,7 +399,7 @@ class VMwareCollector:
                                  "portgroup": pg.spec.name,
                                  "host_name": h.name,
                                  "kind": "portgroup"})
-                # Fiziksel ağ kartları (vmnicX) — host'un kendi uplink'leri
+                # Physical NICs (vmnicX) - the host's own uplinks
                 for pnic in h.config.network.pnic or []:
                     speed = ""
                     ls = getattr(pnic, "linkSpeed", None)
@@ -409,7 +409,7 @@ class VMwareCollector:
                                  "kind": "pnic", "mac": pnic.mac or "",
                                  "link_speed": speed})
             except Exception as exc:
-                logger.warning("Host ağı okunamadı: %s", exc)
+                logger.warning("Could not read host network: %s", exc)
         # Distributed port group'lar
         for dpg in self._get_objects([vim.dvs.DistributedVirtualPortgroup]):
             try:
@@ -421,13 +421,13 @@ class VMwareCollector:
                              "portgroup": dpg.name, "host_name": "",
                              "kind": "portgroup"})
             except Exception as exc:
-                logger.warning("DVS portgroup okunamadı: %s", exc)
+                logger.warning("Could not read DVS portgroups: %s", exc)
         return nets
 
     # ---------- Datastore'lar ----------
     def collect_datastores(self) -> list[dict]:
         result = []
-        cluster_map = self._cluster_map()   # host MoRef -> cluster adı
+        cluster_map = self._cluster_map()   # host MoRef -> cluster name
         for ds in self._get_objects([vim.Datastore]):
             try:
                 s = ds.summary
@@ -437,8 +437,8 @@ class VMwareCollector:
                 status = ("maintenance" if maint != "normal"
                           else "active" if getattr(s, "accessible", True) else "inactive")
                 hosts = getattr(ds, "host", []) or []
-                # Yerel datastore (tek host) → host adı. Paylaşımlı (çok host) →
-                # bağlı host'ların cluster'ı tekse cluster adı (çoklu cluster ise boş).
+                # Local datastore (single host) -> host name. Shared (multi-host) ->
+                # cluster name if attached hosts share one cluster (blank if several).
                 node = ""
                 if len(hosts) == 1:
                     try:
@@ -464,11 +464,11 @@ class VMwareCollector:
                                "host_count": len(hosts),
                                "status": status})
             except Exception as exc:
-                logger.warning("Datastore okunamadı: %s", exc)
+                logger.warning("Could not read datastores: %s", exc)
         return result
 
     def collect_snapshots(self) -> list[dict]:
-        """VM snapshot ağacını düz listeye çevir (vm.snapshot.rootSnapshotList)."""
+        """Flatten the VM snapshot tree (vm.snapshot.rootSnapshotList)."""
         result = []
         for vm in self._get_objects([vim.VirtualMachine]):
             try:
@@ -495,15 +495,15 @@ class VMwareCollector:
 
                 _walk(snap.rootSnapshotList)
             except Exception as exc:
-                logger.warning("Snapshot okunamadı (%s): %s",
+                logger.warning("Could not read snapshots (%s): %s",
                                getattr(vm, "name", "?"), exc)
         return result
 
     def collect_backups(self) -> list[dict]:
-        # vCenter'ın yedek yönetimi API'si yoktur; yedekler yalnızca Proxmox'tadır.
+        # vCenter has no backup-management API; backups exist only on Proxmox.
         return []
 
-    # vCenter olay tipi → (kategori, yön).
+    # vCenter event type -> (category, direction).
     _EVENT_CATEGORY = {
         "VmReconfiguredEvent": ("config", None),
         "VmCreatedEvent": ("lifecycle", "create"),
@@ -533,16 +533,16 @@ class VMwareCollector:
     }
 
     def collect_recent_actors(self) -> dict:
-        """'VM'i kim, neyi, ne zaman değiştirdi' — VM başına işlem listesi.
+        """'Who changed what, and when' - an operation list per VM.
 
-        Geriye {moId: [op, ...]} döner; her op:
+        Returns {moId: [op, ...]}; each op:
           {ts, op, category, direction, actor, actor_ip, host, detail}
-        Liste en yeniden eskiye sıralıdır. sync_service her saptanan alan
-        değişimini KATEGORİYE göre doğru olayla eşler; böylece bir RAM değişimi
-        sonradan gelen bir 'açıldı' olayına değil doğru kullanıcıya atfedilir.
+        The list is sorted newest to oldest. sync_service matches every detected
+        field change to the right event BY CATEGORY, so a RAM change is credited
+        to the right user rather than a later 'powered on' event.
 
-        vCenter olayları genelde istemci IP / User-Agent taşımaz → actor_ip boş.
-        Göç olaylarında kaynak→hedef host detaya yazılır.
+        vCenter events usually carry no client IP / User-Agent -> actor_ip empty.
+        For migrations the source->target host is written into the detail.
         """
         from datetime import datetime, timedelta, timezone
         ops: dict[str, list] = {}
@@ -555,7 +555,7 @@ class VMwareCollector:
             spec.eventTypeId = wanted
             events = em.QueryEvents(spec) or []
         except Exception as exc:
-            logger.warning("vCenter olayları alınamadı: %s", exc)
+            logger.warning("Could not fetch vCenter events: %s", exc)
             return ops
 
         def moid(e):
@@ -570,7 +570,7 @@ class VMwareCollector:
             h = getattr(ref, "name", None) if ref else None
             return h or ""
 
-        try:    # en yeni olay önce
+        try:    # newest event first
             events = sorted(events, key=lambda e: getattr(e, "createdTime", None)
                             or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
         except Exception:
@@ -591,7 +591,7 @@ class VMwareCollector:
                 ts = ts.timestamp() if ts else 0
             except Exception:
                 ts = 0
-            # Üzerinde gerçekleştiği host; göçte kaynak→hedef
+            # Host it happened on; source->target for migrations
             host = host_name(getattr(getattr(e, "host", None), "host", None)) \
                 or host_name(getattr(e, "host", None))
             detail = None
@@ -606,23 +606,23 @@ class VMwareCollector:
                 "category": category,
                 "direction": direction,
                 "actor": user or None,
-                "actor_ip": None,    # vCenter olayları istemci IP'si vermez
+                "actor_ip": None,    # vCenter events carry no client IP
                 "actor_agent": None,
                 "host": host or None,
                 "detail": detail,
             })
-        logger.info("vCenter islem yapan kullanicilar: %d VM eslendi (%d olay)",
+        logger.info("vCenter actors: %d VMs mapped (%d events)",
                     len(ops), scanned)
         return ops
 
-    # ---------- Hafif kullanım senkronizasyonu ----------
+    # ---------- Lightweight usage sync ----------
     def collect_usage(self) -> dict:
         """
-        Anlık CPU/RAM kullanımı — quickStats üzerinden hafif okuma.
+        Instant CPU/RAM usage - a lightweight read via quickStats.
 
-        quickStats, vCenter'ın zaten bellekte tuttuğu yaklaşık-anlık
-        metriklerdir; performans grafiği API'sine göre çok ucuzdur.
-        Tam senkronizasyondan bağımsız, sık aralıkla çalıştırılır.
+        quickStats are near-realtime metrics vCenter already keeps in memory;
+        far cheaper than the performance-chart API. Runs frequently,
+        independent of the full sync.
         """
         vms, hosts = [], []
 
@@ -632,13 +632,13 @@ class VMwareCollector:
                 max_mhz = (vm.runtime.maxCpuUsage or 0) if vm.runtime else 0
                 cpu_pct = round(100 * (qs.overallCpuUsage or 0) / max_mhz, 1) \
                     if max_mhz else None
-                # RAM gerçek kullanım: guestMemoryUsage = misafirin AKTİF kullandığı
-                # bellek (Tools gerektirir, vCenter'da görülen ~%kullanım budur).
-                # hostMemoryUsage (tüketilen/granted) uzun çalışan VM'de ≈ tahsis olup
-                # "full" gösterir → YALNIZCA Tools yoksa (guest=0) ona düşülür.
+                # Real RAM usage: guestMemoryUsage = memory ACTIVELY used by the guest
+                # (needs Tools; this is the ~%usage vCenter shows).
+                # hostMemoryUsage (consumed/granted) approaches the allocation on
+                # long-running VMs and reads "full" -> used ONLY when Tools absent (guest=0).
                 ram_used = qs.guestMemoryUsage or qs.hostMemoryUsage or 0
-                # Disk gerçek kullanım: misafir dosya sistemi (Tools) — thin diskte
-                # datastore ayak izinden (committed) çok daha doğru (ör. 40 GB vs 80 GB).
+                # Real disk usage: guest filesystem (Tools) - far more accurate than the
+                # datastore footprint (committed) on thin disks (e.g. 40 GB vs 80 GB).
                 disk_used = None
                 try:
                     gdisks = vm.guest.disk if vm.guest else None
@@ -649,7 +649,7 @@ class VMwareCollector:
                             disk_used = round((tot - free) / 1024**3, 1)
                 except Exception:
                     pass
-                if disk_used is None:   # Tools yok → datastore ayak izine düş
+                if disk_used is None:   # No Tools -> fall back to the datastore footprint
                     committed = vm.summary.storage.committed if vm.summary.storage else 0
                     disk_used = round((committed or 0) / 1024**3, 1)
                 vms.append({
