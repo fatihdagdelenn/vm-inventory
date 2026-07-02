@@ -817,44 +817,45 @@ class ProxmoxCollector:
         return result
 
     def diagnose_backups(self) -> list[dict]:
-        """Yedekler neden boş? Her depo için FİLTRESİZ içerik sayısı + yedek sayısı +
-        içerik-tipi dökümü + örnek + denenen node + olası sebep notu. İstisna atmaz."""
+        """Why are backups empty? For each storage: unfiltered item count + backup
+        count + content-type breakdown + sample + tried nodes + a probable-cause code.
+        Never raises."""
         out = []
         try:
             groups = self._storage_groups()
         except Exception as exc:
-            return [{"error": f"cluster/resources okunamadi: {exc}"}]
-        cfg_map, cfg_err = self._all_storage_configs()   # tüm config'leri bir kez oku
+            return [{"error": f"cluster/resources read failed: {exc}"}]
+        cfg_map, cfg_err = self._all_storage_configs()   # read all configs once
 
         for name, g in groups.items():
             info = {"storage": name, "node": "", "plugin": g["plugin"],
                     "content_field": g["content"], "shared": g["shared"],
                     "items": 0, "backups": 0, "sample": "", "ctypes": "",
-                    "nodes_tried": 0, "error": "", "note": "", "config": ""}
+                    "nodes_tried": 0, "error": "", "note_code": "", "config": ""}
             content, err = None, None
             pernode = []
             for node, _st in self._candidate_nodes(g):
                 info["node"] = node
                 info["nodes_tried"] += 1
                 cc, ce = self._fetch_content(node, name)
-                pernode.append(f"{node}:{'hata' if cc is None else len(cc)}")
+                pernode.append(f"{node}:{'err' if cc is None else len(cc)}")
                 if cc is not None and len(cc) > 0:
                     content, err = cc, ce
-                    break                       # içerik dönen node'da kal
+                    break                       # stop at the node that returned content
                 if content is None:
-                    content, err = cc, ce       # en azından son sonucu tut
+                    content, err = cc, ce       # at least keep the last result
             info["pernode"] = ", ".join(pernode)
-            # PBS için yapılandırmayı oku (namespace + PBS API kullanıcısı asıl şüpheli)
+            # Read config for PBS (namespace + PBS API user are the prime suspects)
             if g["plugin"] == "pbs":
                 cfg = cfg_map.get(name) or self._storage_config(name)
-                ns = cfg.get("namespace") or "(kök)"
+                ns = cfg.get("namespace") or "(root)"
                 ds = cfg.get("datastore") or "?"
                 srv = cfg.get("server") or "?"
-                usr = cfg.get("username") or "?"      # PBS API kullanıcısı/token
-                info["config"] = f"datastore={ds} · namespace={ns} · server={srv} · PBS-kullanıcı={usr}"
+                usr = cfg.get("username") or "?"      # PBS API user/token
+                info["config"] = f"datastore={ds} · namespace={ns} · server={srv} · PBS-user={usr}"
                 if not cfg and cfg_err:
-                    info["config"] += f"  (config okunamadı: {cfg_err})"
-                # Depo DURUMU (kullanım): veri var mı yok mu kesinleştirir.
+                    info["config"] += f"  (config read failed: {cfg_err})"
+                # Storage STATUS (usage): confirms whether there is data or not.
                 if info["node"]:
                     try:
                         st = self.api.nodes(info["node"]).storage(name).status.get()
@@ -863,11 +864,11 @@ class ProxmoxCollector:
                         info["used_gb"] = round(used, 1)
                         info["total_gb"] = round(total, 1)
                         info["active"] = st.get("active", st.get("enabled"))
-                        info["config"] += (f" · kullanım={info['used_gb']}/{info['total_gb']} GB"
-                                           f" · aktif={info['active']}")
+                        info["config"] += (f" · usage={info['used_gb']}/{info['total_gb']} GB"
+                                           f" · active={info['active']}")
                     except Exception as exc:
-                        info["config"] += f" · durum okunamadı: {exc}"
-                # filtreli vs filtresiz ayrı sayım (hangisinin döndüğünü görmek için)
+                        info["config"] += f" · status read failed: {exc}"
+                # Separate filtered vs unfiltered counts (to see which one returns)
                 if info["node"]:
                     try:
                         nb = self.api.nodes(info["node"]).storage(name).content.get(content="backup")
@@ -894,35 +895,24 @@ class ProxmoxCollector:
                     if not info["sample"]:
                         info["sample"] = volid
             info["ctypes"] = ", ".join(f"{k}:{v}" for k, v in sorted(ctype_counts.items()))
-            # Olası sebep notu
+            # Probable-cause code (rendered bilingually on the frontend)
             if info["items"] == 0:
                 if g["plugin"] == "pbs":
                     used = info.get("used_gb")
                     if used and used > 1:
-                        info["note"] = (
-                            f"Depoda VERİ VAR (~{used} GB) ama içerik listesi boş. PBS içeriğini "
-                            "listelemek için PVE'nin depoya BAĞLANMASI gerekir; bu yalnız "
-                            "`Datastore.Audit` ile OLMAZ — `Datastore.Allocate/AllocateSpace` "
-                            "(yani DatastoreAdmin rolü) ister. PVEAuditor tek başına yetmez "
-                            "(depo görünür ama bağlanıp listeleyemez → boş). ÇÖZÜM: token'ın "
-                            "kullanıcısına `/` veya `/storage` üzerinde DatastoreAdmin + "
-                            "PVEAuditor ver" + (getattr(self, "token_name", None) and
-                            " VE token'da 'Privilege Separation'ı KAPAT (ya da aynı izinleri "
-                            "doğrudan token'a ver)" or "") + ". Bunu yapınca yedekler görünür.")
+                        info["note_code"] = "pbs_data_no_content"
+                        info["note_used_gb"] = used
+                        info["note_has_token"] = bool(getattr(self, "token_name", None))
                     else:
-                        info["note"] = ("Depo kullanımı ~0 → bu PBS datastore'unda gerçekten "
-                                        "backup yok. Backuplar BAŞKA datastore/namespace'te ya "
-                                        "da başka platformda olabilir. Backup işinin yazdığı "
-                                        "hedefi (Storage) bu depoyla karşılaştır.")
+                        info["note_code"] = "pbs_empty"
                 else:
-                    info["note"] = ("Depo boş döndü. Olası: Datastore.Audit izni yok "
-                                    "veya depo bu node'da pasif/erişilemez.")
+                    info["note_code"] = "storage_empty"
             elif info["backups"] == 0:
-                info["note"] = "İçerik var ama yedek yok (bu depoda yedek tutulmuyor)."
+                info["note_code"] = "no_backups"
             out.append(info)
         return out
 
-    # Proxmox görev tipi → (kategori, yön). Yön yalnızca güç işlemleri için.
+    # Proxmox task type -> (category, direction). Direction only for power operations.
     _TASK_CATEGORY = {
         "qmcreate": ("lifecycle", "create"), "vzcreate": ("lifecycle", "create"),
         "qmclone": ("lifecycle", "clone"),   "vzclone": ("lifecycle", "clone"),

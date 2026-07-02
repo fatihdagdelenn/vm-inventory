@@ -95,7 +95,9 @@ const Bk = {
     let d;
     try { d = await App.api('/api/backups/diagnose'); }
     catch (e) { out.innerHTML = '<span class="text-danger">' + t('bk.diagFail','Tanılama başarısız.') + '</span>'; return; }
+    if (d.error_code) { out.innerHTML = '<span class="text-warning">' + t('bk.adminOnly','Bu işlem yalnızca yöneticiler içindir.') + '</span>'; return; }
     if (d.error) { out.innerHTML = '<span class="text-warning">' + App.esc(d.error) + '</span>'; return; }
+    if (!(d.platforms || []).length) { out.innerHTML = '<span class="text-muted">' + t('bk.noProxmox','Proxmox platformu yok.') + '</span>'; return; }
     if (!d.platforms || !d.platforms.length) {
       out.innerHTML = '<span class="text-muted">' + App.esc(d.hint || t('bk.noProxmox','Proxmox platformu yok.')) + '</span>';
       return;
@@ -118,15 +120,33 @@ const Bk = {
           '<td>' + (s.items || 0) + '</td><td>' + (s.backups || 0) + '</td><td>' + status + '</td></tr>';
         if (s.pernode) html += '<tr><td colspan="7" class="small" style="color:#94a3b8">' + t('bk.perNode','node başına') + ': ' + App.esc(s.pernode) + '</td></tr>';
         if (s.config) html += '<tr><td colspan="7" class="small" style="color:#0ea5e9">⚙ PBS: ' + App.esc(s.config) +
-          (s.n_unfiltered != null ? '  ·  filtresiz=' + s.n_unfiltered + ' / content=backup=' + s.n_backup_filter : '') + '</td></tr>';
+          (s.n_unfiltered != null ? '  ·  ' + t('bk.unfiltered','filtresiz') + '=' + s.n_unfiltered + ' / content=backup=' + s.n_backup_filter : '') + '</td></tr>';
         if (s.ctypes) html += '<tr><td colspan="7" class="text-muted small">' + t('bk.content','içerik') + ': ' + App.esc(s.ctypes) + '</td></tr>';
-        if (s.note) html += '<tr><td colspan="7" class="small" style="color:#f59e0b">↳ ' + App.esc(s.note) + '</td></tr>';
+        const noteTxt = Backups._diagNote(s);
+        if (noteTxt) html += '<tr><td colspan="7" class="small" style="color:#f59e0b">↳ ' + noteTxt + '</td></tr>';
         if (s.sample) html += '<tr><td colspan="7" class="text-muted small">' + t('bk.sample','örnek') + ': ' + App.esc(s.sample) + '</td></tr>';
       });
       html += '</tbody></table>';
     });
     html += '<div class="text-muted mt-1">' + t('bk.permHint','İzin hatası görüyorsan API kullanıcı/token rolüne Datastore.Audit ekle.') + '</div>';
     out.innerHTML = html;
+  },
+
+  _diagNote(s) {
+    switch (s.note_code) {
+      case 'pbs_data_no_content':
+        return t('bk.note.pbsData',
+          'Depoda VERİ VAR (~' + s.note_used_gb + ' GB) ama içerik listesi boş. PBS içeriğini listelemek için PVE\'nin depoya BAĞLANMASI gerekir; bu yalnız Datastore.Audit ile OLMAZ — Datastore.Allocate/AllocateSpace (DatastoreAdmin rolü) gerekir. ÇÖZÜM: token kullanıcısına / veya /storage üzerinde DatastoreAdmin + PVEAuditor ver')
+          .replace('{used}', s.note_used_gb)
+          + (s.note_has_token ? ' ' + t('bk.note.pbsToken', 'VE token\'da Privilege Separation\'ı KAPAT (ya da aynı izinleri doğrudan token\'a ver).') : '.');
+      case 'pbs_empty':
+        return t('bk.note.pbsEmpty', 'Depo kullanımı ~0 → bu PBS datastore\'unda gerçekten yedek yok. Yedekler başka datastore/namespace ya da başka platformda olabilir; backup işinin yazdığı hedefi bu depoyla karşılaştır.');
+      case 'storage_empty':
+        return t('bk.note.storageEmpty', 'Depo boş döndü. Olası: Datastore.Audit izni yok veya depo bu node\'da pasif/erişilemez.');
+      case 'no_backups':
+        return t('bk.note.noBackups', 'İçerik var ama yedek yok (bu depoda yedek tutulmuyor).');
+      default: return '';
+    }
   },
 
   setSort(col) {

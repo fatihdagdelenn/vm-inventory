@@ -1,7 +1,7 @@
-"""Yedek (Proxmox vzdump + PBS) listesi API'si — arama, filtre, sıralama.
+"""Backup (Proxmox vzdump + PBS) list API - search, filter, sort.
 
-Yedekler yalnızca Proxmox platformlarından gelir (vCenter'ın yedek API'si yoktur).
-Depo içeriğinden toplanır; PBS bağlı depolar da dahildir.
+Backups only come from Proxmox platforms (vCenter has no backup API).
+They are collected from storage content, including attached PBS stores.
 """
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, or_
@@ -65,11 +65,11 @@ def list_backups(q: str = "", sort: str = "created_at", order: str = "desc",
 @router.get("/diagnose")
 def diagnose_backups(db: Session = Depends(get_db),
                      user=Depends(get_current_user)):
-    """Yedekler neden boş geliyor? Her Proxmox platformunda depo taramasını
-    canlı çalıştırıp ne görüldüğünü döndürür (depo, içerik sayısı, yedek sayısı,
-    izin/erişim hatası). Yalnızca yöneticiler."""
+    """Why are backups empty? Runs a live storage scan on every Proxmox platform
+    and returns what was seen (storage, item count, backup count, permission/access
+    error). Admins only."""
     if getattr(user, "role", "") != "admin":
-        return {"error": "Bu işlem yalnızca yöneticiler içindir."}
+        return {"error_code": "admin_only"}
     from ..services.sync_service import _build_collector
     out = []
     for p in db.query(Platform).filter_by(type="proxmox").all():
@@ -77,7 +77,7 @@ def diagnose_backups(db: Session = Depends(get_db),
         col = None
         try:
             col = _build_collector(p)
-            col.connect()                       # self.api'yi kur (sync ile aynı)
+            col.connect()                       # set up self.api (same as sync)
             entry["storages"] = col.diagnose_backups()
         except Exception as exc:
             entry["error"] = str(exc)
@@ -89,5 +89,5 @@ def diagnose_backups(db: Session = Depends(get_db),
                     pass
         out.append(entry)
     if not out:
-        return {"platforms": [], "hint": "Proxmox platformu bulunamadı."}
+        return {"platforms": []}
     return {"platforms": out}

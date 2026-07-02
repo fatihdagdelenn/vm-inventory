@@ -175,6 +175,12 @@ const I18N = {
     'bk.contentField': 'Content field', 'bk.items': 'Items', 'bk.backup': 'Backup', 'bk.noBackup': 'no backups',
     'bk.nodesTried': 'nodes tried', 'bk.perNode': 'per node', 'bk.content': 'content', 'bk.sample': 'sample',
     'bk.permHint': 'If you see a permission error, add Datastore.Audit to the API user/token role.',
+    'bk.adminOnly': 'This operation is for administrators only.', 'bk.unfiltered': 'unfiltered',
+    'bk.note.pbsData': 'Storage HAS DATA (~{used} GB) but the content list is empty. To list PBS content, PVE must CONNECT to the store, which Datastore.Audit alone does NOT allow \u2014 it needs Datastore.Allocate/AllocateSpace (the DatastoreAdmin role). FIX: grant DatastoreAdmin + PVEAuditor to the token user on / or /storage',
+    'bk.note.pbsToken': 'AND turn OFF Privilege Separation on the token (or grant the same permissions directly to the token).',
+    'bk.note.pbsEmpty': 'Storage usage ~0 \u2192 this PBS datastore truly has no backups. Backups may live in another datastore/namespace or another platform; compare the backup job target with this store.',
+    'bk.note.storageEmpty': 'Storage returned empty. Possible: no Datastore.Audit permission, or the store is inactive/unreachable on this node.',
+    'bk.note.noBackups': 'Content exists but no backups (this store keeps no backups).',
     // Snapshots page
     'sn.searchPh': 'vm:web  snap:upgrade  age:>30  current:yes  parent:none \u2026',
     'sn.allPlatforms': 'All platforms', 'sn.allClusters': 'All clusters', 'sn.allAges': 'All ages',
