@@ -100,21 +100,26 @@ def delete_platform(platform_id: int, request: Request,
     p = db.get(Platform, platform_id)
     if not p:
         raise HTTPException(404, "Platform bulunamadı")
-    # İlişkili tüm kayıtları sırayla temizle.
-    # NOT: ChangeHistory'nin platform_id FK'sı temizlenmezse PostgreSQL'de
-    # foreign key ihlali oluşur ve silme 500 ile başarısız olur.
+    # Remove all related records in FK-safe order. Any child table that keeps a
+    # platform_id (or a vm_id pointing at this platform's VMs) must be cleared first,
+    # otherwise PostgreSQL raises a foreign-key violation and the delete fails with 500.
     from ..models import VirtualMachine, Network, Datastore, ChangeHistory
-    from ..models.inventory import vm_tags
+    from ..models.inventory import Snapshot, Backup, VmUsageDaily, vm_tags
     vm_ids = [r[0] for r in db.query(VirtualMachine.id)
                              .filter_by(platform_id=p.id).all()]
-    if vm_ids:  # etiket ilişkilerini elle sil (bulk delete ORM cascade'i atlar)
+    if vm_ids:  # bulk delete bypasses ORM cascade -> clear VM children explicitly
         db.execute(vm_tags.delete().where(vm_tags.c.vm_id.in_(vm_ids)))
-    db.query(ChangeHistory).filter_by(platform_id=p.id).delete()
-    db.query(VirtualMachine).filter_by(platform_id=p.id).delete()
-    db.query(Network).filter_by(platform_id=p.id).delete()
-    db.query(Datastore).filter_by(platform_id=p.id).delete()
+        db.query(VmUsageDaily).filter(VmUsageDaily.vm_id.in_(vm_ids)) \
+                              .delete(synchronize_session=False)
+    # Platform-scoped children (FK to platforms, no DB-level cascade)
+    db.query(Snapshot).filter_by(platform_id=p.id).delete(synchronize_session=False)
+    db.query(Backup).filter_by(platform_id=p.id).delete(synchronize_session=False)
+    db.query(ChangeHistory).filter_by(platform_id=p.id).delete(synchronize_session=False)
+    db.query(VirtualMachine).filter_by(platform_id=p.id).delete(synchronize_session=False)
+    db.query(Network).filter_by(platform_id=p.id).delete(synchronize_session=False)
+    db.query(Datastore).filter_by(platform_id=p.id).delete(synchronize_session=False)
     log_audit(db, user, "delete_platform", target=p.name, request=request)
-    db.delete(p)   # host'lar ve sync log'ları ORM cascade ile silinir
+    db.delete(p)   # hosts and sync logs are removed via ORM cascade
     db.commit()
     return {"ok": True}
 
