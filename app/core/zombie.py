@@ -103,33 +103,42 @@ def score_vm(*, cpu_avg=None, cpu_max=None, ram_avg_mb=None, ram_min_mb=None,
         confidence = "orta"
 
     if score >= 80 and confidence == "yüksek":
-        klass = "Kesin Zombi"
+        klass, klass_code = "Kesin Zombi", "zombie"
     elif score >= 55:
-        klass = "Şüpheli (Sahibine Sor)"
+        klass, klass_code = "Şüpheli (Sahibine Sor)", "suspect"
     else:
-        klass = "Aktif"
+        klass, klass_code = "Aktif", "active"
+    conf_code = {"düşük": "low", "orta": "medium", "yüksek": "high"}[confidence]
 
-    reasons = []
+    reasons, reasons_s = [], []
     cs, rs, ds, ns = (subs["cpu"][0], subs["ram"][0], subs["disk"][0], subs["net"][0])
     if cs is not None:
         reasons.append(f"CPU ort %{round(cpu_avg or 0, 1)}, tepe %{round(cpu_max or 0, 1)}"
                        + (" (idle)" if cs > 0.7 else ""))
+        reasons_s.append({"m": "cpu", "avg": round(cpu_avg or 0, 1),
+                          "max": round(cpu_max or 0, 1), "idle": cs > 0.7})
     if rs is not None:
         flat = (ram_max_mb - ram_min_mb) / max(ram_avg_mb or 1, 1)
         reasons.append(f"RAM dalgalanma %{round(flat * 100, 1)}"
                        + (" (düz)" if rs > 0.7 else ""))
+        reasons_s.append({"m": "ram", "flat": round(flat * 100, 1), "ok": rs > 0.7})
     if ds is not None:
         reasons.append(f"Disk I/O ~{round(diskio_kbps or 0, 1)} KB/s"
                        + (" (boşta)" if ds > 0.7 else ""))
+        reasons_s.append({"m": "disk", "kbps": round(diskio_kbps or 0, 1), "ok": ds > 0.7})
     else:
         reasons.append("Disk verisi henüz yok")
+        reasons_s.append({"m": "disk", "none": True})
     if ns is not None:
         reasons.append(f"Ağ ~{round(net_kbps or 0, 1)} KB/s"
                        + (" (heartbeat)" if ns > 0.7 else ""))
+        reasons_s.append({"m": "net", "kbps": round(net_kbps or 0, 1), "ok": ns > 0.7})
     else:
         reasons.append("Ağ verisi henüz yok")
+        reasons_s.append({"m": "net", "none": True})
 
-    return {"score": score, "klass": klass, "confidence": confidence,
-            "reasons": reasons, "has_io": has_io, "days": days,
+    return {"score": score, "klass": klass, "klass_code": klass_code,
+            "confidence": confidence, "confidence_code": conf_code,
+            "reasons": reasons, "reasons_s": reasons_s, "has_io": has_io, "days": days,
             "subs": {k: (round(v[0], 2) if v[0] is not None else None)
                      for k, v in subs.items()}}

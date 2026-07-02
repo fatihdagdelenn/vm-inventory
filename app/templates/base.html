@@ -62,7 +62,7 @@
       <button class="btn btn-link d-lg-none p-0 me-2" onclick="document.getElementById('sidebar').classList.toggle('open')">
         <i class="bi bi-list fs-3"></i>
       </button>
-      <h1 class="page-title">{{ title }}</h1>
+      <h1 class="page-title" data-i18n="pg.{{ active[1:] or 'dashboard' }}">{{ title }}</h1>
       <div class="ms-auto d-flex align-items-center gap-2">
         <button class="btn btn-sm btn-theme-toggle" id="btnLang" type="button" data-i18n-title="lang.toggle" title="Language / Dil">
           <span id="langLabel">TR</span>

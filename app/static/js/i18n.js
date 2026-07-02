@@ -240,6 +240,19 @@ const I18N = {
     'st2.clearConsoleConfirm': 'All console-access history rows will be deleted. Are you sure?',
     'st2.rowsDeleted': 'rows deleted', 'st2.rangeError': 'Values must be between 1\u20131440 minutes',
     'st2.savedLive': 'Saved \u2014 effective without restart',
+    // Page titles (topbar + document title)
+    'pg.dashboard': 'Dashboard', 'pg.vms': 'Virtual Machines', 'pg.hosts': 'Hosts',
+    'pg.datastores': 'Datastores', 'pg.snapshots': 'Snapshots', 'pg.backups': 'Backups',
+    'pg.networks': 'Networks', 'pg.platforms': 'Platforms', 'pg.reports': 'Reports',
+    'pg.history': 'Change History', 'pg.topology': 'Topology', 'pg.settings': 'Administration',
+    // Zombie classification (backend codes)
+    'zb.k.zombie': 'Definite Zombie', 'zb.k.suspect': 'Suspect (Ask Owner)', 'zb.k.active': 'Active',
+    'zb.conf.low': 'low', 'zb.conf.medium': 'medium', 'zb.conf.high': 'high',
+    'zb.r.cpu': 'CPU avg', 'zb.r.peak': 'peak', 'zb.r.idle': '(idle)',
+    'zb.r.ram': 'RAM variance', 'zb.r.flat': '(flat)',
+    'zb.r.disk': 'Disk I/O', 'zb.r.net': 'Net', 'zb.r.hb': '(heartbeat)', 'zb.r.quiet': '(quiet)',
+    'zb.r.diskNone': 'No disk data yet', 'zb.r.netNone': 'No net data yet',
+    'zb.r.instant': 'Instant CPU (no history yet)',
     'unit.dayShort': 'd', 'unit.hr': 'h',
   },
   t: function (key, tr) {
@@ -267,6 +280,8 @@ const I18N = {
     document.documentElement.lang = I18N.lang;
     const lbl = document.getElementById('langLabel');
     if (lbl) lbl.textContent = I18N.lang.toUpperCase();
+    const h1 = document.querySelector('h1.page-title');
+    if (h1) document.title = h1.textContent + ' \u2014 VM Envanter';
   },
   set: function (lang) {
     try { localStorage.setItem('vmi-lang', lang); } catch (e) {}

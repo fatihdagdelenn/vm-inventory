@@ -290,8 +290,19 @@ function barGrad(chart, base, horizontal) {
       } else {
         const scoreBg = z => z.score == null ? '#64748b'
           : (z.score >= 80 ? '#ef4444' : (z.score >= 55 ? '#f59e0b' : '#22c55e'));
-        const klassBg = k => (k || '').startsWith('Kesin') ? '#ef4444'
-          : ((k || '').startsWith('Şüpheli') ? '#f59e0b' : '#22c55e');
+        const kcode = z => z.klass_code || ((z.klass || '').startsWith('Kesin') ? 'zombie'
+          : (z.klass || '').startsWith('Şüpheli') ? 'suspect' : 'active');
+        const klassBg = z => ({zombie: '#ef4444', suspect: '#f59e0b'}[kcode(z)] || '#22c55e');
+        const klassLbl = z => t('zb.k.' + kcode(z), z.klass || '');
+        const confLbl = z => z.confidence_code ? t('zb.conf.' + z.confidence_code, z.confidence) : (z.confidence || '');
+        const reasonTxt = z => (z.reasons_s && z.reasons_s.length) ? z.reasons_s.map(r => {
+          if (r.m === 'cpu') return t('zb.r.cpu','CPU ort') + ' %' + r.avg + ', ' + t('zb.r.peak','tepe') + ' %' + r.max + (r.idle ? ' ' + t('zb.r.idle','(idle)') : '');
+          if (r.m === 'ram') return t('zb.r.ram','RAM dalgalanma') + ' %' + r.flat + (r.ok ? ' ' + t('zb.r.flat','(düz)') : '');
+          if (r.m === 'disk') return r.none ? t('zb.r.diskNone','Disk verisi henüz yok') : t('zb.r.disk','Disk I/O') + ' ~' + r.kbps + ' KB/s' + (r.ok ? ' ' + t('zb.r.quiet','(boşta)') : '');
+          if (r.m === 'net') return r.none ? t('zb.r.netNone','Ağ verisi henüz yok') : t('zb.r.net','Ağ') + ' ~' + r.kbps + ' KB/s' + (r.ok ? ' ' + t('zb.r.hb','(heartbeat)') : '');
+          if (r.m === 'instant') return t('zb.r.instant','Anlık CPU (tarihsel veri yok)') + ' %' + r.cpu;
+          return '';
+        }).filter(Boolean) : (z.reasons || []);
         zb.innerHTML =
           `<div class="zombie-savings mb-2"><i class="bi bi-piggy-bank"></i>
             ${t('zb.recoverable','Geri kazanılabilir')}: <strong>${s.vcpu}</strong> vCPU ·
@@ -301,11 +312,11 @@ function barGrad(chart, base, horizontal) {
             <tbody>` + ins.zombies.map(z =>
               `<tr>
                 <td><strong>${App.esc(z.name)}</strong>
-                  <div class="text-muted" style="font-size:.7rem">${App.esc(z.host || '—')} · ${(z.reasons || []).map(App.esc).join(' · ')}</div>
+                  <div class="text-muted" style="font-size:.7rem">${App.esc(z.host || '—')} · ${reasonTxt(z).map(App.esc).join(' · ')}</div>
                 </td>
                 <td class="text-center"><span style="display:inline-block;min-width:38px;padding:2px 8px;border-radius:999px;font-weight:700;color:#fff;background:${scoreBg(z)}">${z.score == null ? '—' : z.score}</span></td>
-                <td><span style="display:inline-block;padding:1px 8px;border-radius:6px;font-size:.72rem;font-weight:600;color:#fff;background:${klassBg(z.klass)}">${App.esc(z.klass || '')}</span>
-                  <div class="text-muted" style="font-size:.68rem">${t('zb.confidence','güven')}: ${App.esc(z.confidence || '')}</div></td>
+                <td><span style="display:inline-block;padding:1px 8px;border-radius:6px;font-size:.72rem;font-weight:600;color:#fff;background:${klassBg(z)}">${App.esc(klassLbl(z))}</span>
+                  <div class="text-muted" style="font-size:.68rem">${t('zb.confidence','güven')}: ${App.esc(confLbl(z))}</div></td>
                 <td class="text-end small">${z.ram_gb} GB</td>
               </tr>`).join('') +
           `</tbody></table></div>

@@ -383,7 +383,10 @@ def insights(db: Session = Depends(get_db), user: User = Depends(get_current_use
                             "ram_gb": round((ram_mb or 0) / 1024, 1),
                             "disk_gb": round(disk_gb or 0, 1),
                             "score": res["score"], "klass": res["klass"],
-                            "confidence": res["confidence"], "reasons": res["reasons"]})
+                            "klass_code": res["klass_code"],
+                            "confidence": res["confidence"],
+                            "confidence_code": res["confidence_code"],
+                            "reasons": res["reasons"], "reasons_s": res["reasons_s"]})
         zombies.sort(key=lambda z: z["score"], reverse=True)
     else:
         # Tarihsel veri yok (taze kurulum) → anlık CPU'ya düş (geçici).
@@ -400,8 +403,10 @@ def insights(db: Session = Depends(get_db), user: User = Depends(get_current_use
                     "ram_gb": round((r[3] or 0) / 1024, 1),
                     "disk_gb": round(r[4] or 0, 1),
                     "score": None, "klass": "Şüpheli (Sahibine Sor)",
-                    "confidence": "düşük",
-                    "reasons": [f"Anlık CPU %{round(r[5] or 0, 1)} (tarihsel veri yok)"]}
+                    "klass_code": "suspect",
+                    "confidence": "düşük", "confidence_code": "low",
+                    "reasons": [f"Anlık CPU %{round(r[5] or 0, 1)} (tarihsel veri yok)"],
+                    "reasons_s": [{"m": "instant", "cpu": round(r[5] or 0, 1)}]}
                    for r in zrows2]
 
     zombie_savings = {
