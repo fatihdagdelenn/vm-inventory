@@ -5,36 +5,36 @@
   <div class="search-box">
     <i class="bi bi-search"></i>
     <input type="text" id="vmSearch" class="form-control form-control-lg"
-           placeholder='Ara…  örn: ip:10.10.10.15  os:linux  ram:>=16  -cluster:test  status:running'>
-    <button class="btn btn-link p-0 me-1" id="searchHelp" title="Arama söz dizimi"><i class="bi bi-question-circle"></i></button>
-    <button class="btn btn-link p-0" id="searchClear" title="Temizle"><i class="bi bi-x-lg"></i></button>
+           placeholder='Ara…  örn: ip:10.10.10.15  os:linux  ram:>=16  -cluster:test  status:running' data-i18n-ph="vm.searchPh">
+    <button class="btn btn-link p-0 me-1" id="searchHelp" data-i18n-title="vm.searchHelp" title="Arama söz dizimi"><i class="bi bi-question-circle"></i></button>
+    <button class="btn btn-link p-0" id="searchClear" data-i18n-title="vm.clear" title="Temizle"><i class="bi bi-x-lg"></i></button>
   </div>
   <div class="search-chips mt-2">
-    <span class="text-muted small me-1">Hızlı filtreler:</span>
-    <button class="chip" data-q="status:running">Çalışan</button>
-    <button class="chip" data-q="status:stopped">Kapalı</button>
+    <span class="text-muted small me-1" data-i18n="vm.quickFilters">Hızlı filtreler:</span>
+    <button class="chip" data-q="status:running" data-i18n="vm.chipRunning">Çalışan</button>
+    <button class="chip" data-q="status:stopped" data-i18n="vm.chipStopped">Kapalı</button>
     <button class="chip" data-q="os:windows">Windows</button>
     <button class="chip" data-q="os:linux">Linux</button>
-    <button class="chip" data-q="ip:yok">IP'siz</button>
-    <button class="chip" data-q="tools:yok">Agent'sız</button>
+    <button class="chip" data-q="ip:yok" data-i18n="vm.chipNoIp">IP'siz</button>
+    <button class="chip" data-q="tools:yok" data-i18n="vm.chipNoAgent">Agent'sız</button>
     <button class="chip chip-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#advFilters">
-      <i class="bi bi-sliders"></i> Gelişmiş <span id="advCount" class="badge text-bg-primary d-none"></span>
+      <i class="bi bi-sliders"></i> <span data-i18n="vm.advanced">Gelişmiş</span> <span id="advCount" class="badge text-bg-primary d-none"></span>
     </button>
-    <span class="ms-3 text-muted small me-1">Grupla:</span>
+    <span class="ms-3 text-muted small me-1" data-i18n="vm.groupBy">Grupla:</span>
     <select id="groupBy" class="form-select form-select-sm d-inline-block w-auto">
-      <option value="">— Gruplama yok —</option>
-      <option value="cluster">Cluster'a göre</option>
-      <option value="os">İşletim sistemine göre</option>
-      <option value="vlan">VLAN'a göre</option>
-      <option value="environment">Ortama göre</option>
-      <option value="location">Lokasyona göre</option>
-      <option value="tag">Etikete göre</option>
+      <option value="" data-i18n="vm.noGrouping">— Gruplama yok —</option>
+      <option value="cluster" data-i18n="vm.byCluster">Cluster'a göre</option>
+      <option value="os" data-i18n="vm.byOs">İşletim sistemine göre</option>
+      <option value="vlan" data-i18n="vm.byVlan">VLAN'a göre</option>
+      <option value="environment" data-i18n="vm.byEnv">Ortama göre</option>
+      <option value="location" data-i18n="vm.byLocation">Lokasyona göre</option>
+      <option value="tag" data-i18n="vm.byTag">Etikete göre</option>
     </select>
     <div class="ms-auto d-inline-flex gap-1">
       <div class="dropdown">
         <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
-                data-bs-toggle="dropdown" data-bs-auto-close="outside" title="Görünür kolonları seç">
-          <i class="bi bi-layout-three-columns"></i> Kolonlar
+                data-bs-toggle="dropdown" data-bs-auto-close="outside" data-i18n-title="vm.chooseCols" title="Görünür kolonları seç">
+          <i class="bi bi-layout-three-columns"></i> <span data-i18n="vm.columns">Kolonlar</span>
         </button>
         <div class="dropdown-menu dropdown-menu-end p-2" id="colChooser"
              style="max-height:60vh; overflow:auto; min-width:200px"></div>
@@ -58,38 +58,38 @@
           <select class="form-select form-select-sm adv-sel" data-field="cluster"></select></div>
         <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1">Host / Node</label>
           <select class="form-select form-select-sm adv-sel" data-field="host"></select></div>
-        <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1">Durum</label>
+        <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1" data-i18n="th.status">Durum</label>
           <select class="form-select form-select-sm adv-sel" data-field="status"></select></div>
-        <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1">Ortam</label>
+        <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1" data-i18n="vm.env">Ortam</label>
           <select class="form-select form-select-sm adv-sel" data-field="env"></select></div>
         <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1">VLAN</label>
           <select class="form-select form-select-sm adv-sel" data-field="vlan"></select></div>
-        <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1">İşletim Sistemi</label>
+        <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1" data-i18n="vm.os">İşletim Sistemi</label>
           <select class="form-select form-select-sm adv-sel" data-field="osfam"></select></div>
-        <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1">Etiket</label>
+        <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1" data-i18n="vm.tag">Etiket</label>
           <select class="form-select form-select-sm adv-sel" data-field="tag"></select></div>
         <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1">Pool</label>
           <select class="form-select form-select-sm adv-sel" data-field="pool"></select></div>
-        <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1">Klasör</label>
+        <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1" data-i18n="vm.folder">Klasör</label>
           <select class="form-select form-select-sm adv-sel" data-field="folder"></select></div>
         <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1">Tools / Agent</label>
           <select class="form-select form-select-sm adv-sel" data-field="tools">
-            <option value="">— Tümü —</option>
-            <option value="running">Çalışıyor</option>
-            <option value="yok">Kurulu değil</option>
+            <option value="" data-i18n="vm.allOption">— Tümü —</option>
+            <option value="running" data-i18n="st.running">Çalışıyor</option>
+            <option value="yok" data-i18n="vm.notInstalled">Kurulu değil</option>
           </select></div>
         <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1">Min CPU</label>
-          <input type="number" min="1" class="form-control form-control-sm adv-num" data-field="cpu" placeholder="örn: 4"></div>
+          <input type="number" min="1" class="form-control form-control-sm adv-num" data-field="cpu" data-i18n-ph="vm.eg4" placeholder="örn: 4"></div>
         <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1">Min RAM (GB)</label>
-          <input type="number" min="1" class="form-control form-control-sm adv-num" data-field="ram" placeholder="örn: 16"></div>
+          <input type="number" min="1" class="form-control form-control-sm adv-num" data-field="ram" data-i18n-ph="vm.eg16" placeholder="örn: 16"></div>
         <div class="col-6 col-md-4 col-xl-2 d-flex align-items-end">
           <div class="form-check form-switch mb-1">
             <input class="form-check-input" type="checkbox" role="switch" id="incHidden">
-            <label class="form-check-label small" for="incHidden">Gizli cluster'ları dahil et</label>
+            <label class="form-check-label small" for="incHidden" data-i18n="vm.includeHidden">Gizli cluster'ları dahil et</label>
           </div></div>
         <div class="col-6 col-md-4 col-xl-2 d-flex align-items-end">
           <button class="btn btn-sm btn-outline-secondary w-100" onclick="VMs.clearAdvanced()">
-            <i class="bi bi-x-circle"></i> Filtreleri Temizle</button></div>
+            <i class="bi bi-x-circle"></i> <span data-i18n="vm.clearFilters">Filtreleri Temizle</span></button></div>
       </div>
     </div>
   </div>
@@ -99,29 +99,29 @@
 <div class="modal fade" id="helpModal" tabindex="-1">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
-      <div class="modal-header"><h5 class="modal-title"><i class="bi bi-question-circle"></i> Arama Söz Dizimi</h5>
+      <div class="modal-header"><h5 class="modal-title"><i class="bi bi-question-circle"></i> <span data-i18n="vm.searchSyntax">Arama Söz Dizimi</span></h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
       <div class="modal-body">
         <table class="table table-sm">
-          <thead><tr><th style="width:40%">Örnek</th><th>Açıklama</th></tr></thead>
+          <thead><tr><th style="width:40%" data-i18n="vm.example">Örnek</th><th data-i18n="vm.description">Açıklama</th></tr></thead>
           <tbody>
-            <tr><td><code>web01</code></td><td>Serbest metin: ad, IP, MAC, OS, cluster, sahip ve notlarda arar</td></tr>
-            <tr><td><code>ip:10.10.10.15</code></td><td>IP adresine göre (kısmi eşleşir: <code>ip:10.10.</code>)</td></tr>
-            <tr><td><code>os:linux</code></td><td>OS ailesi: Ubuntu, CentOS, RHEL, Debian… hepsini bulur</td></tr>
-            <tr><td><code>os:windows,linux</code></td><td>Virgül = VEYA: Windows <em>veya</em> Linux</td></tr>
-            <tr><td><code>-os:windows</code></td><td>Dışlama: Windows <em>olmayanlar</em></td></tr>
-            <tr><td><code>ram:&gt;=16</code> &nbsp; <code>cpu:&gt;4</code> &nbsp; <code>disk:&lt;100</code></td><td>Sayısal karşılaştırma (RAM ve disk GB cinsinden)</td></tr>
-            <tr><td><code>status:running</code></td><td>Güç durumu: running / stopped / suspended (TR: çalışan, kapalı)</td></tr>
-            <tr><td><code>ip:yok</code> &nbsp; <code>tag:yok</code> &nbsp; <code>owner:yok</code></td><td>Boş alan araması — IP'si alınamayanlar, etiketsizler…</td></tr>
-            <tr><td><code>tools:yok</code></td><td>VMware Tools / QEMU Agent kurulu olmayanlar</td></tr>
-            <tr><td><code>host:esxi01</code> &nbsp; <code>cluster:prod</code> &nbsp; <code>vlan:100</code></td><td>Altyapı konumuna göre</td></tr>
-            <tr><td><code>platform:"Ankara vCenter"</code></td><td>Platform adına göre (boşluk varsa tırnakla)</td></tr>
-            <tr><td><code>type:proxmox</code> &nbsp; <code>location:ankara</code></td><td>Platform tipi / lokasyonuna göre</td></tr>
-            <tr><td><code>tag:kritik</code> &nbsp; <code>env:production</code> &nbsp; <code>datastore:ssd</code></td><td>Etiket, ortam, datastore</td></tr>
+            <tr><td><code>web01</code></td><td data-i18n="vm.h.free">Serbest metin: ad, IP, MAC, OS, cluster, sahip ve notlarda arar</td></tr>
+            <tr><td><code>ip:10.10.10.15</code></td><td><span data-i18n="vm.h.ip">IP adresine göre (kısmi eşleşir:</span> <code>ip:10.10.</code>)</td></tr>
+            <tr><td><code>os:linux</code></td><td data-i18n="vm.h.os">OS ailesi: Ubuntu, CentOS, RHEL, Debian… hepsini bulur</td></tr>
+            <tr><td><code>os:windows,linux</code></td><td data-i18n="vm.h.or">Virgül = VEYA: Windows veya Linux</td></tr>
+            <tr><td><code>-os:windows</code></td><td data-i18n="vm.h.not">Dışlama: Windows olmayanlar</td></tr>
+            <tr><td><code>ram:&gt;=16</code> &nbsp; <code>cpu:&gt;4</code> &nbsp; <code>disk:&lt;100</code></td><td data-i18n="vm.h.num">Sayısal karşılaştırma (RAM ve disk GB cinsinden)</td></tr>
+            <tr><td><code>status:running</code></td><td data-i18n="vm.h.status">Güç durumu: running / stopped / suspended (TR: çalışan, kapalı)</td></tr>
+            <tr><td><code>ip:yok</code> &nbsp; <code>tag:yok</code> &nbsp; <code>owner:yok</code></td><td data-i18n="vm.h.empty">Boş alan araması — IP'si alınamayanlar, etiketsizler…</td></tr>
+            <tr><td><code>tools:yok</code></td><td data-i18n="vm.h.tools">VMware Tools / QEMU Agent kurulu olmayanlar</td></tr>
+            <tr><td><code>host:esxi01</code> &nbsp; <code>cluster:prod</code> &nbsp; <code>vlan:100</code></td><td data-i18n="vm.h.infra">Altyapı konumuna göre</td></tr>
+            <tr><td><code>platform:"Ankara vCenter"</code></td><td data-i18n="vm.h.platform">Platform adına göre (boşluk varsa tırnakla)</td></tr>
+            <tr><td><code>type:proxmox</code> &nbsp; <code>location:ankara</code></td><td data-i18n="vm.h.ptype">Platform tipi / lokasyonuna göre</td></tr>
+            <tr><td><code>tag:kritik</code> &nbsp; <code>env:production</code> &nbsp; <code>datastore:ssd</code></td><td data-i18n="vm.h.tagenv">Etiket, ortam, datastore</td></tr>
           </tbody>
         </table>
         <div class="alert alert-light border small mb-0">
-          Kriterler boşlukla birleştirilir (VE mantığı):<br>
+          <span data-i18n="vm.h.and">Kriterler boşlukla birleştirilir (VE mantığı):</span><br>
           <code>cluster:production os:linux status:running ram:&gt;=16 -tag:test</code>
         </div>
       </div>
@@ -136,10 +136,10 @@
     <table class="table table-hover align-middle mb-0" id="vmTable">
       <thead>
         <tr>
-          <th data-col="name" data-sort="name" class="sortable">VM Adı</th>
+          <th data-col="name" data-sort="name" class="sortable" data-i18n="th.vmName">VM Adı</th>
           <th data-col="vmid" data-sort="vmid" class="sortable">VM ID</th>
-          <th data-col="ip">IP Adresleri</th>
-          <th data-col="guest_os" data-sort="guest_os" class="sortable">İşletim Sistemi</th>
+          <th data-col="ip" data-i18n="vm.ipAddresses">IP Adresleri</th>
+          <th data-col="guest_os" data-sort="guest_os" class="sortable" data-i18n="vm.os">İşletim Sistemi</th>
           <th data-col="platform" data-sort="platform" class="sortable">Platform</th>
           <th data-col="agent" data-sort="agent" class="sortable">Agent</th>
           <th data-col="cpu" data-sort="cpu_count" class="sortable">CPU</th>
@@ -148,14 +148,14 @@
           <th data-col="host" data-sort="host" class="sortable">Host</th>
           <th data-col="cluster" data-sort="cluster" class="sortable">Cluster</th>
           <th data-col="pool" data-sort="pool" class="sortable">Pool</th>
-          <th data-col="folder" data-col-default="0">Klasör</th>
+          <th data-col="folder" data-col-default="0" data-i18n="vm.folder">Klasör</th>
           <th data-col="vlan">VLAN</th>
           <th data-col="ptags">Tags</th>
-          <th data-col="power_state" data-sort="power_state" class="sortable">Durum</th>
+          <th data-col="power_state" data-sort="power_state" class="sortable" data-i18n="th.status">Durum</th>
           <th data-col="uptime">Uptime</th>
         </tr>
       </thead>
-      <tbody id="vmBody"><tr><td colspan="17" class="text-center text-muted p-4">Yükleniyor…</td></tr></tbody>
+      <tbody id="vmBody"><tr><td colspan="17" class="text-center text-muted p-4" data-i18n="common.loading">Yükleniyor…</td></tr></tbody>
     </table>
   </div>
   <div class="card-footer d-flex align-items-center">

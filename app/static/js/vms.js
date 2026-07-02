@@ -18,9 +18,9 @@ const VMs = {
   },
 
   agentCell(state) {
-    const m = {running: ['Aktif', 'text-bg-success'],
-               stopped: ['Pasif', 'text-bg-warning text-dark'],
-               none: ['Yok', 'text-bg-secondary']};
+    const m = {running: [t('ag.active','Aktif'), 'text-bg-success'],
+               stopped: [t('ag.passive','Pasif'), 'text-bg-warning text-dark'],
+               none: [t('ag.none','Yok'), 'text-bg-secondary']};
     const a = m[state] || ['—', 'text-bg-light text-dark border'];
     return '<span class="badge ' + a[1] + '">' + a[0] + '</span>';
   },
@@ -31,9 +31,9 @@ const VMs = {
     pct = Math.min(100, Math.round(pct));
     const cls = (pct === 0 ? 'zero ' : '') +
                 (pct >= 90 ? 'crit' : pct >= 75 ? 'warn' : '');
-    const title = usedMb ? App.fmtRam(usedMb) + ' kullanımda (%' + pct + ')'
-                : usedGb ? App.fmtGb(usedGb) + ' kullanımda (%' + pct + ')'
-                : 'anlık kullanım %' + pct;
+    const title = usedMb ? App.fmtRam(usedMb) + ' ' + t('vm.inUse','kullanımda') + ' (%' + pct + ')'
+                : usedGb ? App.fmtGb(usedGb) + ' ' + t('vm.inUse','kullanımda') + ' (%' + pct + ')'
+                : t('vm.instantUsage','anlık kullanım %') + pct;
     return '<div class="usage-mini ' + cls + '" title="' + title + '">' +
            '<div style="width:' + pct + '%"></div></div>';
   },
@@ -62,8 +62,8 @@ const VMs = {
           '<span class="group-count">' + g.count + ' VM</span></button></div>').join('');
       document.getElementById('vmBody').innerHTML =
         '<tr><td colspan="15" class="text-center text-muted p-4">' +
-        'Gruplardan birine tıklayarak VM listesini filtreleyebilirsiniz.</td></tr>';
-      document.getElementById('vmCount').textContent = data.groups.length + ' grup';
+        t('vm.groupHint','Gruplardan birine tıklayarak VM listesini filtreleyebilirsiniz.') + '</td></tr>';
+      document.getElementById('vmCount').textContent = data.groups.length + ' ' + t('vm.groups','grup');
       document.getElementById('vmPager').innerHTML = '';
       return;
     }
@@ -73,7 +73,7 @@ const VMs = {
     VMs.total = data.total;
     const body = document.getElementById('vmBody');
     if (!data.items.length) {
-      body.innerHTML = '<tr><td colspan="15" class="text-center text-muted p-4">Sonuç bulunamadı.</td></tr>';
+      body.innerHTML = '<tr><td colspan="15" class="text-center text-muted p-4">' + t('vm.noResults','Sonuç bulunamadı.') + '</td></tr>';
     } else {
       body.innerHTML = data.items.map(v => {
         const pIcon = v.platform_type === 'vcenter'
@@ -81,8 +81,8 @@ const VMs = {
           : '<i class="bi bi-box text-warning" title="Proxmox"></i>';
         return '<tr class="vm-row" data-id="' + v.id + '" onclick="VMs.detail(' + v.id + ')">' +
           '<td data-col="name">' + pIcon + ' <strong>' + App.esc(v.name) + '</strong>' +
-            (v.tags.length ? '<br><small>' + v.tags.map(t =>
-              '<span class="badge text-bg-light border me-1">' + App.esc(t.name) + '</span>').join('') + '</small>' : '') + '</td>' +
+            (v.tags.length ? '<br><small>' + v.tags.map(tg =>
+              '<span class="badge text-bg-light border me-1">' + App.esc(tg.name) + '</span>').join('') + '</small>' : '') + '</td>' +
           '<td data-col="vmid" class="small text-muted text-nowrap">' + App.esc(v.vmid || '—') + '</td>' +
           '<td data-col="ip" class="text-nowrap small">' + App.esc(v.ip_addresses || '—').split(',').join('<br>') + '</td>' +
           '<td data-col="guest_os" class="small">' + App.esc(v.guest_os || '—') + '</td>' +
@@ -95,14 +95,14 @@ const VMs = {
           '<td data-col="disk">' + App.fmtGb(v.disk_total_gb) +
             VMs.usageMini(v.disk_total_gb ? 100 * (v.disk_used_gb || 0) / v.disk_total_gb : null,
                           null, v.disk_used_gb) + '</td>' +
-          '<td data-col="host" class="small cell-filter" onclick="VMs.cellFilter(event,\'host\',\'' + App.esc(v.host || '') + '\')" title="Bu host\'a göre filtrele">' + App.esc(v.host || '—') + '</td>' +
-          '<td data-col="cluster" class="small cell-filter" onclick="VMs.cellFilter(event,\'cluster\',\'' + App.esc(v.cluster || '') + '\')" title="Bu cluster\'a göre filtrele">' + App.esc(v.cluster || '—') + '</td>' +
-          '<td data-col="pool" class="small cell-filter" onclick="VMs.cellFilter(event,\'pool\',\'' + App.esc(v.pool || '') + '\')" title="Bu pool\'a göre filtrele">' + App.esc(v.pool || '—') + '</td>' +
-          '<td data-col="folder" class="small cell-filter" onclick="VMs.cellFilter(event,\'folder\',\'' + App.esc(v.folder || '') + '\')" title="Bu klasöre göre filtrele">' + App.esc(v.folder || '—') + '</td>' +
-          '<td data-col="vlan" class="cell-filter" onclick="VMs.cellFilter(event,\'vlan\',\'' + App.esc((v.vlans || '').split(',')[0]) + '\')" title="Bu VLAN\'a göre filtrele">' + App.esc(v.vlans || '—') + '</td>' +
+          '<td data-col="host" class="small cell-filter" onclick="VMs.cellFilter(event,\'host\',\'' + App.esc(v.host || '') + '\')" title="' + t('vm.filterByHost','Bu host\'a göre filtrele') + '">' + App.esc(v.host || '—') + '</td>' +
+          '<td data-col="cluster" class="small cell-filter" onclick="VMs.cellFilter(event,\'cluster\',\'' + App.esc(v.cluster || '') + '\')" title="' + t('vm.filterByCluster','Bu cluster\'a göre filtrele') + '">' + App.esc(v.cluster || '—') + '</td>' +
+          '<td data-col="pool" class="small cell-filter" onclick="VMs.cellFilter(event,\'pool\',\'' + App.esc(v.pool || '') + '\')" title="' + t('vm.filterByPool','Bu pool\'a göre filtrele') + '">' + App.esc(v.pool || '—') + '</td>' +
+          '<td data-col="folder" class="small cell-filter" onclick="VMs.cellFilter(event,\'folder\',\'' + App.esc(v.folder || '') + '\')" title="' + t('vm.filterByFolder','Bu klasöre göre filtrele') + '">' + App.esc(v.folder || '—') + '</td>' +
+          '<td data-col="vlan" class="cell-filter" onclick="VMs.cellFilter(event,\'vlan\',\'' + App.esc((v.vlans || '').split(',')[0]) + '\')" title="' + t('vm.filterByVlan','Bu VLAN\'a göre filtrele') + '">' + App.esc(v.vlans || '—') + '</td>' +
           '<td data-col="ptags" class="small">' + (v.platform_tags
-            ? v.platform_tags.split(',').map(t => t.trim()).filter(Boolean).map(t =>
-                '<span class="badge bg-info-subtle text-info-emphasis border me-1">' + App.esc(t) + '</span>').join('')
+            ? v.platform_tags.split(',').map(tg => tg.trim()).filter(Boolean).map(tg =>
+                '<span class="badge bg-info-subtle text-info-emphasis border me-1">' + App.esc(tg) + '</span>').join('')
             : '—') + '</td>' +
           '<td data-col="power_state">' + App.stateBadge(v.power_state) + '</td>' +
           '<td data-col="uptime" class="small text-nowrap">' + App.fmtUptime(v.last_boot) + '</td></tr>';
@@ -110,7 +110,7 @@ const VMs = {
     }
     VMs.applyCols();
     document.getElementById('vmCount').textContent =
-      VMs.total + ' VM — sayfa ' + data.page + '/' + Math.max(1, Math.ceil(VMs.total / VMs.perPage));
+      VMs.total + ' VM — ' + t('vm.page','sayfa') + ' ' + data.page + '/' + Math.max(1, Math.ceil(VMs.total / VMs.perPage));
     VMs.renderPager(data.page);
     VMs.applyFocus();
   },
@@ -186,7 +186,7 @@ const VMs = {
     const fill = (field, items, labelFn) => {
       const sel = document.querySelector('.adv-sel[data-field="' + field + '"]');
       if (!sel) return;
-      sel.innerHTML = '<option value="">— Tümü —</option>' + items.map(i =>
+      sel.innerHTML = '<option value="">' + t('vm.allOption','— Tümü —') + '</option>' + items.map(i =>
         '<option value="' + App.esc(i.key) + '">' +
         App.esc(labelFn ? labelFn(i.key) : i.key) + ' (' + i.count + ')</option>').join('');
     };
@@ -197,7 +197,7 @@ const VMs = {
     const cSel = document.querySelector('.adv-sel[data-field="cluster"]');
     if (cSel) f.clusters.forEach((c, i) => {
       if (c.hidden && cSel.options[i + 1])
-        cSel.options[i + 1].text += ' · gizli';
+        cSel.options[i + 1].text += ' · ' + t('vm.hiddenMark','gizli');
     });
     fill('host', f.hosts);
     fill('env', f.environments);
@@ -210,7 +210,7 @@ const VMs = {
     fill('pool', f.pools || []);
     fill('folder', f.folders || []);
     fill('status', f.power_states, k =>
-      ({running: 'Çalışıyor', stopped: 'Kapalı', suspended: 'Askıda'}[k] || k));
+      ({running: t('st.running','Çalışıyor'), stopped: t('st.stopped','Kapalı'), suspended: t('st.suspended','Askıda')}[k] || k));
   },
 
   /**
@@ -280,13 +280,13 @@ const VMs = {
     const tokens = VMs.q.match(/[-!]?\w+:"[^"]*"|[-!]?\w+:\S+|[-!]?\S+/g) || [];
     if (!tokens.length) { wrap.classList.add('d-none'); wrap.innerHTML = ''; return; }
     wrap.classList.remove('d-none');
-    wrap.innerHTML = '<span class="text-muted small me-1">Aktif:</span>' +
-      tokens.map((t, i) =>
-        '<span class="filter-badge' + ((t.startsWith('-') || t.startsWith('!')) ? ' negative' : '') + '">' +
-        App.esc(t) + '<button title="Kaldır" onclick="VMs.removeToken(' + i + ')">' +
+    wrap.innerHTML = '<span class="text-muted small me-1">' + t('vm.activeFilters','Aktif:') + '</span>' +
+      tokens.map((tok, i) =>
+        '<span class="filter-badge' + ((tok.startsWith('-') || tok.startsWith('!')) ? ' negative' : '') + '">' +
+        App.esc(tok) + '<button title="' + t('vm.remove','Kaldır') + '" onclick="VMs.removeToken(' + i + ')">' +
         '<i class="bi bi-x"></i></button></span>').join('') +
       (tokens.length > 1 ? '<button class="btn btn-link btn-sm p-0 ms-1" ' +
-        'onclick="VMs.clearAll()">tümünü temizle</button>' : '');
+        'onclick="VMs.clearAll()">' + t('vm.clearAll','tümünü temizle') + '</button>' : '');
   },
 
   /** Rozetin X'ine basılınca o kriteri sorgudan çıkar. */

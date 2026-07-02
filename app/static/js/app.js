@@ -109,21 +109,21 @@ const App = {
     const d = Math.floor(s / 86400); s -= d * 86400;
     const h = Math.floor(s / 3600);  s -= h * 3600;
     const m = Math.floor(s / 60);
-    if (d > 0) return d + ' gün ' + h + ' sa';
-    if (h > 0) return h + ' sa ' + m + ' dk';
-    return m + ' dk';
+    if (d > 0) return d + ' ' + t('unit.dayShort','gün') + ' ' + h + ' ' + t('unit.hr','sa');
+    if (h > 0) return h + ' ' + t('unit.hr','sa') + ' ' + m + ' ' + t('unit.min','dk');
+    return m + ' ' + t('unit.min','dk');
   },
 
   /** Güç/erişim durumu için renkli rozet üret. */
   stateBadge(state) {
     const map = {
-      running:   ['Çalışıyor',  'state-running'],
-      stopped:   ['Kapalı',     'state-stopped'],
-      suspended: ['Askıda',     'state-suspended'],
+      running:   [t('st.running','Çalışıyor'),  'state-running'],
+      stopped:   [t('st.stopped','Kapalı'),     'state-stopped'],
+      suspended: [t('st.suspended','Askıda'),   'state-suspended'],
       online:    ['Online',     'state-online'],
       offline:   ['Offline',    'state-offline'],
-      maintenance: ['Bakımda',  'state-suspended'],
-      unknown:   ['Bilinmiyor', 'state-stopped'],
+      maintenance: [t('st.maintenance','Bakımda'),  'state-suspended'],
+      unknown:   [t('st.unknown','Bilinmiyor'), 'state-stopped'],
     };
     const [label, cls] = map[state] || [state || '—', 'state-stopped'];
     return '<span class="state-badge ' + cls + '">' + App.esc(label) + '</span>';
