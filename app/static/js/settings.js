@@ -10,31 +10,31 @@ const Settings = {
     Settings.users = data.items;
     const roleBadge = r => ({
       admin:    '<span class="badge text-bg-danger">Admin</span>',
-      operator: '<span class="badge text-bg-warning text-dark">Operatör</span>',
-      viewer:   '<span class="badge text-bg-secondary">Görüntüleyici</span>',
+      operator: '<span class="badge text-bg-warning text-dark">' + t('role.operator','Operatör') + '</span>',
+      viewer:   '<span class="badge text-bg-secondary">' + t('role.viewer','Görüntüleyici') + '</span>',
     }[r] || r);
     document.getElementById('userBody').innerHTML = data.items.map(u => '<tr>' +
       '<td><strong>' + App.esc(u.username) + '</strong></td>' +
       '<td>' + App.esc(u.full_name || '—') + '</td>' +
       '<td>' + App.esc(u.email || '—') + '</td>' +
       '<td>' + roleBadge(u.role) + '</td>' +
-      '<td>' + (u.is_ldap ? 'LDAP/AD' : 'Lokal') + '</td>' +
+      '<td>' + (u.is_ldap ? 'LDAP/AD' : t('st2.local','Lokal')) + '</td>' +
       '<td class="small">' + App.fmtDate(u.last_login) + '</td>' +
       '<td>' + (u.is_active
-        ? '<span class="badge text-bg-success">Aktif</span>'
-        : '<span class="badge text-bg-secondary">Pasif</span>') + '</td>' +
+        ? '<span class="badge text-bg-success">' + t('ag.active','Aktif') + '</span>'
+        : '<span class="badge text-bg-secondary">' + t('ag.passive','Pasif') + '</span>') + '</td>' +
       '<td class="text-end">' +
       '<button class="btn btn-sm btn-outline-secondary" onclick="Settings.openUserModal(' + u.id + ')">' +
       '<i class="bi bi-pencil"></i></button> ' +
       '<button class="btn btn-sm btn-outline-' + (u.is_active ? 'danger' : 'success') + '" ' +
-      'title="' + (u.is_active ? 'Pasifleştir' : 'Aktifleştir') + '" ' +
+      'title="' + (u.is_active ? t('st2.deactivate','Pasifleştir') : t('st2.activate','Aktifleştir')) + '" ' +
       'onclick="Settings.toggleActive(' + u.id + ',' + !u.is_active + ')">' +
       '<i class="bi bi-' + (u.is_active ? 'person-x' : 'person-check') + '"></i></button></td></tr>').join('');
   },
 
   openUserModal(id = null) {
     const u = id ? Settings.users.find(x => x.id === id) : null;
-    document.getElementById('umTitle').textContent = u ? 'Kullanıcıyı Düzenle' : 'Kullanıcı Ekle';
+    document.getElementById('umTitle').textContent = u ? t('st2.editUser','Kullanıcıyı Düzenle') : t('st2.addUser','Kullanıcı Ekle');
     document.getElementById('umId').value = u ? u.id : '';
     document.getElementById('umUsername').value = u ? u.username : '';
     document.getElementById('umUsername').disabled = !!u;   // kullanıcı adı değişmez
@@ -54,12 +54,12 @@ const Settings = {
       role: document.getElementById('umRole').value,
       password: document.getElementById('umPassword').value,
     };
-    if (!payload.username) { App.toast('Kullanıcı adı zorunludur', 'warning'); return; }
-    if (!id && !payload.password) { App.toast('Yeni kullanıcı için parola zorunludur', 'warning'); return; }
+    if (!payload.username) { App.toast(t('st2.usernameRequired','Kullanıcı adı zorunludur'), 'warning'); return; }
+    if (!id && !payload.password) { App.toast(t('st2.passwordRequired','Yeni kullanıcı için parola zorunludur'), 'warning'); return; }
     try {
       if (id) await App.api('/api/admin/users/' + id, {method: 'PATCH', body: payload});
       else    await App.api('/api/admin/users', {method: 'POST', body: payload});
-      App.toast('Kullanıcı kaydedildi');
+      App.toast(t('st2.userSaved','Kullanıcı kaydedildi'));
       bootstrap.Modal.getInstance(document.getElementById('userModal')).hide();
       Settings.loadUsers();
     } catch (e) { /* hata gösterildi */ }
@@ -68,7 +68,7 @@ const Settings = {
   async toggleActive(id, active) {
     try {
       await App.api('/api/admin/users/' + id, {method: 'PATCH', body: {is_active: active}});
-      App.toast(active ? 'Kullanıcı aktifleştirildi' : 'Kullanıcı pasifleştirildi');
+      App.toast(active ? t('st2.userActivated','Kullanıcı aktifleştirildi') : t('st2.userDeactivated','Kullanıcı pasifleştirildi'));
       Settings.loadUsers();
     } catch (e) { /* hata gösterildi */ }
   },
@@ -108,7 +108,7 @@ const Settings = {
           '<td class="small">' + App.esc(l.target || '—') + '</td>' +
           '<td>' + change(l) + '</td>' +
           '<td class="small text-muted">' + App.esc(l.ip_address || '') + '</td></tr>').join('')
-      : '<tr><td colspan="6" class="text-muted p-3">Kayıt yok.</td></tr>';
+      : '<tr><td colspan="6" class="text-muted p-3">' + t('st2.noRecords','Kayıt yok.') + '</td></tr>';
   },
   async loadSync() {
     const el = document.getElementById('syncFull');
@@ -123,11 +123,11 @@ const Settings = {
 
   async clearConsole() {
     const msg = document.getElementById('clearConsoleMsg');
-    if (!confirm('Tüm konsol erişimi geçmiş satırları silinecek. Emin misiniz?')) return;
+    if (!confirm(t('st2.clearConsoleConfirm','Tüm konsol erişimi geçmiş satırları silinecek. Emin misiniz?'))) return;
     try {
       const r = await App.api('/api/admin/changes/clear-console', {method: 'POST', body: {}});
       msg.className = 'ms-2 small text-success';
-      msg.textContent = '✓ ' + (r.deleted || 0) + ' satır silindi';
+      msg.textContent = '✓ ' + (r.deleted || 0) + ' ' + t('st2.rowsDeleted','satır silindi');
     } catch (e) {
       msg.className = 'ms-2 small text-danger';
       msg.textContent = 'Silinemedi';
@@ -142,7 +142,7 @@ const Settings = {
     const okRange = n => Number.isInteger(n) && n >= 1 && n <= 1440;
     if (!okRange(full) || !okRange(usage)) {
       msg.className = 'ms-2 small text-danger';
-      msg.textContent = 'Değerler 1–1440 dakika arasında olmalı';
+      msg.textContent = t('st2.rangeError','Değerler 1–1440 dakika arasında olmalı');
       return;
     }
     try {
@@ -150,7 +150,7 @@ const Settings = {
         body: {sync_interval_minutes: full, usage_sync_interval_minutes: usage,
                track_console_access: console_}});
       msg.className = 'ms-2 small text-success';
-      msg.textContent = '✓ Kaydedildi — yeniden başlatmadan geçerli';
+      msg.textContent = '✓ ' + t('st2.savedLive','Kaydedildi — yeniden başlatmadan geçerli');
     } catch (e) {
       msg.className = 'ms-2 small text-danger';
       msg.textContent = 'Kaydedilemedi';

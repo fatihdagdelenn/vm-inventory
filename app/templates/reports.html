@@ -3,12 +3,11 @@
 <div class="row g-3">
   <div class="col-lg-6">
     <div class="card panel">
-      <div class="card-header"><i class="bi bi-download"></i> Anlık Dışa Aktarma</div>
+      <div class="card-header"><i class="bi bi-download"></i> <span data-i18n="rp.instantExport">Anlık Dışa Aktarma</span></div>
       <div class="card-body">
-        <p class="text-muted small">Arama söz dizimi ile filtrelenmiş sonuçları dışa aktarabilirsiniz
-          (örn: <code>cluster:production status:running</code>). Boş bırakılırsa tüm envanter aktarılır.</p>
+        <p class="text-muted small"><span data-i18n="rp.exportDesc">Arama söz dizimi ile filtrelenmiş sonuçları dışa aktarabilirsiniz (boş bırakılırsa tüm envanter aktarılır). Örn:</span> <code>cluster:production status:running</code></p>
         <div class="mb-3">
-          <label class="form-label">Filtre (opsiyonel)</label>
+          <label class="form-label" data-i18n="rp.filterOpt">Filtre (opsiyonel)</label>
           <input type="text" id="repQuery" class="form-control" placeholder="örn: os:windows vlan:100">
         </div>
         <div class="d-flex gap-2 flex-wrap">
@@ -21,7 +20,7 @@
     </div>
 
     <div class="card panel mt-3">
-      <div class="card-header"><i class="bi bi-folder2-open"></i> Üretilmiş Dosyalar</div>
+      <div class="card-header"><i class="bi bi-folder2-open"></i> <span data-i18n="rp.files">Üretilmiş Dosyalar</span></div>
       <div class="card-body p-0">
         <ul class="list-group list-group-flush" id="fileList"></ul>
       </div>
@@ -30,27 +29,26 @@
 
   <div class="col-lg-6">
     <div class="card panel">
-      <div class="card-header"><i class="bi bi-calendar-event"></i> Zamanlanmış Raporlar</div>
+      <div class="card-header"><i class="bi bi-calendar-event"></i> <span data-i18n="rp.scheduled">Zamanlanmış Raporlar</span></div>
       <div class="card-body">
         {% if user.role != 'viewer' %}
         <div id="schForm" class="row g-2 align-items-end mb-3">
-          <div class="col-6"><label class="form-label small">Ad (opsiyonel)</label>
+          <div class="col-6"><label class="form-label small" data-i18n="rp.nameOpt">Ad (opsiyonel)</label>
             <input type="text" id="schName" class="form-control" placeholder="örn: Günlük prod"></div>
-          <div class="col-6"><label class="form-label small">Hedef</label>
+          <div class="col-6"><label class="form-label small" data-i18n="rp.target">Hedef</label>
             <select id="schTarget" class="form-select"><option value="vms">VM</option><option value="hosts">Host</option></select></div>
-          <div class="col-4"><label class="form-label small">Saat</label>
+          <div class="col-4"><label class="form-label small" data-i18n="rp.hour">Saat</label>
             <input type="number" id="schHour" class="form-control" min="0" max="23" value="7"></div>
-          <div class="col-4"><label class="form-label small">Dakika</label>
+          <div class="col-4"><label class="form-label small" data-i18n="rp.minute">Dakika</label>
             <input type="number" id="schMin" class="form-control" min="0" max="59" value="0"></div>
           <div class="col-4"><label class="form-label small">Format</label>
             <select id="schFmt" class="form-select"><option>xlsx</option><option>csv</option><option>pdf</option></select></div>
-          <div class="col-12"><label class="form-label small">Filtre (opsiyonel)</label>
+          <div class="col-12"><label class="form-label small" data-i18n="rp.filterOpt">Filtre (opsiyonel)</label>
             <input type="text" id="schQuery" class="form-control" placeholder="örn: env:production"></div>
-          <div class="col-12"><button class="btn btn-primary w-100" onclick="Reports.schedule()"><i class="bi bi-plus-lg"></i> Oluştur</button></div>
+          <div class="col-12"><button class="btn btn-primary w-100" onclick="Reports.schedule()"><i class="bi bi-plus-lg"></i> <span data-i18n="rp.create">Oluştur</span></button></div>
         </div>
         {% endif %}
-        <p class="text-muted small mb-2">Raporlar her gün belirtilen <strong>yerel</strong> saatte sunucuda üretilir;
-          oluşan dosyalar soldaki listeden indirilebilir. <i class="bi bi-play-fill"></i> ile hemen çalıştırabilirsiniz.</p>
+        <p class="text-muted small mb-2" data-i18n="rp.schedDesc">Raporlar her gün belirtilen yerel saatte sunucuda üretilir; oluşan dosyalar soldaki listeden indirilebilir. ▶ ile hemen çalıştırabilirsiniz.</p>
         <ul class="list-group list-group-flush" id="schList"></ul>
       </div>
     </div>

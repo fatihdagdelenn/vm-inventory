@@ -15,21 +15,20 @@ const Platforms = {
     const wrap = document.getElementById('platformCards');
     if (!data.items.length) {
       wrap.innerHTML = '<div class="col-12"><div class="alert alert-info mb-0">' +
-        'Henüz platform eklenmemiş. Sağ üstteki <strong>Platform Ekle</strong> ' +
-        'butonuyla ilk vCenter veya Proxmox bağlantınızı oluşturun.</div></div>';
+        t('pl.empty','Henüz platform eklenmemiş. Sağ üstteki Platform Ekle butonuyla ilk vCenter veya Proxmox bağlantınızı oluşturun.') + '</div></div>';
       return;
     }
     const isAdmin = document.querySelector('.role-badge')?.textContent.trim() === 'Admin';
-    const isViewer = document.querySelector('.role-badge')?.textContent.trim() === 'Görüntüleyici';
+    const isViewer = document.querySelector('.role-badge')?.textContent.trim() === t('role.viewer','Görüntüleyici');
 
     wrap.innerHTML = data.items.map(p => {
       const icon = p.type === 'vcenter'
         ? '<i class="bi bi-cloud fs-3 text-primary"></i>'
         : '<i class="bi bi-box fs-3 text-warning"></i>';
       const status = p.last_sync_status === 'success'
-        ? '<span class="badge text-bg-success">Bağlantı OK</span>'
+        ? '<span class="badge text-bg-success">' + t('pl.connOk','Bağlantı OK') + '</span>'
         : p.last_sync_status === 'error'
-          ? '<span class="badge text-bg-danger" title="' + App.esc(p.last_sync_error || '') + '">Hata</span>'
+          ? '<span class="badge text-bg-danger" title="' + App.esc(p.last_sync_error || '') + '">' + t('st.error','Hata') + '</span>'
           : '<span class="badge text-bg-secondary">Senkronize edilmedi</span>';
       return '<div class="col-md-6 col-xl-4"><div class="card panel h-100"><div class="card-body">' +
         '<div class="d-flex align-items-start">' + icon +
@@ -62,7 +61,7 @@ const Platforms = {
   /* ---------- Modal ---------- */
   openModal(id = null) {
     const p = id ? Platforms.items.find(x => x.id === id) : null;
-    document.getElementById('pmTitle').textContent = p ? 'Platformu Düzenle' : 'Platform Ekle';
+    document.getElementById('pmTitle').textContent = p ? t('pl.edit','Platformu Düzenle') : t('pl.add','Platform Ekle');
     document.getElementById('pmId').value = p ? p.id : '';
     document.getElementById('pmName').value = p ? p.name : '';
     document.getElementById('pmType').value = p ? p.type : 'vcenter';
@@ -149,15 +148,15 @@ const Platforms = {
       const el = document.getElementById(id);
       if (!el.value.trim()) { this._showError(el, msg); ok = false; }
     };
-    req('pmName', 'Bu alanın doldurulması zorunludur');
-    req('pmHost', 'Bu alanın doldurulması zorunludur');
+    req('pmName', t('pl.required','Bu alanın doldurulması zorunludur'));
+    req('pmHost', t('pl.required','Bu alanın doldurulması zorunludur'));
     if (!isEdit) {   // yeni kayıtta kimlik bilgisi zorunlu (düzenlemede boş = değişme)
       if (method === 'token') {
-        req('pmTokenName', 'Bu alanın doldurulması zorunludur');
-        req('pmTokenValue', 'Bu alanın doldurulması zorunludur');
+        req('pmTokenName', t('pl.required','Bu alanın doldurulması zorunludur'));
+        req('pmTokenValue', t('pl.required','Bu alanın doldurulması zorunludur'));
       } else {
-        req('pmUser', 'Bu alanın doldurulması zorunludur');
-        req('pmPass', 'Bu alanın doldurulması zorunludur');
+        req('pmUser', t('pl.required','Bu alanın doldurulması zorunludur'));
+        req('pmPass', t('pl.required','Bu alanın doldurulması zorunludur'));
       }
     }
     return ok;
@@ -187,7 +186,7 @@ const Platforms = {
    *  Düzenleme modunda parola boş bırakıldıysa kayıtlı bilgilerle test eder. */
   async test() {
     const out = document.getElementById('pmTestResult');
-    out.innerHTML = '<div class="alert alert-info mb-0"><span class="spinner-border spinner-border-sm"></span> Bağlantı deneniyor…</div>';
+    out.innerHTML = '<div class="alert alert-info mb-0"><span class="spinner-border spinner-border-sm"></span> ' + t('pl.testing','Bağlantı deneniyor…') + '</div>';
     const payload = Platforms._payload();
     const id = document.getElementById('pmId').value;
     // Düzenlemede kimlik bilgisi girilmediyse kayıtlı (şifreli) bilgileri kullan
@@ -196,10 +195,10 @@ const Platforms = {
       const r = await App.api('/api/platforms/test', {method: 'POST', body: payload});
       out.innerHTML = r.success
         ? '<div class="alert alert-success mb-0 d-flex align-items-center gap-2">' +
-          '<span class="badge text-bg-success"><i class="bi bi-check-circle-fill"></i> Bağlantı Başarılı</span>' +
+          '<span class="badge text-bg-success"><i class="bi bi-check-circle-fill"></i> ' + t('pl.connSuccess','Bağlantı Başarılı') + '</span>' +
           '<span class="small">' + App.esc(r.message || '') + '</span></div>'
         : '<div class="alert alert-danger mb-0"><i class="bi bi-x-circle"></i> ' +
-          App.esc(r.message || 'Bağlantı başarısız') + '</div>';
+          App.esc(r.message || t('pl.connFail','Bağlantı başarısız')) + '</div>';
     } catch (e) {
       out.innerHTML = '<div class="alert alert-danger mb-0"><i class="bi bi-x-circle"></i> ' +
         App.esc(e.message) + '</div>';
@@ -209,7 +208,7 @@ const Platforms = {
   async save() {
     const id = document.getElementById('pmId').value;
     if (!this._validate()) {
-      App.toast('Lütfen zorunlu alanları doldurun', 'warning');
+      App.toast(t('pl.fillRequired','Lütfen zorunlu alanları doldurun'), 'warning');
       return;
     }
     const payload = Platforms._payload();
@@ -223,7 +222,7 @@ const Platforms = {
   },
 
   async remove(id) {
-    if (!confirm('Platform ve ilişkili envanter kayıtları silinecek. Emin misiniz?')) return;
+    if (!confirm(t('pl.deleteConfirm','Platform ve ilişkili envanter kayıtları silinecek. Emin misiniz?'))) return;
     try {
       await App.api('/api/platforms/' + id, {method: 'DELETE'});
       App.toast('Platform silindi');
@@ -236,7 +235,7 @@ const Platforms = {
     btn.disabled = true;
     try {
       const r = await App.api('/api/platforms/' + id + '/sync', {method: 'POST'});
-      App.toast(r.message || 'Senkronizasyon başlatıldı', 'info');
+      App.toast(r.message || t('pl.syncStarted','Senkronizasyon başlatıldı'), 'info');
       setTimeout(Platforms.load, 5000);   // bir süre sonra durumu tazele
     } catch (e) { /* hata gösterildi */ }
     btn.disabled = false;
@@ -251,14 +250,14 @@ const Platforms = {
       '<td class="text-nowrap small">' + App.fmtDate(l.started_at) + '</td>' +
       '<td class="text-nowrap small">' + App.fmtDate(l.finished_at) + '</td>' +
       '<td>' + (l.status === 'success'
-        ? '<span class="badge text-bg-success">Başarılı</span>'
+        ? '<span class="badge text-bg-success">' + t('st.success','Başarılı') + '</span>'
         : l.status === 'running'
-          ? '<span class="badge text-bg-info">Çalışıyor</span>'
+          ? '<span class="badge text-bg-info">' + t('st.running','Çalışıyor') + '</span>'
           : '<span class="badge text-bg-danger">Hata</span>') + '</td>' +
       '<td>' + (l.hosts_found ?? '—') + '</td>' +
       '<td>' + (l.vms_found ?? '—') + '</td>' +
       '<td class="small">' + App.esc(l.message || '') + '</td></tr>').join('')
-      : '<tr><td colspan="6" class="text-muted p-3">Log kaydı yok.</td></tr>';
+      : '<tr><td colspan="6" class="text-muted p-3">' + t('pl.noLogs','Log kaydı yok.') + '</td></tr>';
     bootstrap.Modal.getOrCreateInstance(document.getElementById('logsModal')).show();
   },
 };

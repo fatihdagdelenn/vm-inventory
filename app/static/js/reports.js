@@ -22,15 +22,15 @@ const Reports = {
     };
     try {
       await App.api('/api/reports/schedule', {method: 'POST', body: payload});
-      App.toast('Zamanlanmış rapor oluşturuldu');
+      App.toast(t('rp.schedCreated','Zamanlanmış rapor oluşturuldu'));
       Reports.loadSchedules();
     } catch (e) { /* hata gösterildi */ }
   },
 
   _statusBadge(s) {
-    if (s === 'success') return '<span class="badge text-bg-success">başarılı</span>';
-    if (s === 'error')   return '<span class="badge text-bg-danger">hata</span>';
-    return '<span class="badge text-bg-secondary">henüz çalışmadı</span>';
+    if (s === 'success') return '<span class="badge text-bg-success">' + t('rp.ok','başarılı') + '</span>';
+    if (s === 'error')   return '<span class="badge text-bg-danger">' + t('rp.err','hata') + '</span>';
+    return '<span class="badge text-bg-secondary">' + t('rp.notRun','henüz çalışmadı') + '</span>';
   },
 
   /** Kayıtlı zamanlanmış raporları listele. */
@@ -39,7 +39,7 @@ const Reports = {
     try { data = await App.api('/api/reports/schedule'); } catch (e) { return; }
     const list = document.getElementById('schList');
     if (!data.items.length) {
-      list.innerHTML = '<li class="list-group-item text-muted small">Zamanlanmış rapor yok.</li>';
+      list.innerHTML = '<li class="list-group-item text-muted small">' + t('rp.noSched','Zamanlanmış rapor yok.') + '</li>';
       return;
     }
     const canEdit = document.getElementById('schForm') !== null;
@@ -50,8 +50,8 @@ const Reports = {
         : '—';
       const actions = canEdit
         ? '<div class="btn-group btn-group-sm ms-auto">' +
-            '<button class="btn btn-outline-primary" title="Şimdi çalıştır" onclick="Reports.runNow(' + j.id + ')"><i class="bi bi-play-fill"></i></button>' +
-            '<button class="btn btn-outline-danger" title="Sil" onclick="Reports.remove(' + j.id + ')"><i class="bi bi-trash"></i></button>' +
+            '<button class="btn btn-outline-primary" title="' + t('rp.runNow','Şimdi çalıştır') + '" onclick="Reports.runNow(' + j.id + ')"><i class="bi bi-play-fill"></i></button>' +
+            '<button class="btn btn-outline-danger" title="' + t('rp.delete','Sil') + '" onclick="Reports.remove(' + j.id + ')"><i class="bi bi-trash"></i></button>' +
           '</div>'
         : '';
       return '<li class="list-group-item d-flex align-items-start">' +
@@ -72,17 +72,17 @@ const Reports = {
   async runNow(id) {
     try {
       await App.api('/api/reports/schedule/' + id + '/run', {method: 'POST'});
-      App.toast('Rapor çalıştırıldı');
+      App.toast(t('rp.ran','Rapor çalıştırıldı'));
       Reports.loadSchedules();
       Reports.loadFiles();
     } catch (e) { /* hata gösterildi */ }
   },
 
   async remove(id) {
-    if (!confirm('Zamanlanmış rapor silinsin mi?')) return;
+    if (!confirm(t('rp.deleteConfirm','Zamanlanmış rapor silinsin mi?'))) return;
     try {
       await App.api('/api/reports/schedule/' + id, {method: 'DELETE'});
-      App.toast('Zamanlanmış rapor silindi');
+      App.toast(t('rp.deleted','Zamanlanmış rapor silindi'));
       Reports.loadSchedules();
     } catch (e) { /* hata gösterildi */ }
   },
@@ -94,7 +94,7 @@ const Reports = {
     let data;
     try { data = await App.api('/api/reports/files'); } catch (e) { return; }
     if (!data.items.length) {
-      box.innerHTML = '<li class="list-group-item text-muted small">Henüz üretilmiş dosya yok.</li>';
+      box.innerHTML = '<li class="list-group-item text-muted small">' + t('rp.noFiles','Henüz üretilmiş dosya yok.') + '</li>';
       return;
     }
     box.innerHTML = data.items.map(f =>
