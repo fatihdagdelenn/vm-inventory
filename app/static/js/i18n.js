@@ -253,6 +253,16 @@ const I18N = {
     'zb.r.disk': 'Disk I/O', 'zb.r.net': 'Net', 'zb.r.hb': '(heartbeat)', 'zb.r.quiet': '(quiet)',
     'zb.r.diskNone': 'No disk data yet', 'zb.r.netNone': 'No net data yet',
     'zb.r.instant': 'Instant CPU (no history yet)',
+    // Forecast/zombie extra notes + help popovers
+    'fc.noCap': 'No capacity data — storage not collected or Datastore.Audit permission missing.',
+    'fc.noteShort': 'Usage = real usage, Allocation = given to VMs. Forecast is based on the usage growth rate',
+    'fc.lastN': 'last', 'fc.collectingShort': 'collecting data',
+    'zb.basis1': '14-30 day CPU+RAM+Disk+Net correlation. "Definite Zombie" needs all 4 metrics idle + \u22657 days of data; a missing metric caps the verdict at "Suspect".',
+    'zb.basis2': 'Instant CPU < 2% (history still accumulating). It switches to the multi-metric score as Disk/Net samples build up.',
+    'help.forecast.t': 'How capacity forecast works',
+    'help.forecast.b': '<strong>Usage</strong> = the actually-used part of physical capacity (what really runs out). <strong>Allocation</strong> = total given to VMs; exceeding 100% (overcommit) is normal in virtualization.<br><br>The \u201cmay fill in X\u201d estimate comes from the real usage growth rate over the last N days (linear trend); without enough spread it shows \u201ccollecting\u201d.<br><br><strong>Disk</strong> = datastore fill, <strong>RAM</strong> = physical host memory.',
+    'help.zombie.t': 'How zombie detection works',
+    'help.zombie.b': 'Every running VM is scored over a 14-30 day window on 4 metrics: <strong>CPU</strong> (40%), <strong>RAM</strong> variance, <strong>Disk I/O</strong> and <strong>Network</strong> (20% each). Higher score = lower activity.<br><br>\u201cDefinite Zombie\u201d needs all four idle plus \u22657 days of data; if a metric is missing (Disk/Net still building) the verdict is capped at \u201cSuspect\u201d. CPU alone is misleading, so a VM with active disk but idle CPU is <em>not</em> flagged.<br><br><strong>Recoverable</strong> = vCPU/RAM/disk freed if these VMs are shut down.',
     'unit.dayShort': 'd', 'unit.hr': 'h',
   },
   t: function (key, tr) {

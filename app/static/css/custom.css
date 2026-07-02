@@ -295,6 +295,20 @@ th.sorted-desc::after { content: " ▼"; color: var(--accent); font-size: .65rem
 
 /* ---------- Butonlar ---------- */
 .btn { border-radius: 9px; font-weight: 500; transition: all .16s; }
+.wt-help {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 17px; height: 17px; margin-left: 6px; padding: 0; vertical-align: 1px;
+  border: 1px solid var(--border); border-radius: 50%; background: transparent;
+  color: var(--text-muted); font-size: .68rem; font-weight: 700; line-height: 1;
+  cursor: help; transition: all .15s;
+}
+.wt-help:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.popover { max-width: 320px; }
+html.theme-dark .popover { background: #1b2740; border-color: rgba(148,163,184,.2); }
+html.theme-dark .popover .popover-header { background: #223150; color: #eaf1fb; border-bottom-color: rgba(148,163,184,.15); }
+html.theme-dark .popover .popover-body { color: #cdd9ea; }
+html.theme-dark .popover .popover-arrow::after { border-top-color: #1b2740; border-bottom-color: #223150; }
+
 .btn-primary {
   background: linear-gradient(135deg, var(--accent), #4a93f8); border: 0;
   box-shadow: 0 3px 10px rgba(47,129,247,.3);
@@ -822,7 +836,25 @@ html.theme-dark {
   --shadow-sm: 0 4px 14px rgba(0,0,0,.30);
   --shadow-md: 0 8px 24px rgba(0,0,0,.35);
   --shadow-lg: 0 14px 40px rgba(0,0,0,.50);
+  /* Colorblind-friendly contextual palette (Okabe-Ito leaning): danger -> vermillion,
+     success -> bluish teal. Distinguishable under red-green color blindness and less
+     neon/bright than Bootstrap defaults. Overriding the Bootstrap tokens recolors both
+     buttons and badges (.btn-*, .text-bg-*) from one place. */
+  --bs-primary: #3b9bff;  --bs-primary-rgb: 59,155,255;
+  --bs-success: #2ea77f;  --bs-success-rgb: 46,167,127;
+  --bs-danger:  #e06a4f;  --bs-danger-rgb: 224,106,79;
+  --bs-warning: #d6a12e;  --bs-warning-rgb: 214,161,46;
+  --bs-info:    #4bb6d6;  --bs-info-rgb: 75,182,214;
 }
+/* Soften the accent glow so buttons aren't glaring in dark mode */
+html.theme-dark .btn-primary {
+  background: linear-gradient(135deg, #2f7fd6, #3b9bff);
+  box-shadow: 0 2px 8px rgba(0,0,0,.35);
+}
+html.theme-dark .btn-primary:hover { box-shadow: 0 4px 12px rgba(0,0,0,.45); }
+/* Contextual badges: keep dark, readable text on the muted fills */
+html.theme-dark .text-bg-warning { color: #17222f !important; }
+html.theme-dark .text-bg-info { color: #17222f !important; }
 /* NOT: --ink/--ink-2/--ink-3 BİLEREK override edilmez — kenar çubuğu arka planı
    ve bazı koyu gradyanlar bu değişkenlerden beslenir. Onları metin rengi olarak
    kullanan (açık zeminli) bileşenler için aşağıda açık koyu kurallar var. */

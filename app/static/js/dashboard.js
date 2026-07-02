@@ -237,6 +237,11 @@ function barGrad(chart, base, horizontal) {
       return `~${d} ${t('unit.day','gün')}`;
     };
     const fcRow = (title, icon, f, unit) => {
+      if (!f.capacity_gb) {
+        return `<div class="forecast-row"><div class="d-flex align-items-center mb-1">
+          <i class="bi ${icon} me-2"></i><strong>${title}</strong></div>
+          <div class="small text-muted"><i class="bi bi-info-circle"></i> ${t('fc.noCap','Kapasite verisi yok — depolama toplanmadı veya izin (Datastore.Audit) eksik.')}</div></div>`;
+      }
       const [cls, bi, txt] = STAT[f.status] || STAT.none;
       const fmt = (gb) => gb >= 1024 ? (gb / 1024).toFixed(1) + ' TB' : Math.round(gb) + ' GB';
       let daysTxt;
@@ -270,10 +275,8 @@ function barGrad(chart, base, horizontal) {
     if (fb) fb.innerHTML = fcRow(t('fc.diskTitle','Disk (Datastore)'), 'bi-device-hdd', fc.disk, 'disk') +
                            fcRow(t('fc.ramTitle','RAM (Fiziksel)'), 'bi-memory', fc.ram, 'RAM') +
       `<div class="text-muted mt-1" style="font-size:.72rem; line-height:1.5">
-        <i class="bi bi-info-circle"></i> <strong>Doluluk</strong> = gerçekte kullanılan / fiziksel kapasite
-        (asıl tükenecek olan). <strong>Tahsis</strong> = VM'lere verilen; %100'ü aşması (overcommit)
-        sanallaştırmada normaldir. Öngörü yalnızca doluluğun büyüme hızına göredir` +
-      (fc.method === 'trend' ? ` (son ${fc.window_days} gün).` : `; veri toplanıyor.`) +
+        <i class="bi bi-info-circle"></i> ${t('fc.noteShort','Doluluk = gerçek kullanım, Tahsis = VM\'lere verilen. Öngörü doluluk artış hızına göredir')}` +
+      (fc.method === 'trend' ? ` (${t('fc.lastN','son')} ${fc.window_days} ${t('unit.day','gün')}).` : `; ${t('fc.collectingShort','veri toplanıyor')}.`) +
       `</div>`;
 
     /* Zombi VM'ler */
@@ -322,8 +325,8 @@ function barGrad(chart, base, horizontal) {
           `</tbody></table></div>
           <div class="text-muted fst-italic" style="font-size:.72rem">` +
           (ins.zombie_basis === '14-30d'
-            ? `14-30 günlük CPU+RAM+Disk+Ağ korelasyonu. "Kesin Zombi" için 4 metrik birden idle + ≥7 gün veri gerekir; eksik metrik (Disk/Ağ örneği henüz birikiyorsa) en fazla "Şüpheli" verir.`
-            : `Anlık CPU < %2 (tarihsel veri birikiyor). Disk/Ağ örnekleri biriktikçe çok metrikli skora geçer.`) +
+            ? t('zb.basis1','14-30 günlük CPU+RAM+Disk+Ağ korelasyonu. "Kesin Zombi" için 4 metrik birden idle + ≥7 gün veri gerekir; eksik metrik en fazla "Şüpheli" verir.')
+            : t('zb.basis2','Anlık CPU < %2 (tarihsel veri birikiyor). Disk/Ağ örnekleri biriktikçe çok metrikli skora geçer.')) +
           `</div>`;
       }
     }
@@ -621,6 +624,37 @@ const DashGrid = {
     });
   },
 
+  initHelp() {
+    if (!window.bootstrap || !bootstrap.Popover) return;
+    const HELP_TR = {
+      forecast: {
+        t: 'Kapasite öngörüsü nasıl çalışır',
+        b: '<strong>Doluluk</strong> = fiziksel kapasitenin gerçekte kullanılan kısmı (asıl tükenecek olan). '
+         + '<strong>Tahsis</strong> = VM\'lere verilen toplam; %100\'ü aşması (overcommit) sanallaştırmada normaldir.<br><br>'
+         + '"X sonra dolabilir" tahmini, son N günün gerçek doluluk artış hızından (lineer trend) hesaplanır; '
+         + 'yeterli yayılım yoksa "veri toplanıyor" yazar.<br><br>'
+         + '<strong>Disk</strong> = datastore doluluğu, <strong>RAM</strong> = fiziksel host belleği.'
+      },
+      zombie: {
+        t: 'Zombi tespiti nasıl çalışır',
+        b: 'Her çalışan VM 14-30 günlük pencerede 4 metrikle puanlanır: <strong>CPU</strong> (%40), '
+         + '<strong>RAM</strong> oynaklığı, <strong>Disk I/O</strong> ve <strong>Ağ</strong> (her biri %20). '
+         + 'Yüksek skor = düşük aktivite.<br><br>'
+         + '"Kesin Zombi" için dördü birden boşta olmalı ve ≥7 gün veri bulunmalı; metrik eksikse '
+         + '(Disk/Ağ henüz birikiyorsa) en fazla "Şüpheli" denir. Tek başına CPU yanıltıcıdır; diski aktif ama '
+         + 'CPU\'su boş VM zombi <em>sayılmaz</em>.<br><br>'
+         + '<strong>Geri kazanılabilir</strong> = bu VM\'ler kapatılırsa boşalacak vCPU/RAM/disk.'
+      },
+    };
+    document.querySelectorAll('.wt-help[data-help]').forEach(btn => {
+      const k = btn.dataset.help, tr = HELP_TR[k] || {t: k, b: ''};
+      bootstrap.Popover.getOrCreateInstance(btn, {
+        html: true, trigger: 'focus', placement: 'left',
+        title: t('help.' + k + '.t', tr.t),
+        content: t('help.' + k + '.b', tr.b),
+      });
+    });
+  },
   init() {
     if (!document.getElementById('dashGrid')) return;
     DashGrid.mountChrome();
@@ -641,6 +675,7 @@ const DashGrid = {
       rz.innerHTML = '<i class="bi bi-arrows-angle-expand"></i>';
       w.appendChild(rz);
     });
+    DashGrid.initHelp();
     DashGrid.refreshPageSelectors();
     DashGrid.renderTabs();
     DashGrid.applyView();
