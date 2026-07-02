@@ -3,7 +3,7 @@
 <div class="d-flex mb-3 gap-2">
   <div class="search-box flex-grow-1" style="max-width:480px">
     <i class="bi bi-search"></i>
-    <input type="text" id="dsSearch" class="form-control" placeholder="Datastore adı, tip, node veya platform ara…">
+    <input type="text" id="dsSearch" class="form-control" data-i18n-ph="ds.searchPh" placeholder="Datastore adı, tip, node veya platform ara…">
   </div>
   <button class="btn btn-outline-success btn-sm ms-auto" onclick="location='/api/reports/datastores/export?fmt=xlsx'"><i class="bi bi-file-earmark-excel"></i> Excel</button>
   <button class="btn btn-outline-secondary btn-sm" onclick="location='/api/reports/datastores/export?fmt=csv'">CSV</button>
@@ -16,14 +16,14 @@
         <th data-sort="name" class="sortable">Datastore</th>
         <th data-sort="node" class="sortable">Node</th>
         <th data-sort="platform" class="sortable">Platform</th>
-        <th data-sort="type" class="sortable">Tip</th>
-        <th data-sort="capacity_gb" class="sortable">Kapasite</th>
-        <th data-sort="usage" class="sortable">Doluluk</th>
+        <th data-sort="type" class="sortable" data-i18n="th.type">Tip</th>
+        <th data-sort="capacity_gb" class="sortable" data-i18n="ds.capacity">Kapasite</th>
+        <th data-sort="usage" class="sortable" data-i18n="ds.usage">Doluluk</th>
         <th data-sort="host_count" class="sortable">Host</th>
         <th data-sort="vm_count" class="sortable">VM</th>
-        <th data-sort="status" class="sortable">Durum</th>
+        <th data-sort="status" class="sortable" data-i18n="th.status">Durum</th>
       </tr></thead>
-      <tbody id="dsBody"><tr><td colspan="9" class="text-center text-muted p-4">Yükleniyor…</td></tr></tbody>
+      <tbody id="dsBody"><tr><td colspan="9" class="text-center text-muted p-4" data-i18n="common.loading">Yükleniyor…</td></tr></tbody>
     </table>
   </div>
 </div>

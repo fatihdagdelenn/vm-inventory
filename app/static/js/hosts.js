@@ -41,9 +41,9 @@ const Hosts = {
   /** Açılıştan bu yana çalışma süresi (saniye); bilinmiyorsa -1 (en sona). */
   uptimeKey(iso) {
     if (!iso) return -1;
-    const t = new Date(iso).getTime();
-    if (isNaN(t)) return -1;
-    return Math.max(0, Date.now() - t);
+    const tm = new Date(iso).getTime();
+    if (isNaN(tm)) return -1;
+    return Math.max(0, Date.now() - tm);
   },
 
   /** Bir host kaydından aktif sıralama kolonunun karşılaştırma değerini üret. */
@@ -91,7 +91,7 @@ const Hosts = {
   render() {
     const body = document.getElementById('hostBody');
     if (!Hosts.items.length) {
-      body.innerHTML = '<tr><td colspan="11" class="text-center text-muted p-4">Sonuç bulunamadı.</td></tr>';
+      body.innerHTML = '<tr><td colspan="11" class="text-center text-muted p-4">' + t('vm.noResults','Sonuç bulunamadı.') + '</td></tr>';
       Hosts.markHeaders();
       return;
     }
@@ -105,7 +105,7 @@ const Hosts = {
       const vmCell = h.vm_count
         ? '<button type="button" class="vm-count-link" ' +
             'onclick="Hosts.showVms(' + h.id + ')" ' +
-            'title="' + (h.vm_running || 0) + ' çalışıyor — VM listesini aç">' +
+            'title="' + (h.vm_running || 0) + ' ' + t('hs.runningOpen','çalışıyor — VM listesini aç') + '">' +
             h.vm_count + ' <i class="bi bi-box-arrow-up-right"></i></button>'
         : '<span class="badge text-bg-light border">0</span>';
       return '<tr>' +
@@ -114,7 +114,7 @@ const Hosts = {
         '<td>' + App.esc(h.mgmt_ip || '—') + '</td>' +
         '<td class="small">' + App.esc(h.os_version || '—') + '</td>' +
         '<td class="small">' + App.esc(h.cpu_model || '—') + '</td>' +
-        '<td>' + resCell((h.cpu_cores || '—') + ' çekirdek', cpuPct, 'CPU') + '</td>' +
+        '<td>' + resCell((h.cpu_cores || '—') + ' ' + t('hs.coresLower','çekirdek'), cpuPct, 'CPU') + '</td>' +
         '<td>' + resCell(App.fmtRam(h.ram_used_mb) + ' / ' + App.fmtRam(h.ram_total_mb), ramPct, 'RAM') + '</td>' +
         '<td>' + resCell(h.disk_total_gb ? App.fmtGb(h.disk_used_gb) + ' / ' + App.fmtGb(h.disk_total_gb) : '—', diskPct, 'Disk') + '</td>' +
         '<td>' + App.esc(h.cluster || '—') + '</td>' +

@@ -767,6 +767,11 @@ html.theme-dark .dropdown-menu {
 html.theme-dark .dropdown-item { color: #cdd9ea; }
 html.theme-dark .dropdown-item:hover, html.theme-dark .dropdown-item:focus { background: rgba(59,155,255,.15); color: #fff; }
 html.theme-dark .dropdown-divider { border-color: rgba(148,163,184,.15); }
+html.theme-dark .dropdown-menu .form-check-label,
+html.theme-dark .dropdown-menu label,
+html.theme-dark .dropdown-menu .dropdown-item-text { color: #cdd9ea; }
+html.theme-dark .dropdown-menu .form-check-input { background-color: #0f1828; border-color: rgba(148,163,184,.4); }
+html.theme-dark .dropdown-menu .form-check-input:checked { background-color: #2f81f7; border-color: #2f81f7; }
 
 /* Sekmeler / sayfalama */
 html.theme-dark .nav-tabs { border-bottom-color: rgba(148,163,184,.15); }

@@ -15,14 +15,14 @@ const DS = {
     } catch (e) { return; }
     const body = document.getElementById('dsBody');
     if (!data.items.length) {
-      body.innerHTML = '<tr><td colspan="9" class="text-center text-muted p-4">Sonuç bulunamadı.</td></tr>';
+      body.innerHTML = '<tr><td colspan="9" class="text-center text-muted p-4">' + t('vm.noResults','Sonuç bulunamadı.') + '</td></tr>';
       document.getElementById('dsCount').textContent = '';
       return;
     }
     const stMap = {
-      active: ['Aktif', 'state-running'],
-      inactive: ['Pasif', 'state-stopped'],
-      maintenance: ['Bakım', 'state-suspended'],
+      active: [t('ag.active','Aktif'), 'state-running'],
+      inactive: [t('ag.passive','Pasif'), 'state-stopped'],
+      maintenance: [t('st.maintenance','Bakım'), 'state-suspended'],
     };
     body.innerHTML = data.items.map(d => {
       const pIcon = d.platform_type === 'vcenter'
@@ -37,11 +37,11 @@ const DS = {
         '<div class="usage-mini ' + cls + '" title="%' + pct + '">' +
           '<div style="width:' + Math.min(100, pct) + '%"></div></div></div>';
       const shared = d.shared
-        ? ' <span class="badge text-bg-light border" title="Birden çok host/node tarafından paylaşılıyor">paylaşımlı</span>' : '';
+        ? ' <span class="badge text-bg-light border" title="' + t('ds.sharedHint','Birden çok host/node tarafından paylaşılıyor') + '">' + t('ds.shared','paylaşımlı') + '</span>' : '';
       const st = stMap[d.status] || [d.status || '—', 'state-stopped'];
       const cnt = (n, kind) => n > 0
         ? '<span class="badge text-bg-light border ds-count" style="cursor:pointer" ' +
-          'onclick="DS.drill(' + d.id + ',\'' + kind + '\')" title="Detayları gör">' +
+          'onclick="DS.drill(' + d.id + ',\'' + kind + '\')" title="' + t('ds.viewDetails','Detayları gör') + '">' +
           n + ' <i class="bi bi-box-arrow-up-right"></i></span>'
         : '<span class="badge text-bg-light border">0</span>';
       return '<tr>' +
@@ -64,8 +64,8 @@ const DS = {
   async drill(dsId, kind) {
     let d;
     try { d = await App.api('/api/datastores/' + dsId); } catch (e) { return; }
-    if (kind === 'vm') App.showVmList(d.name + ' — Sanal Makineler', d.vms);
-    else App.showHostList(d.name + ' — Host\'lar', d.hosts);
+    if (kind === 'vm') App.showVmList(d.name + ' — ' + t('nav.vms','Sanal Makineler'), d.vms);
+    else App.showHostList(d.name + ' — ' + t('nav.hosts',"Host'lar"), d.hosts);
   },
 
   setSort(col) {

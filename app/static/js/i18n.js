@@ -123,6 +123,15 @@ const I18N = {
     'st.running': 'Running', 'st.stopped': 'Stopped', 'st.suspended': 'Suspended',
     'ag.active': 'Active', 'ag.passive': 'Passive', 'ag.none': 'None',
     'st.maintenance': 'Maintenance', 'st.unknown': 'Unknown',
+    // Hosts page
+    'hs.searchPh': 'Search host name, IP, cluster or CPU model…',
+    'hs.name': 'Host Name', 'hs.mgmtIp': 'Mgmt IP', 'hs.cpuModel': 'CPU Model', 'hs.cores': 'Cores',
+    'hs.runningOpen': 'running — open VM list', 'hs.coresLower': 'cores',
+    // Datastores page
+    'ds.searchPh': 'Search datastore name, type, node or platform…',
+    'ds.capacity': 'Capacity', 'ds.usage': 'Usage',
+    'ds.shared': 'shared', 'ds.sharedHint': 'Shared by multiple hosts/nodes',
+    'ds.viewDetails': 'View details',
     'unit.dayShort': 'd', 'unit.hr': 'h',
   },
   t: function (key, tr) {
