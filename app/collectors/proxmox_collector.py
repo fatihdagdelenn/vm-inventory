@@ -141,6 +141,11 @@ class ProxmoxCollector:
         r"to be filled|o\.e\.m|default string|system (product name|manufacturer)"
         r"|not specified|unknown|empty", re.IGNORECASE)
     # component vendors that must not be mistaken for the box OEM
+    # well-known server chassis families -> captures "PowerEdge R750xd" etc.
+    _HW_CHASSIS = re.compile(
+        r"\b((?:PowerEdge|ProLiant|ThinkSystem|ThinkServer|PRIMERGY|PowerVault"
+        r"|Superserver|SuperServer)\s+[A-Za-z0-9][\w+\-]*"
+        r"|SYS-[A-Za-z0-9+\-]+|UCSC?-[A-Za-z0-9\-]+)", re.IGNORECASE)
     _HW_COMPONENT = re.compile(
         r"intel|advanced micro|\bamd\b|nvidia|broadcom|realtek|mellanox"
         r"|qlogic|emulex|samsung|micron|kioxia|western digital|seagate"
@@ -173,7 +178,25 @@ class ProxmoxCollector:
                 val = (m.group(1).strip() if m else "")
                 if val and not self._HW_PLACEHOLDER.search(val):
                     parts.append(val)
+            # Some pvereport builds embed only "dmidecode -t bios" (no System
+            # Information). Recover: BIOS Vendor gives the OEM, and a chassis-
+            # family scan over the whole report (lspci subsystem lines often
+            # spell the model, e.g. "Dell PowerEdge R750") gives the model.
+            if not any(self._HW_CHASSIS.search(x or "") for x in parts):
+                ch = self._HW_CHASSIS.search(text)
+                if ch:
+                    parts.append(ch.group(1).strip())
+            if not parts:
+                ven = re.search(r"^\s*Vendor:\s*(.+)$", text, re.MULTILINE)
+                val = (ven.group(1).strip() if ven else "")
+                if val and not self._HW_PLACEHOLDER.search(val) \
+                        and not self._HW_COMPONENT.search(val):
+                    parts.append(val)
             result = " ".join(dict.fromkeys(parts))  # dedupe, keep order
+            if not result:
+                logger.info("Node report parsed but no hardware id (%s): "
+                            "len=%d dmidecode=%s", node, len(text),
+                            "dmidecode" in text)
         except Exception as exc:
             logger.info("Node report unavailable (%s): %s", node, exc)
         if not result:
@@ -188,10 +211,21 @@ class ProxmoxCollector:
                 for v in list(cnt):
                     if self._HW_COMPONENT.search(v):
                         del cnt[v]
+                vendor = ""
                 if cnt:
                     best, n = cnt.most_common(1)[0]
                     if n >= 3 and not self._HW_PLACEHOLDER.search(best):
-                        result = best
+                        vendor = best
+                # On OEM boards the PCI subsystem DEVICE name frequently spells
+                # the chassis (e.g. "PowerEdge R750 System Board") - take it.
+                model = ""
+                for d in devs:
+                    ch = self._HW_CHASSIS.search(
+                        (d.get("subsystem_device_name") or ""))
+                    if ch:
+                        model = ch.group(1).strip()
+                        break
+                result = " ".join(x for x in dict.fromkeys([vendor, model]) if x)
             except Exception:
                 pass
         self._hw_cache[node] = result
