@@ -1,6 +1,6 @@
 """
-Veritabanı bağlantısı ve oturum yönetimi.
-PostgreSQL (üretim) veya SQLite (küçük kurulumlar) destekler.
+Database connection and session management.
+Supports PostgreSQL (production) or SQLite (small setups).
 """
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
@@ -8,12 +8,12 @@ from .config import get_settings
 
 settings = get_settings()
 
-# SQLite için thread kontrolünü kapat, PostgreSQL için bağlantı havuzu ayarla
+# Disable thread checks for SQLite, configure a connection pool for PostgreSQL
 engine_kwargs = {}
 if settings.database_url.startswith("sqlite"):
     engine_kwargs["connect_args"] = {"check_same_thread": False}
 else:
-    # 500+ VM ortamı için bağlantı havuzu: eşzamanlı kullanıcı + arka plan senkronizasyonu
+    # Pool for 500+ VM environments: concurrent users + background sync
     engine_kwargs.update(pool_size=10, max_overflow=20, pool_pre_ping=True)
 
 engine = create_engine(settings.database_url, **engine_kwargs)
@@ -22,7 +22,7 @@ Base = declarative_base()
 
 
 def get_db():
-    """FastAPI dependency: istek başına veritabanı oturumu."""
+    """FastAPI dependency: one database session per request."""
     db = SessionLocal()
     try:
         yield db
@@ -32,13 +32,9 @@ def get_db():
 
 def ensure_schema(engine):
     """
-    Hafif otomatik migrasyon: modellerde tanımlı olup veritabanında
-    bulunmayan kolonları ALTER TABLE ile ekler.
-
-    Mevcut kurulumlar yeni sürüme geçtiğinde (örn. VM'lere eklenen
-    cpu_usage_pct/ram_usage_mb kolonları) veri kaybı olmadan şema
-    otomatik genişler. Yeni tablolar zaten create_all ile oluşur.
-    """
+        Light auto-migration: adds columns defined on the models but missing in
+        the database via ALTER TABLE. Existing columns are never modified.
+        """
     from sqlalchemy import inspect, text
     import logging
     logger = logging.getLogger("migration")
@@ -56,10 +52,10 @@ def ensure_schema(engine):
                 with engine.begin() as conn:
                     conn.execute(text(
                         f'ALTER TABLE {table.name} ADD COLUMN {col.name} {col_type}'))
-                logger.info("Şema genişletildi: %s.%s (%s)",
+                logger.info("Schema extended: %s.%s (%s)",
                             table.name, col.name, col_type)
             except Exception as exc:
-                # Kolon başka bir süreç tarafından eklenmiş olabilir
-                # (çoklu worker) — açılışı engelleme, logla ve devam et.
+                # The column may have been added by another process
+                # (multi-worker) - don't block startup, log and continue.
                 logger.warning("Kolon eklenemedi %s.%s: %s",
                                table.name, col.name, exc)

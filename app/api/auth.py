@@ -1,4 +1,4 @@
-"""Kimlik doğrulama: giriş / çıkış (lokal + opsiyonel LDAP)."""
+"""Authentication: login / logout (local + optional LDAP)."""
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -31,14 +31,14 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
     user = db.query(User).filter_by(username=username).first()
     authenticated = False
 
-    # 1) Lokal kullanıcı + bcrypt doğrulaması
+    # 1) Local user + bcrypt verification
     if user and not user.is_ldap and user.password_hash and \
             verify_password(password, user.password_hash):
         authenticated = True
-    # 2) LDAP/AD doğrulaması (etkinse)
+    # 2) LDAP/AD verification (if enabled)
     elif settings.ldap_enabled and ldap_authenticate(username, password):
         authenticated = True
-        if not user:  # ilk girişte otomatik kullanıcı oluştur
+        if not user:  # auto-create the user on first login
             user = User(username=username, is_ldap=True,
                         role=settings.ldap_default_role)
             db.add(user)
@@ -53,9 +53,9 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
     _audit(db, request, username, "login", role=user.role)
 
     response = RedirectResponse("/", status_code=303)
-    # Oturum çerezi: HttpOnly + SameSite (XSS/CSRF'e karşı); kayan zaman aşımı
+    # Session cookie: HttpOnly + SameSite (against XSS/CSRF); sliding timeout
     set_session_cookie(response, create_session_token(user))
-    # CSRF çerezi: JS tarafından okunup X-CSRF-Token header'ına konur
+    # CSRF cookie: read by JS and placed into the X-CSRF-Token header
     response.set_cookie("csrf_token", generate_csrf_token(), samesite="lax")
     return response
 

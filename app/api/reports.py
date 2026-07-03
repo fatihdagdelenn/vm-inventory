@@ -1,6 +1,6 @@
 """
-Raporlama API'si: Excel / CSV / PDF dışa aktarma + zamanlanmış raporlar.
-Arama parametresi (q) aynen uygulanır -> filtrelenmiş sonuçlar dışa aktarılır.
+Reporting API: Excel / CSV / PDF export + scheduled reports.
+The search parameter (q) is applied verbatim -> filtered results export as-is.
 """
 from datetime import datetime
 
@@ -45,7 +45,7 @@ def _export(items, columns, fmt: str, title: str) -> Response:
 @router.get("/vms/export")
 def export_vms(fmt: str = "xlsx", q: str = "", db: Session = Depends(get_db),
                user: User = Depends(get_current_user)):
-    """VM raporu - q parametresiyle filtrelenmiş sonuçlar dışa aktarılır."""
+    """VM report - results filtered by the q parameter are exported."""
     query = db.query(VirtualMachine).options(
         joinedload(VirtualMachine.host_ref)).filter_by(is_template=False)
     items = apply_vm_search(query, q).order_by(VirtualMachine.name).all()
@@ -93,22 +93,22 @@ def export_backups(fmt: str = "xlsx", db: Session = Depends(get_db),
     return _export(items, rs.BACKUP_COLUMNS, fmt, "Yedek Envanteri")
 
 
-# ---------- Zamanlanmış raporlar (KALICI) ----------
-# Tanımlar DB'de (ScheduledReport) saklanır ve her açılışta scheduler'a
-# yeniden kaydedilir; böylece uygulama yeniden başlasa da kaybolmazlar.
-# Cron saati uygulama zaman dilimine (APP_TIMEZONE) göre yorumlanır.
+# ---------- Scheduled reports (PERSISTENT) ----------
+# Definitions live in the DB (ScheduledReport) and are re-registered with
+# the scheduler on every startup, so they survive app restarts.
+# The cron hour is interpreted in the app timezone (APP_TIMEZONE).
 import os
 
 
 def _report_dir() -> str:
-    """Raporların yazılacağı klasör (env REPORT_DIR > ayar > varsayılan)."""
+    """Folder reports are written to (env REPORT_DIR > setting > default)."""
     d = os.environ.get("REPORT_DIR") or get_settings().report_dir
     os.makedirs(d, exist_ok=True)
     return d
 
 
 def _build_items(db: Session, target: str, q: str):
-    """Hedefe göre rapor satırlarını ve kolon setini üret."""
+    """Build report rows and the column set for the target."""
     if target == "hosts":
         return db.query(Host).order_by(Host.name).all(), rs.HOST_COLUMNS, "Host"
     query = db.query(VirtualMachine).options(
@@ -118,7 +118,7 @@ def _build_items(db: Session, target: str, q: str):
 
 
 def run_scheduled_report(report_id: int):
-    """Zamanlayıcı veya 'şimdi çalıştır' tarafından çağrılır: raporu diske yazar."""
+    """Called by the scheduler or 'run now': writes the report to disk."""
     from ..database import SessionLocal
     db = SessionLocal()
     try:
@@ -146,14 +146,14 @@ def run_scheduled_report(report_id: int):
 
 
 def _register_job(rep: ScheduledReport):
-    """Rapor tanımını scheduler'a cron job olarak kaydet (varsa değiştir)."""
+    """Register the report definition as a cron job (replace if present)."""
     scheduler.add_job(run_scheduled_report, trigger="cron",
                       hour=rep.hour, minute=rep.minute,
                       args=[rep.id], id=rep.job_id, replace_existing=True)
 
 
 def register_all_scheduled_reports():
-    """Açılışta DB'deki etkin raporları scheduler'a yeniden kaydet (kalıcılık)."""
+    """Re-register enabled reports from the DB on startup (persistence)."""
     from ..database import SessionLocal
     db = SessionLocal()
     try:
@@ -167,7 +167,7 @@ def register_all_scheduled_reports():
 
 
 def _serialize(rep: ScheduledReport):
-    """Bir rapor tanımını arayüz için JSON'a çevir (saatler yerel TZ'ye uygun ISO)."""
+    """Serialize a report definition for the UI (hours as local-TZ ISO)."""
     job = scheduler.get_job(rep.job_id)
     return {
         "id": rep.id, "name": rep.name or "", "target": rep.target,
@@ -185,10 +185,10 @@ def schedule_report(request: Request, payload: dict = Body(...),
                     user: User = Depends(require_role("operator")),
                     db: Session = Depends(get_db)):
     """
-    Zamanlanmış rapor oluştur.
-    payload: {"name","target":"vms|hosts","fmt":"xlsx|csv|pdf","q","hour","minute"}
-    Cron saati APP_TIMEZONE'a göredir. Rapor _report_dir() klasörüne yazılır.
-    """
+        Create a scheduled report.
+        payload: {"name","target":"vms|hosts","fmt":"xlsx|csv|pdf","q","hour","minute"}
+        The cron hour is interpreted in the app timezone.
+        """
     validate_csrf(request, payload.pop("csrf_token", None))
     fmt = payload.get("fmt", "xlsx")
     if fmt not in MEDIA:
@@ -222,7 +222,7 @@ def list_scheduled(db: Session = Depends(get_db),
 def run_now(report_id: int, request: Request,
             user: User = Depends(require_role("operator")),
             db: Session = Depends(get_db)):
-    """Raporu hemen çalıştır (senkron) — kullanıcı cron saatini beklemesin."""
+    """Run the report immediately (sync) - no waiting for the cron hour."""
     validate_csrf(request, None)
     rep = db.get(ScheduledReport, report_id)
     if not rep:
@@ -245,16 +245,16 @@ def delete_scheduled(report_id: int, request: Request,
     try:
         scheduler.remove_job(rep.job_id)
     except Exception:
-        pass  # job zaten yoksa (ör. restart sonrası) sorun değil
+        pass  # fine if the job is already gone (e.g. after a restart)
     db.delete(rep)
     db.commit()
     return {"ok": True}
 
 
-# ---------- Üretilmiş rapor dosyaları ----------
+# ---------- Generated report files ----------
 @router.get("/files")
 def list_report_files(user: User = Depends(get_current_user)):
-    """REPORT_DIR içindeki üretilmiş rapor dosyalarını listele."""
+    """List generated report files in REPORT_DIR."""
     d = _report_dir()
     out = []
     for name in sorted(os.listdir(d), reverse=True):
@@ -268,7 +268,7 @@ def list_report_files(user: User = Depends(get_current_user)):
 
 @router.get("/files/{name}")
 def download_report_file(name: str, user: User = Depends(get_current_user)):
-    """Üretilmiş bir rapor dosyasını indir (path traversal korumalı)."""
+    """Download a generated report file (path-traversal safe)."""
     if "/" in name or "\\" in name or ".." in name:
         raise HTTPException(400, "Geçersiz dosya adı")
     path = os.path.join(_report_dir(), name)

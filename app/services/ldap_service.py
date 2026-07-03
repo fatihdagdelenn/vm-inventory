@@ -1,7 +1,6 @@
 """
-LDAP / Active Directory kimlik doğrulama (opsiyonel).
-LDAP_ENABLED=true ise lokal kullanıcı bulunamadığında AD'ye sorulur;
-başarılı girişte kullanıcı LDAP_DEFAULT_ROLE rolüyle otomatik oluşturulur.
+LDAP / Active Directory authentication (optional).
+With LDAP_ENABLED=true, AD is queried when no local user matches.
 """
 import logging
 from ldap3 import Server, Connection, ALL
@@ -12,7 +11,7 @@ logger = logging.getLogger("ldap")
 
 
 def ldap_authenticate(username: str, password: str) -> bool:
-    """AD'ye basit bind ile kimlik doğrula."""
+    """Authenticate against AD with a simple bind."""
     settings = get_settings()
     if not settings.ldap_enabled or not password:
         return False
@@ -23,5 +22,5 @@ def ldap_authenticate(username: str, password: str) -> bool:
         conn.unbind()
         return True
     except Exception as exc:
-        logger.warning("LDAP doğrulama başarısız (%s): %s", username, exc)
+        logger.warning("LDAP authentication failed (%s): %s", username, exc)
         return False

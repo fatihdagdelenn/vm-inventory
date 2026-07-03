@@ -1,7 +1,6 @@
 """
-Raporlama servisi: Excel (.xlsx), CSV ve PDF dışa aktarma.
-Filtrelenmiş arama sonuçları aynen dışa aktarılabilir
-(arama parametresi export endpoint'lerine de iletilir).
+Reporting service: Excel (.xlsx), CSV and PDF export.
+Filtered search results export as-is (the search parameter is reapplied).
 """
 import csv
 import io
@@ -24,11 +23,11 @@ from ..core.timezone import now_local
 
 logger = logging.getLogger("report")
 
-# --- PDF Türkçe font kaydı -------------------------------------------------
-# Varsayılan Helvetica, ş/ğ/İ/ı gibi Türkçe harfleri (Latin-5) gösteremez ve
-# PDF'te bozuk/kutu çıkar. Bu yüzden Unicode DejaVuSans repoya gömülü gelir ve
-# burada kaydedilir. Font bulunamazsa Helvetica'ya düşülür (PDF yine üretilir,
-# yalnızca Türkçe harfler eksik olabilir).
+# --- PDF Turkish font registration ---------------------------------------
+# Default Helvetica cannot render Turkish letters (Latin-5) like ş/ğ/İ/ı;
+# they come out broken/boxed in PDFs. A Unicode DejaVuSans ships in the repo
+# and is registered here. If missing, we fall back to Helvetica (the PDF is
+# still produced, only Turkish letters may be off).
 _FONT_DIR = os.path.join(os.path.dirname(__file__), "..", "static", "fonts")
 PDF_FONT = "Helvetica"
 PDF_FONT_BOLD = "Helvetica-Bold"
@@ -42,12 +41,12 @@ try:
             "DejaVuSans", normal="DejaVuSans", bold="DejaVuSans-Bold")
         PDF_FONT, PDF_FONT_BOLD = "DejaVuSans", "DejaVuSans-Bold"
     else:
-        logger.warning("DejaVuSans fontu bulunamadı (%s); PDF'te Türkçe "
-                       "karakterler eksik olabilir.", _FONT_DIR)
-except Exception as exc:  # pragma: no cover - font kaydı kritik değil
+        logger.warning("DejaVuSans font not found (%s); Turkish characters "
+                       "may be missing in PDFs.", _FONT_DIR)
+except Exception as exc:  # pragma: no cover - font registration is non-critical
     logger.warning("PDF fontu kaydedilemedi: %s", exc)
 
-# Dışa aktarılan VM kolonları: (başlık, model alanı)
+# Exported VM columns: (header, model field)
 VM_COLUMNS = [
     ("VM Adı", "name"), ("VM ID", "vmid"), ("IP Adresleri", "ip_addresses"),
     ("MAC Adresleri", "mac_addresses"), ("İşletim Sistemi", "guest_os"),
@@ -86,10 +85,10 @@ BACKUP_COLUMNS = [
 
 
 def _row_values(obj, columns):
-    """Model nesnesinden kolon sırasına göre değerleri çıkar."""
+    """Extract values from a model object in column order."""
     values = []
     for _, field in columns:
-        if field == "host_name":  # VM -> ilişkili host adı
+        if field == "host_name":  # VM -> related host name
             values.append(obj.host_ref.name if getattr(obj, "host_ref", None) else "")
         else:
             v = getattr(obj, field, "")
@@ -98,7 +97,7 @@ def _row_values(obj, columns):
 
 
 def export_excel(items, columns, title="Envanter Raporu") -> bytes:
-    """Biçimlendirilmiş Excel raporu üret."""
+    """Produce a formatted Excel report."""
     wb = Workbook()
     ws = wb.active
     ws.title = title[:31]
@@ -114,7 +113,7 @@ def export_excel(items, columns, title="Envanter Raporu") -> bytes:
         for col, value in enumerate(_row_values(item, columns), 1):
             ws.cell(row=row, column=col, value=value)
 
-    # Kolon genişliklerini içeriğe göre ayarla
+    # Fit column widths to the content
     for col in range(1, len(columns) + 1):
         max_len = max((len(str(ws.cell(row=r, column=col).value or ""))
                        for r in range(1, min(ws.max_row, 200) + 1)), default=10)
@@ -128,7 +127,7 @@ def export_excel(items, columns, title="Envanter Raporu") -> bytes:
 
 
 def export_csv(items, columns) -> bytes:
-    """UTF-8 BOM'lu CSV (Excel'de Türkçe karakter uyumu için)."""
+    """CSV with a UTF-8 BOM (Turkish character compatibility in Excel)."""
     buf = io.StringIO()
     writer = csv.writer(buf, delimiter=";")
     writer.writerow([h for h, _ in columns])
@@ -139,13 +138,9 @@ def export_csv(items, columns) -> bytes:
 
 def export_pdf(items, columns, title="Envanter Raporu") -> bytes:
     """
-    Yatay A4 PDF tablo raporu.
-
-    Excel/CSV ile kolon eşitliği: TÜM kolonlar dahil edilir (eskiden yalnızca
-    ilk 10 alınıyordu). Sığması için hücreler Paragraph ile sarmalanır (metin
-    alt satıra kayar, kesilmez) ve kolon genişlikleri sayfa enine bölünür.
-    Türkçe karakterler için gömülü DejaVuSans fontu kullanılır.
-    """
+        Landscape A4 PDF table report. Column parity with Excel/CSV: ALL columns
+        are included (only the first 10 used to be).
+        """
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=landscape(A4),
                             leftMargin=8*mm, rightMargin=8*mm,
@@ -169,13 +164,13 @@ def export_pdf(items, columns, title="Envanter Raporu") -> bytes:
         Spacer(1, 5*mm),
     ]
 
-    # Tüm kolonlar — hücreleri Paragraph ile sar ki uzun metin alt satıra kaysın
+    # All columns - wrap cells in Paragraph so long text wraps to the next line
     data = [[Paragraph(str(h), head_style) for h, _ in columns]]
     for item in items:
         data.append([Paragraph(_pdf_escape(v), cell_style)
                      for v in _row_values(item, columns)])
 
-    # Kolon genişliklerini sayfa enine eşit böl (toplam = kullanılabilir genişlik)
+    # Split column widths evenly across the page (total = usable width)
     n = len(columns)
     col_w = (doc.width / n) if n else doc.width
     table = Table(data, colWidths=[col_w] * n, repeatRows=1)
@@ -195,6 +190,6 @@ def export_pdf(items, columns, title="Envanter Raporu") -> bytes:
 
 
 def _pdf_escape(value) -> str:
-    """Paragraph içine güvenli metin: None→'', XML özel karakterlerini kaçır."""
+    """Safe text for Paragraph: None->'', escape XML special characters."""
     s = "" if value is None else str(value)
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")

@@ -1,40 +1,21 @@
 """
-Zombi VM skorlama motoru — çok metrikli korelasyon (false-positive azaltma).
-
-Yalnız CPU'ya bakmak yanıltıcıdır (idle ama gerekli servis; ya da CPU düşük
-ama disk/ağ aktif). Bu motor 4 metriği BİRLİKTE değerlendirir ve 0-100 risk
-puanı + sınıf üretir. Eksik metrik (ör. henüz disk/ağ örneği yok) varsa o
-boyut DEVRE DIŞI bırakılır ve güven düşürülür — eksik veri yüzünden bir VM
-asla "Kesin Zombi" damgası yemez.
-
-METRİKLER ve idle (zombi-yönlü) sinyali:
-  1) CPU      : pencere ortalaması < %3  VE  tepe (max) hiç %10'u geçmemiş.
-  2) RAM      : düz çizgi — (max-min)/ort küçük (taban bellekte sabit, dalgalanma yok).
-  3) Disk I/O : ~0 (saniyede birkaç KB'nin altı; aktif log/DB/transfer yok).
-  4) Ağ       : yalnız heartbeat/keep-alive (~birkaç KB/s); anlamlı veri akışı yok.
-
-SKOR = 100 * Σ(ağırlık_i * alt_skor_i) / Σ(mevcut ağırlıklar)
-  alt_skor_i ∈ [0,1] (1 = tam idle/zombi-yönlü). Mevcut olmayan metrik normalize
-  edilir (kalan metriklere ağırlık dağılır), böylece "kısmi veri" cezalandırmaz.
-
-SINIF:
-  - "Kesin Zombi"            : skor ≥ 80 VE güven = yüksek (CPU+RAM+(disk|ağ) + ≥7 gün)
-  - "Şüpheli (Sahibine Sor)" : skor ≥ 55  (ya da yüksek skor ama veri yetersiz)
-  - "Aktif"                  : skor < 55
+Zombie VM scoring engine - multi-metric correlation (false-positive reduction).
+CPU alone is misleading (an idle-CPU VM may be doing disk/network work);
+CPU, RAM variance, disk I/O and network are correlated over a 14-30 day window.
 """
 
-# Ağırlıklar (toplam 1.0). CPU en güçlü gösterge; korelasyon false-positive'i kırar.
+# Weights (sum 1.0). CPU is the strongest signal; correlation kills false positives.
 W_CPU, W_RAM, W_DISK, W_NET = 0.40, 0.20, 0.20, 0.20
 
-# Eşikler
-CPU_AVG_IDLE = 3.0      # % — altı tam idle
-CPU_AVG_TAPER = 8.0     # % — bu değerde CPU alt-skoru 0'a iner
-CPU_PEAK_OK = 10.0      # % — tepe bunu aşmışsa "kullanılıyor" sinyali
-CPU_PEAK_TAPER = 30.0   # % — tepe burada CPU alt-skorunu tamamen sıfırlar
-RAM_FLAT = 0.05         # (max-min)/ort ≤ %5 → düz çizgi
+# Thresholds
+CPU_AVG_IDLE = 3.0      # % - below this is fully idle
+CPU_AVG_TAPER = 8.0     # % - CPU sub-score reaches 0 at this value
+CPU_PEAK_OK = 10.0      # % - a peak above this signals "in use"
+CPU_PEAK_TAPER = 30.0   # % - a peak here zeroes the CPU sub-score entirely
+RAM_FLAT = 0.05         # (max-min)/avg <= 5% -> flat line
 RAM_TAPER = 0.20        # %20 dalgalanmada RAM alt-skoru 0
-DISK_IDLE_KBPS = 20.0   # KB/s — ~1 IOPS mertebesi; üstü aktivite
-NET_HEARTBEAT_KBPS = 10.0  # KB/s — yalnız keep-alive; üstü anlamlı trafik
+DISK_IDLE_KBPS = 20.0   # KB/s - roughly 1 IOPS; above = activity
+NET_HEARTBEAT_KBPS = 10.0  # KB/s - keep-alive only; above = meaningful traffic
 
 
 def _clamp(x, lo=0.0, hi=1.0):
@@ -44,11 +25,11 @@ def _clamp(x, lo=0.0, hi=1.0):
 def _cpu_sub(cpu_avg, cpu_max):
     if cpu_avg is None:
         return None
-    # ortalama düşükse yüksek; CPU_AVG_IDLE altı tam puan
+    # high when the average is low; full score below CPU_AVG_IDLE
     avg_sub = _clamp((CPU_AVG_TAPER - cpu_avg) / (CPU_AVG_TAPER - CPU_AVG_IDLE))
     if cpu_avg <= CPU_AVG_IDLE:
         avg_sub = 1.0
-    # tepe kapısı: peak %10'u aştıkça puanı kıs
+    # peak gate: shrink the score as the peak exceeds 10%
     if cpu_max is None:
         peak_gate = 1.0
     elif cpu_max <= CPU_PEAK_OK:
@@ -81,8 +62,8 @@ def _net_sub(net_kbps):
 
 def score_vm(*, cpu_avg=None, cpu_max=None, ram_avg_mb=None, ram_min_mb=None,
              ram_max_mb=None, net_kbps=None, diskio_kbps=None, days=0):
-    """Tek VM için zombi analizi. Dönen dict: score, klass, confidence, reasons,
-    subs (alt skorlar), has_io."""
+    """Zombie analysis for one VM.
+        Returns: score, klass, confidence, reasons, subs (sub-scores), has_io."""
     subs = {
         "cpu": (_cpu_sub(cpu_avg, cpu_max), W_CPU),
         "ram": (_ram_sub(ram_avg_mb, ram_min_mb, ram_max_mb), W_RAM),
@@ -94,7 +75,7 @@ def score_vm(*, cpu_avg=None, cpu_max=None, ram_avg_mb=None, ram_min_mb=None,
     den = sum(w for s, w in subs.values() if s is not None)
     score = round(100 * num / den) if den > 0 else 0
 
-    # Güven: veri günü + IO boyutunun varlığı
+    # Confidence: days of data + presence of IO metrics
     if days < 3 or den == 0:
         confidence = "düşük"
     elif days >= 7 and has_io:

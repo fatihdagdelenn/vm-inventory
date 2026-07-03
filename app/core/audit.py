@@ -1,9 +1,5 @@
-"""Denetim (audit) kaydı için ortak yardımcı.
-
-Tüm uç noktalar bu yardımcıyı kullanır; rol işlem anındaki kullanıcıdan,
-IP istekten otomatik yakalanır. Hedef (target) ve eski→yeni değerler
-isteğe bağlıdır ama değişiklik içeren işlemlerde doldurulması önerilir.
-"""
+"""Shared helper for audit records. All endpoints use it; the role comes
+from the acting user, the IP/User-Agent from the request."""
 from .. models import AuditLog
 
 

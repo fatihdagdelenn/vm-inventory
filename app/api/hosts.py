@@ -43,8 +43,8 @@ def get_host(host_id: int, db: Session = Depends(get_db),
     if not h:
         raise HTTPException(404, "Host bulunamadı")
     data = _host_to_dict(h)
-    # Modal mini tablosu için zengin VM listesi: ad, IP, güç durumu,
-    # anlık CPU/RAM kullanımı + deep-link için id. Çalışanlar önce, sonra ada göre.
+    # Rich VM list for the modal mini table: name, IP, power state,
+    # instant CPU/RAM usage + id for deep links. Running first, then by name.
     vms = sorted(h.vms, key=lambda v: (v.power_state != "running",
                                        (v.name or "").lower()))
     data["vms"] = [{

@@ -1,24 +1,13 @@
 """
-Google benzeri gelişmiş arama motoru.
+Google-like advanced search engine.
 
-Desteklenen söz dizimi:
-    ALAN ARAMALARI : ip:10.10.10.15  mac:00:50:56  os:windows  name:web
-                     vlan:100  cluster:production  host:esxi01  node:pve01
-                     status:running  datastore:ds01  tag:kritik  env:test
-                     platform:"Ankara vCenter"  location:ankara  owner:ali
-                     tools:running | tools:yok   (VMware Tools / QEMU Agent)
-    SAYISAL        : cpu:>4  cpu:>=8  ram:>=16 (GB)  ram:<4  disk:>500 (GB)
-    DIŞLAMA        : -os:windows  !cluster:test  -web01  (önüne '-' veya '!' koy)
-    ÇOKLU DEĞER    : os:windows,linux   status:running,suspended  (virgül = VEYA)
-    BOŞ DEĞER      : ip:yok  (IP'si alınamayan VM'ler)  owner:yok  tag:yok
-    SERBEST METİN  : alan belirtilmeyen kelimeler ad, IP, MAC, OS, cluster
-                     ve notlarda aranır
-    TIRNAKLAMA     : cluster:"Ankara Prod"  (boşluk içeren değerler)
-
-Kriterler boşlukla birleştirilir (VE mantığı):
-    cluster:production os:linux status:running ram:>=16 -tag:test
-
-Tüm sorgular LOKAL veritabanına gider - canlı API çağrısı yapılmaz.
+Supported syntax:
+  FIELD SEARCHES : ip:10.10.10.15  mac:00:50:56  os:windows  cluster:prod
+  NUMERIC        : cpu:>4  ram:>=16  disk:<100
+  EMPTY VALUES   : ip:yok  owner:yok  tag:yok
+  EXCLUSION      : -cluster:test  !os:windows
+  OR             : os:ubuntu,centos
+  FREE TEXT      : plain words search across common fields (AND)
 """
 import re
 from sqlalchemy import or_, and_, not_, func
@@ -29,22 +18,21 @@ from ..models import VirtualMachine, Host, Tag, Platform
 
 def _like(col, pattern: str):
     """
-    NULL-güvenli ilike: kolon NULL ise '' kabul edilir.
-    Bu olmadan dışlama (-alan:değer) NULL satırları yanlışlıkla eler
-    (SQL üç değerli mantık: NOT NULL = NULL).
-    """
+        NULL-safe ilike: a NULL column is treated as ''. Without this, exclusion
+        (-field:value) would wrongly drop NULL rows.
+        """
     return func.coalesce(col, "").ilike(pattern)
 
-# token deseni: [-/!]alan:"tırnaklı değer" | [-/!]alan:değer | [-/!]kelime
+# token pattern: [-/!]field:"quoted value" | [-/!]field:value | [-/!]word
 TOKEN_RE = re.compile(r'([-!]?)(\w+):"([^"]+)"|([-!]?)(\w+):(\S+)|([-!]?)(\S+)')
 
-# sayısal karşılaştırma deseni: >=16  <4  >100  =8  16
+# numeric comparison pattern: >=16  <4  >100  =8  16
 NUM_RE = re.compile(r'^(>=|<=|>|<|=)?(\d+(?:\.\d+)?)$')
 
-# "boş" anlamına gelen değerler
+# values that mean "empty"
 EMPTY_WORDS = ("yok", "bos", "boş", "none", "empty", "null")
 
-# Basit ilike alanları: arama alanı -> model kolonu
+# Simple ilike fields: search field -> model column
 FIELD_MAP = {
     "name": VirtualMachine.name,
     "vm": VirtualMachine.name,
@@ -75,27 +63,27 @@ FIELD_MAP = {
     "network": VirtualMachine.networks,
 }
 
-# Sayısal alanlar: alan -> (kolon, çarpan)  — ram GB cinsinden girilir, MB saklanır
+# Numeric fields: field -> (column, multiplier) - ram is entered in GB, stored MB
 NUMERIC_MAP = {
     "cpu": (VirtualMachine.cpu_count, 1),
     "ram": (VirtualMachine.ram_mb, 1024),
     "disk": (VirtualMachine.disk_total_gb, 1),
 }
 
-# OS ailesi takma adları — "os:linux" tüm dağıtımları yakalar
-# (dashboard'daki OS dağılım sınıflandırmasıyla tutarlı)
+# OS family aliases - "os:linux" catches all distros
+# (consistent with the dashboard OS distribution classification)
 OS_ALIASES = {
     "linux": ("linux", "ubuntu", "centos", "rhel", "red hat", "debian",
               "suse", "fedora", "alma", "rocky", "oracle linux", "l26"),
     "windows": ("windows", "win"),
 }
 
-# Güç durumu eşlemeleri (TR karşılıkları dahil)
+# Power state mappings (incl. Turkish aliases)
 STATUS_MAP = {"calisan": "running", "çalışan": "running", "açık": "running",
               "acik": "running", "kapali": "stopped", "kapalı": "stopped",
               "askida": "suspended", "askıda": "suspended"}
 
-# Tools/Agent durumu eşlemeleri
+# Tools/Agent state mappings
 TOOLS_MAP = {"running": "guestToolsRunning", "calisan": "guestToolsRunning",
              "var": "guestToolsRunning", "ok": "guestToolsRunning",
              "yok": "guestToolsNotRunning", "notrunning": "guestToolsNotRunning",
@@ -103,12 +91,12 @@ TOOLS_MAP = {"running": "guestToolsRunning", "calisan": "guestToolsRunning",
 
 
 def parse_query(q: str):
-    """Sorguyu (negatif?, alan, değer) ve serbest metin listelerine ayır."""
+    """Split the query into (negative?, field, value) and free-text lists."""
     fields, free_text = [], []
     for m in TOKEN_RE.finditer(q or ""):
-        if m.group(2):          # [-]alan:"tırnaklı"
+        if m.group(2):          # [-]field:"quoted"
             fields.append((bool(m.group(1)), m.group(2).lower(), m.group(3)))
-        elif m.group(5):        # [-]alan:değer
+        elif m.group(5):        # [-]field:value
             fields.append((bool(m.group(4)), m.group(5).lower(), m.group(6)))
         elif m.group(8):        # [-]kelime
             word = m.group(8)
@@ -117,21 +105,21 @@ def parse_query(q: str):
 
 
 def _ilike_or(column, value: str):
-    """Virgülle ayrılmış değerler için OR'lu ilike koşulu üret."""
+    """Build an OR'ed ilike condition for comma-separated values."""
     parts = [p.strip() for p in value.split(",") if p.strip()]
     return or_(*[_like(column, f"%{p}%") for p in parts]) if parts else None
 
 
 def _field_condition(field: str, value: str):
     """
-    Tek bir alan:değer çiftini SQLAlchemy koşuluna çevir.
-    Dönüş None ise alan tanınmadı demektir (serbest metne düşülür).
-    """
+        Convert one field:value pair into a SQLAlchemy condition.
+        A None return means the field was not recognized (falls back to free text).
+        """
     vlow = value.lower()
 
-    # ---- Boş değer aramaları: ip:yok, owner:yok, tag:yok ----
-    # NOT: status/tools gibi özel eşlemeli alanlara uygulanmaz
-    # (tools:yok "agent kurulu değil" demektir, "alan boş" değil)
+    # ---- Empty-value searches: ip:yok, owner:yok, tag:yok ----
+    # NOTE: not applied to specially-mapped fields like status/tools
+    # (tools:yok means "agent not installed", not "field empty")
     if vlow in EMPTY_WORDS and field not in ("status", "tools", "agent"):
         if field == "tag":
             return ~VirtualMachine.tags.any()
@@ -142,7 +130,7 @@ def _field_condition(field: str, value: str):
             return VirtualMachine.host_id.is_(None)
         return None
 
-    # ---- Sayısal karşılaştırmalar: cpu:>4, ram:>=16, disk:<100 ----
+    # ---- Numeric comparisons: cpu:>4, ram:>=16, disk:<100 ----
     if field in NUMERIC_MAP:
         m = NUM_RE.match(value)
         if m:
@@ -153,15 +141,15 @@ def _field_condition(field: str, value: str):
                     "<=": col <= num, "=": col == num}[op]
         return None
 
-    # ---- İlişkili tablolar ----
-    if field in ("host", "node"):       # üzerinde çalıştığı host/node adı
+    # ---- Related tables ----
+    if field in ("host", "node"):       # the host/node it runs on
         cond = _ilike_or(Host.name, value)
         return VirtualMachine.host_ref.has(cond) if cond is not None else None
     if field == "tag":
         parts = [p.strip() for p in value.split(",") if p.strip()]
         return or_(*[VirtualMachine.tags.any(_like(Tag.name, f"%{p}%"))
                      for p in parts])
-    if field == "platform":             # platform görünen adı
+    if field == "platform":             # platform display name
         cond = _ilike_or(Platform.name, value)
         return VirtualMachine.platform.has(cond) if cond is not None else None
     if field in ("location", "lokasyon"):
@@ -171,14 +159,14 @@ def _field_condition(field: str, value: str):
         cond = _ilike_or(Platform.type, value)
         return VirtualMachine.platform.has(cond) if cond is not None else None
 
-    # ---- Özel eşlemeli alanlar ----
+    # ---- Specially-mapped fields ----
     if field == "status":
         parts = [STATUS_MAP.get(p.strip().lower(), p.strip().lower())
                  for p in value.split(",") if p.strip()]
         return or_(*[_like(VirtualMachine.power_state, f"%{p}%") for p in parts])
     if field in ("tools", "agent"):
         if vlow in ("yok", "notrunning", "kapali", "kapalı", "none"):
-            # Agent/Tools kurulu değil: NotRunning, unknown veya boş
+            # Agent/Tools not installed: NotRunning, unknown or empty
             return or_(_like(VirtualMachine.tools_status, "%NotRunning%"),
                        _like(VirtualMachine.tools_status, "%unknown%"),
                        func.coalesce(VirtualMachine.tools_status, "") == "")
@@ -187,7 +175,7 @@ def _field_condition(field: str, value: str):
     if field == "os":
         conds = []
         for part in (p.strip().lower() for p in value.split(",") if p.strip()):
-            if part in OS_ALIASES:      # aile araması: tüm dağıtım adlarıyla eşle
+            if part in OS_ALIASES:      # family search: match all distro names
                 conds.append(or_(*[_like(VirtualMachine.guest_os, f"%{a}%")
                                    for a in OS_ALIASES[part]]))
             else:
@@ -195,8 +183,8 @@ def _field_condition(field: str, value: str):
         return or_(*conds) if conds else None
 
     # ---- OS ailesi (tek token): osfam:windows, osfam:other … ----
-    # Dashboard pastası ve filtre menüsü bu alanı kullanır; aile mantığı
-    # core/os_family.py'de tanımlıdır (ilk-eşleşen kazanır → exclude listesi).
+    # The dashboard pie and filter menu use this field; family logic lives
+    # in core/os_family.py (first-match wins -> exclude list).
     if field in ("osfam", "osailesi", "os_family", "osaile"):
         from .os_family import match_keywords
         inc, exc = match_keywords(value)
@@ -210,7 +198,7 @@ def _field_condition(field: str, value: str):
                      for k in exc)
         return and_(*conds) if conds else None
 
-    # ---- Basit ilike alanları ----
+    # ---- Simple ilike fields ----
     if field in FIELD_MAP:
         return _ilike_or(FIELD_MAP[field], value)
 
@@ -218,7 +206,7 @@ def _field_condition(field: str, value: str):
 
 
 def apply_vm_search(query: Query, q: str) -> Query:
-    """VM sorgusuna arama filtrelerini uygula (VE mantığı, '-' ile dışlama)."""
+    """Apply search filters to the VM query (AND logic, '-' excludes)."""
     fields, free_text = parse_query(q)
 
     for negative, field, value in fields:

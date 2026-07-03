@@ -1,24 +1,7 @@
 """
-Topoloji (Infrastructure Topology Map) API'si.
-
-Cytoscape.js'in beklediği {nodes:[{data:{...}}], edges:[{data:{...}}]} biçiminde
-veri üretir. Performans için KADEMELİ (lazy) yapı:
-
-  GET /api/topology
-      → Platform (kök) → Cluster (compound/bounding box) → Host (donut düğüm).
-        VM'LER DAHİL DEĞİL (500+ VM'i önden basmamak için). Her host'ta vm_count.
-
-  GET /api/topology/host/{host_id}/vms?layers=storage,network
-      → O host'un VM düğümleri + host→VM kenarları (kullanıcı host'a tıklayınca).
-        layers=storage → datastore düğümleri + VM→datastore kenarları
-        layers=network → VLAN düğümleri + VM→VLAN kenarları
-        (Spaghetti efektini önlemek için katmanlar isteğe bağlı.)
-
-  GET /api/topology/stream  (SSE)
-      → Tam senkronizasyon bittiğinde "sync" olayı yayınlar; istemci haritayı
-        yumuşakça tazeler / göç (migrate) animasyonunu tetikler.
-
-Tüm veriler LOKAL DB'den gelir; canlı API çağrısı yapılmaz (hızlı erişim).
+Topology (Infrastructure Topology Map) API.
+Returns the {nodes:[{data:{...}}], edges:[{data:{...}}]} shape Cytoscape.js
+expects. VM nodes load lazily (per host) to keep big environments fast.
 """
 import json
 import asyncio
@@ -58,7 +41,7 @@ def _host_node(h: Host, vm_count: int, cluster_id: str) -> dict:
 
 @router.get("")
 def topology(db: Session = Depends(get_db), user=Depends(get_current_user)):
-    """Platform → Cluster → Host hiyerarşisi (VM'ler lazy; burada yok)."""
+    """Platform -> Cluster -> Host hierarchy (VMs are lazy; not here)."""
     hidden = set(hidden_cluster_names(db))
     nodes, edges = [], []
 
@@ -68,14 +51,14 @@ def topology(db: Session = Depends(get_db), user=Depends(get_current_user)):
             "id": f"p{p.id}", "label": p.name, "type": "platform",
             "ptype": p.type or "", "collapsed": False}})
 
-    # host başına VM sayısı (tek sorgu)
+    # VM count per host (single query)
     vm_counts = dict(
         db.query(VirtualMachine.host_id, func.count(VirtualMachine.id))
           .filter(VirtualMachine.is_template == False)              # noqa: E712
           .group_by(VirtualMachine.host_id).all())
 
     seen_clusters = set()
-    cluster_hosts = {}          # cid -> [host node id, ...]  (sunucular arası ağ için)
+    cluster_hosts = {}          # cid -> [host node id, ...]  (for the inter-server network)
     host_total = 0
     for h in db.query(Host).all():
         if h.platform_id not in platforms:
@@ -93,7 +76,7 @@ def topology(db: Session = Depends(get_db), user=Depends(get_current_user)):
         cluster_hosts.setdefault(cid, []).append(f"h{h.id}")
         host_total += 1
 
-    # Sunucular arası ağ bağlantıları: aynı cluster'daki host'ları halka oluştur
+    # Inter-server network links: ring the hosts within one cluster
     # (tam mesh yerine N kenar → spaghetti olmaz; 2 host'ta tek kenar, 1'de yok).
     for cid, hids in cluster_hosts.items():
         n = len(hids)
@@ -113,14 +96,14 @@ def topology(db: Session = Depends(get_db), user=Depends(get_current_user)):
 @router.get("/host/{host_id}/vms")
 def host_vms(host_id: int, layers: str = "",
              db: Session = Depends(get_db), user=Depends(get_current_user)):
-    """Bir host'un VM düğümleri + kenarları (lazy expand). İsteğe bağlı katmanlar."""
+    """A host's VM nodes + edges (lazy expand). Optional layers."""
     h = db.query(Host).filter_by(id=host_id).first()
     if not h:
         raise HTTPException(status_code=404, detail="Host bulunamadı")
     want = set(s.strip() for s in (layers or "").split(",") if s.strip())
     hid = f"h{host_id}"
     cl = h.cluster or _NO_CLUSTER
-    cid = f"c{h.platform_id}_{cl}"           # VM'ler host ile aynı cluster kutusunda
+    cid = f"c{h.platform_id}_{cl}"           # VMs share the host's cluster box
     ptype = (db.query(Platform.type).filter_by(id=h.platform_id).scalar() or "")
     nodes, edges = [], []
     ds_seen, net_seen = set(), set()
@@ -133,7 +116,7 @@ def host_vms(host_id: int, layers: str = "",
         vid = f"v{v.id}"
         ip = (v.ip_addresses or "").split(",")[0].strip()
         agent = _agent_state(v.tools_status, ptype)       # running | stopped | none
-        access = "ok" if agent == "running" else "no"     # erişim: yeşil/kırmızı kablo
+        access = "ok" if agent == "running" else "no"     # reachability: green/red cable
         nodes.append({"data": {
             "id": vid, "label": v.name or f"vm-{v.id}", "type": "vm",
             "parent": cid, "host": hid, "db_id": v.id,
@@ -170,10 +153,8 @@ def host_vms(host_id: int, layers: str = "",
 @router.get("/locate")
 def locate(q: str = "", db: Session = Depends(get_db),
            user=Depends(get_current_user)):
-    """Ada göre VM ara → arama-odaklanma için host/cluster yolunu döndür.
-
-    İstemci bu bilgiyle ilgili host'u (gerekirse lazy) açıp VM düğümüne zoom yapar.
-    """
+    """Search a VM by name -> return the host/cluster path for focus.
+        The client uses it to (lazily) expand the right host."""
     q = (q or "").strip()
     if not q:
         return {"matches": []}
@@ -194,9 +175,9 @@ def locate(q: str = "", db: Session = Depends(get_db),
 
 @router.get("/stream")
 async def stream(request: Request, user=Depends(get_current_user)):
-    """SSE: tam senkronizasyon bitince 'sync' olayı yayınlar (canlı tazeleme)."""
+    """SSE: emits a 'sync' event when a full sync finishes (live refresh)."""
     async def gen():
-        last = events.latest_seq()          # mevcut andan başla (eskiyi tekrar etme)
+        last = events.latest_seq()          # start from now (don't replay the past)
         yield "retry: 5000\n\n"
         while True:
             if await request.is_disconnected():
@@ -205,7 +186,7 @@ async def stream(request: Request, user=Depends(get_current_user)):
                 last = seq
                 kind = ev.get("kind", "message")
                 yield f"event: {kind}\ndata: {json.dumps(ev)}\n\n"
-            yield ": ping\n\n"              # heartbeat (proxy timeout'larına karşı)
+            yield ": ping\n\n"              # heartbeat (against proxy timeouts)
             await asyncio.sleep(2)
 
     return StreamingResponse(gen(), media_type="text/event-stream",

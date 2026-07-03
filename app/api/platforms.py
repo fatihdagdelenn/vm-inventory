@@ -1,8 +1,7 @@
 """
-Platform yönetimi: vCenter / Proxmox bağlantıları (sadece admin).
-- Kimlik bilgileri kaydedilirken Fernet ile şifrelenir, API yanıtlarında ASLA dönmez.
-- Bağlantı testi endpoint'i kaydetmeden önce doğrulama yapar.
-- Manuel senkronizasyon arka plan görevi olarak tetiklenir.
+Platform management: vCenter / Proxmox connections (admin only).
+- Credentials are Fernet-encrypted at rest.
+- Deleting a platform removes its related inventory in FK-safe order.
 """
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
@@ -21,7 +20,7 @@ router = APIRouter(prefix="/api/platforms", tags=["platforms"])
 
 
 def _platform_to_dict(p: Platform) -> dict:
-    """Kimlik bilgileri HARİÇ platform bilgisi."""
+    """Platform info WITHOUT credentials."""
     return {"id": p.id, "name": p.name, "type": p.type, "host": p.host,
             "port": p.port, "verify_ssl": p.verify_ssl, "auth_method": p.auth_method,
             "username": p.username, "token_name": p.token_name,
@@ -35,7 +34,7 @@ def _platform_to_dict(p: Platform) -> dict:
 @router.get("")
 def list_platforms(db: Session = Depends(get_db),
                    user: User = Depends(get_current_user)):
-    """API bağlantı durum ekranı için platform listesi (tüm roller görebilir)."""
+    """Platform list for the connection-status screen (all roles)."""
     return {"items": [_platform_to_dict(p) for p in db.query(Platform).all()]}
 
 
@@ -83,7 +82,7 @@ def update_platform(platform_id: int, request: Request, payload: dict = Body(...
         p.verify_ssl = bool(payload["verify_ssl"])
     if "enabled" in payload:
         p.enabled = bool(payload["enabled"])
-    if payload.get("password"):  # boşsa eski parola korunur
+    if payload.get("password"):  # blank keeps the old password
         p.password_encrypted = encrypt_secret(payload["password"])
     if payload.get("token_value"):
         p.token_value_encrypted = encrypt_secret(payload["token_value"])
@@ -129,9 +128,9 @@ def test_connection(request: Request, payload: dict = Body(...),
                     db: Session = Depends(get_db),
                     user: User = Depends(require_role("admin"))):
     """
-    Bağlantı testi ekranı: kaydetmeden önce verilen bilgilerle bağlantıyı dener.
-    Mevcut platform için id verilirse kayıtlı (şifreli) bilgiler kullanılır.
-    """
+        Connection-test screen: tries the given credentials before saving.
+        With an id, stored secrets fill any blanks (edit flow).
+        """
     validate_csrf(request, payload.pop("csrf_token", None))
     pid = payload.get("id")
     if pid:
@@ -165,7 +164,7 @@ def test_connection(request: Request, payload: dict = Body(...),
 def trigger_sync(platform_id: int, request: Request, background: BackgroundTasks,
                  db: Session = Depends(get_db),
                  user: User = Depends(require_role("operator"))):
-    """Tek platform için manuel senkronizasyon (arka planda çalışır)."""
+    """Manual sync for one platform (runs in the background)."""
     validate_csrf(request, None)
     platform = db.get(Platform, platform_id)
     if not platform:
@@ -180,7 +179,7 @@ def trigger_sync(platform_id: int, request: Request, background: BackgroundTasks
 def trigger_sync_all(request: Request, background: BackgroundTasks,
                      db: Session = Depends(get_db),
                      user: User = Depends(require_role("operator"))):
-    """Toplu veri yenileme: tüm platformları arka planda senkronize et."""
+    """Bulk refresh: sync all platforms in the background."""
     validate_csrf(request, None)
     background.add_task(sync_all_platforms)
     log_audit(db, user, "manual_sync_all", request=request)
@@ -191,7 +190,7 @@ def trigger_sync_all(request: Request, background: BackgroundTasks,
 @router.get("/{platform_id}/logs")
 def sync_logs(platform_id: int, db: Session = Depends(get_db),
               user: User = Depends(get_current_user)):
-    """API hata/senkronizasyon logları."""
+    """API error / sync logs."""
     logs = db.query(SyncLog).filter_by(platform_id=platform_id)\
              .order_by(SyncLog.started_at.desc()).limit(50).all()
     return {"items": [{"started_at": to_iso(l.started_at),

@@ -1,17 +1,6 @@
-"""Snapshot listesi API'si — zengin arama, sıralama, yaş bilgisi.
-
-Arama söz dizimi (VM ekranına benzer, boşlukla VE):
-    vm:web   snap:upgrade   platform:"vcenter merkez"   parent:base   desc:yedek
-    age:>30  age:<7  age:>=14         (yaş, gün)
-    current:yes | current:no          (aktif/çalışılan snapshot)
-    parent:yok                        (üst snapshot'ı olmayan kök snapshot'lar)
-    -snap:test   -current:yes         (dışlama, önüne '-')
-    snap:a,b                          (virgül = VEYA)
-    serbest kelimeler → VM/ad/açıklama/üst/platform içinde aranır
-
-Snapshot sayısı genelde azdır; esnek (yaş karşılaştırmalı) filtreleme bu yüzden
-Python tarafında yapılır.
-"""
+"""Snapshot list API - rich search, sorting, age info.
+Search syntax (like the VM screen, space = AND):
+  vm:web  snap:upgrade  age:>30  current:yes  parent:none  -snap:test"""
 import re
 from datetime import datetime
 
@@ -43,9 +32,9 @@ FALSE = {"no", "hayir", "hayır", "false", "0", "yok"}
 def _parse(q: str):
     toks = []
     for m in TOKEN_RE.finditer(q or ""):
-        if m.group(2):      # alan:"tırnaklı"
+        if m.group(2):      # field:"quoted"
             toks.append((m.group(1) == "-", m.group(2).lower(), m.group(3)))
-        elif m.group(5):    # alan:değer
+        elif m.group(5):    # field:value
             toks.append((m.group(4) == "-", m.group(5).lower(), m.group(6)))
         elif m.group(8):    # serbest kelime
             toks.append((m.group(7) == "-", None, m.group(8)))
@@ -120,7 +109,7 @@ def list_snapshots(q: str = "", sort: str = "created_at", order: str = "asc",
     rows = (db.query(Snapshot, Platform.name, Platform.type, VirtualMachine.cluster)
               .outerjoin(Platform, Snapshot.platform_id == Platform.id)
               .outerjoin(VirtualMachine, Snapshot.vm_id == VirtualMachine.id).all())
-    # Gizlenen cluster'lara ait VM'lerin snapshot'larını dışla (dashboard/VM listesiyle tutarlı)
+    # Exclude snapshots of VMs in hidden clusters (consistent with dashboard/VM list)
     from .clusters import hidden_cluster_names, NONE_SENTINEL
     hidden = set(hidden_cluster_names(db))
     if hidden:

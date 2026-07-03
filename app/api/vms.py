@@ -1,7 +1,7 @@
 """
-VM API'si: sunucu taraflı sayfalama + arama + gruplama.
-500+ VM için DataTables server-side processing ile çalışır;
-tüm sorgular lokal veritabanına gider.
+VM API: server-side paging + search + grouping.
+Works with DataTables server-side processing for 500+ VMs; search runs on
+the local DB (never against the platforms).
 """
 import json
 from fastapi import APIRouter, Depends, HTTPException, Request, Body
@@ -24,8 +24,8 @@ SORTABLE = {"name": VirtualMachine.name, "power_state": VirtualMachine.power_sta
             "ram_mb": VirtualMachine.ram_mb, "cpu_count": VirtualMachine.cpu_count,
             "disk_total_gb": VirtualMachine.disk_total_gb, "vmid": VirtualMachine.vmid,
             "pool": VirtualMachine.pool}
-# Metin kolonları büyük/küçük harf duyarsız (gerçek alfabetik) sıralanır;
-# aksi halde DB bayt/ASCII sırasıyla dizer (önce büyük harfler → alfabetik görünmez)
+# Text columns sort case-insensitively (true alphabetical); otherwise the DB
+# sorts by byte/ASCII order (uppercase first -> not alphabetical)
 CASE_INSENSITIVE = {"name", "cluster", "guest_os", "vmid", "pool"}
 
 
@@ -33,10 +33,10 @@ def _agent_state(ts, ptype) -> str:
     """3 durumlu agent/Tools durumu: running | stopped | none."""
     t = (ts or "").lower()
     if "running" in t and "notrunning" not in t:
-        return "running"                       # kurulu + çalışıyor
+        return "running"                       # installed + running
     if ptype == "vcenter" and "notrunning" in t:
-        return "stopped"                       # Tools kurulu ama çalışmıyor
-    return "none"                              # kurulu değil / bilinmiyor
+        return "stopped"                       # Tools installed but not running
+    return "none"                              # not installed / unknown
 
 
 def _vm_to_dict(vm: VirtualMachine) -> dict:
@@ -75,15 +75,11 @@ def list_vms(q: str = "", page: int = 1, per_page: int = 50,
              include_hidden: bool = False,
              db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """
-    Arama + sayfalama. q parametresi 'ip:10.10.10.15 vlan:100' söz dizimini destekler.
-    group_by verilirse (cluster/os/vlan/environment/location/tag) grup özetleri döner.
-
-    Gizli cluster'lardaki VM'ler varsayılan olarak listelenmez. Dahil etmek için:
-    - include_hidden=1 parametresi (gelişmiş paneldeki onay kutusu), veya
-    - sorguda doğrudan cluster: kriteri kullanmak (açıkça o cluster'ı
-      arayan kullanıcıya sonuç gizlenmez).
-    """
-    per_page = min(per_page, 200)  # tek istekte aşırı veri çekilmesin
+        Search + paging. The q parameter supports the 'ip:10.10.10.15 vlan:100'
+        syntax. With group_by (cluster/os/vlan/environment/location/tag) the
+        matching VMs are returned as groups.
+        """
+    per_page = min(per_page, 200)  # don't pull excessive data in one request
     query = db.query(VirtualMachine).options(
         joinedload(VirtualMachine.host_ref),
         joinedload(VirtualMachine.platform),
@@ -119,11 +115,11 @@ def list_vms(q: str = "", page: int = 1, per_page: int = 50,
 
     total = query.count()
     if sort == "host":
-        # İlişkili host adına göre (büyük/küçük harf duyarsız) sırala
+        # Sort by the related host name (case-insensitive)
         query = query.outerjoin(Host, VirtualMachine.host_id == Host.id)
         sort_col = func.lower(func.coalesce(Host.name, ""))
     elif sort == "platform":
-        # İlişkili platform tipine göre (VMware/Proxmox) sırala
+        # Sort by the related platform type (VMware/Proxmox)
         from ..models import Platform
         query = query.outerjoin(Platform, VirtualMachine.platform_id == Platform.id)
         sort_col = func.lower(func.coalesce(Platform.type, ""))
@@ -141,12 +137,10 @@ def vm_facets(include_hidden: bool = False,
               db: Session = Depends(get_db),
               user: User = Depends(get_current_user)):
     """
-    Gelişmiş filtre paneli için ayrık değer listeleri (sayılarıyla).
-    Tek istekte: cluster, host, platform, ortam, durum, VLAN, OS ailesi, etiket.
-    NOT: "/{vm_id}" rotasından ÖNCE tanımlı olmalı, yoksa 'facets' int sanılır.
-    Cluster listesi her zaman tam döner (yanında gizli işaretiyle);
-    diğer sayımlar include_hidden=0 iken gizli cluster'ları dışlar.
-    """
+        Distinct value lists (with counts) for the advanced filter panel.
+        One request: cluster, host, platform, environment, status, OS family,
+        VLAN, tag, folder.
+        """
     base = db.query(VirtualMachine).filter_by(is_template=False)
     from .clusters import hidden_cluster_names, hidden_vm_filter
     hidden = hidden_cluster_names(db)
@@ -161,7 +155,7 @@ def vm_facets(include_hidden: bool = False,
         return sorted([{"key": r[0], "count": r[1]} for r in rows if r[0]],
                       key=lambda x: x["key"])
 
-    # Host adları (join gerekir)
+    # Host names (join required)
     host_rows = db.query(Host.name, func.count(VirtualMachine.id))\
                   .join(VirtualMachine, VirtualMachine.host_id == Host.id)\
                   .filter(VirtualMachine.is_template == False)\
@@ -174,7 +168,7 @@ def vm_facets(include_hidden: bool = False,
                   .filter(VirtualMachine.is_template == False)\
                   .group_by(Pf.name).all()
 
-    # VLAN'lar virgüllü saklanır -> Python'da ayrıştır
+    # VLANs are stored comma-separated -> parse in Python
     vlan_counts = {}
     for (vlans,) in base.with_entities(VirtualMachine.vlans).all():
         for v in (vlans or "").split(","):
@@ -182,7 +176,7 @@ def vm_facets(include_hidden: bool = False,
             if v:
                 vlan_counts[v] = vlan_counts.get(v, 0) + 1
 
-    # OS ailesi (ayrıntılı: Windows / Ubuntu / Debian / Red Hat / SUSE / …)
+    # OS family (detailed: Windows / Ubuntu / Debian / Red Hat / SUSE / ...)
     os_rows = base.with_entities(
         VirtualMachine.guest_os, func.count(VirtualMachine.id))\
         .group_by(VirtualMachine.guest_os).all()
@@ -192,7 +186,7 @@ def vm_facets(include_hidden: bool = False,
     tag_rows = db.query(Tag.name, func.count(VirtualMachine.id))\
                  .join(Tag.vms).group_by(Tag.name).all()
 
-    # Cluster listesi: tam envanterden, gizli işaretiyle
+    # Cluster list: from the full inventory, with a hidden flag
     full_base = db.query(VirtualMachine).filter_by(is_template=False)
     cluster_rows = full_base.with_entities(
         VirtualMachine.cluster, func.count(VirtualMachine.id))\
@@ -242,7 +236,7 @@ def get_vm(vm_id: int, db: Session = Depends(get_db),
 def update_vm_meta(vm_id: int, request: Request, payload: dict = Body(...),
                    db: Session = Depends(get_db),
                    user: User = Depends(require_role("operator"))):
-    """Manuel alanları güncelle: not, sahip, ortam, etiketler (operator+)."""
+    """Update manual fields: note, owner, environment, tags (operator+)."""
     validate_csrf(request, payload.pop("csrf_token", None))
     vm = db.get(VirtualMachine, vm_id)
     if not vm:
@@ -259,7 +253,7 @@ def update_vm_meta(vm_id: int, request: Request, payload: dict = Body(...),
     if "environment" in payload and payload["environment"] in \
             ("production", "test", "development"):
         vm.environment = payload["environment"]
-    if "tags" in payload:  # etiket adları listesi; yoksa oluşturulur
+    if "tags" in payload:  # tag name list; created when missing
         tags = []
         for name in payload["tags"]:
             name = name.strip()

@@ -1,8 +1,6 @@
-"""Genel uygulama ayarları için yardımcılar (AppSetting key-value tablosu).
-
-Çalışma zamanında arayüzden değiştirilebilen ayarları okur/yazar; kayıt yoksa
-verilen varsayılana (genelde .env değeri) düşer.
-"""
+"""Helpers for general app settings (the AppSetting key-value table).
+Holds settings changeable from the UI at runtime (e.g. sync intervals);
+.env values act as defaults."""
 from ..models import AppSetting
 
 

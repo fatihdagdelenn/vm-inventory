@@ -1,11 +1,8 @@
 """
-Arka plan zamanlayıcısı (APScheduler).
-
-Performans stratejisi:
-- vCenter/Proxmox API'leri SADECE buradaki zamanlanmış görevlerle sorgulanır.
-- Sonuçlar lokal veritabanına yazılır (cache).
-- Kullanıcı aramaları/sayfaları hiçbir zaman canlı API çağrısı tetiklemez.
-- Varsayılan aralık SYNC_INTERVAL_MINUTES (15 dk), .env'den ayarlanabilir.
+Background scheduler (APScheduler).
+Performance strategy:
+- vCenter/Proxmox APIs are hit ONLY by the scheduled jobs here (and manual
+  refresh); user searches always read the local DB.
 """
 import logging
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -15,24 +12,24 @@ logger = logging.getLogger("scheduler")
 
 
 def _scheduler_tz() -> str:
-    """Yapılandırılan TZ adını döndür; geçerli değilse UTC'ye düş."""
+    """Return the configured TZ name; fall back to UTC when invalid."""
     tz = get_settings().app_timezone
     try:
         from zoneinfo import ZoneInfo
-        ZoneInfo(tz)        # ad gerçekten çözülebiliyor mu?
+        ZoneInfo(tz)        # can the name actually be resolved?
         return tz
     except Exception:
-        logger.warning("Geçersiz APP_TIMEZONE=%r, UTC kullanılıyor", tz)
+        logger.warning("Invalid APP_TIMEZONE=%r, using UTC", tz)
         return "UTC"
 
 
-# Cron tabanlı zamanlanmış raporların doğru YEREL saatte çalışması için
-# zamanlayıcı uygulama zaman dilimiyle kurulur (eskiden UTC idi).
+# The scheduler is built with the app timezone so cron-based scheduled
+# reports run at the correct LOCAL time (used to be UTC).
 scheduler = BackgroundScheduler(timezone=_scheduler_tz())
 
 
 def _db_intervals():
-    """Senkronizasyon aralıklarını DB'den oku; kayıt yoksa .env varsayılanına düş."""
+    """Read sync intervals from the DB; fall back to .env defaults."""
     settings = get_settings()
     full, usage = settings.sync_interval_minutes, settings.usage_sync_interval_minutes
     try:
@@ -45,22 +42,22 @@ def _db_intervals():
         finally:
             db.close()
     except Exception as exc:
-        logger.warning("Aralıklar DB'den okunamadı, varsayılan kullanılıyor: %s", exc)
+        logger.warning("Could not read intervals from DB, using defaults: %s", exc)
     return full, usage
 
 
 def reschedule_sync(full_min=None, usage_min=None):
-    """Aralık ayarı arayüzden değişince işleri yeniden zamanla (yeniden başlatmadan)."""
+    """Reschedule jobs when an interval changes in the UI (no restart)."""
     if full_min:
         scheduler.reschedule_job("sync_all", trigger="interval", minutes=int(full_min))
     if usage_min:
         scheduler.reschedule_job("usage_sync", trigger="interval", minutes=int(usage_min))
-    logger.info("Senkronizasyon yeniden zamanlandı: tam=%s dk, kullanım=%s dk",
+    logger.info("Sync rescheduled: full=%s min, usage=%s min",
                 full_min, usage_min)
 
 
 def start_scheduler():
-    """Uygulama açılışında çağrılır; periyodik senkronizasyon görevini kurar."""
+    """Called on app startup; installs the periodic sync jobs."""
     from ..services.sync_service import sync_all_platforms, sync_usage_all
 
     full_min, usage_min = _db_intervals()
@@ -69,12 +66,12 @@ def start_scheduler():
         trigger="interval",
         minutes=full_min,
         id="sync_all",
-        max_instances=1,        # çakışan senkronizasyonları engelle
-        coalesce=True,          # kaçırılan çalıştırmaları birleştir
+        max_instances=1,        # prevent overlapping syncs
+        coalesce=True,          # coalesce missed runs
         replace_existing=True,
     )
-    # Hafif kullanım tazelemesi: tam senkronizasyondan bağımsız, çok daha sık.
-    # Tek/az API çağrısı yaptığı için canlı ortama yük bindirmez.
+    # Lightweight usage refresh: independent of the full sync, much more frequent.
+    # One/few API calls, so it puts no load on the live environment.
     scheduler.add_job(
         sync_usage_all,
         trigger="interval",
@@ -84,9 +81,9 @@ def start_scheduler():
         coalesce=True,
         replace_existing=True,
     )
-    # Açılıştan kısa süre sonra bir kez hemen çalıştır: kullanıcı,
-    # konteyner yeniden başlatıldıktan sonra kullanım verisini görmek
-    # için ilk aralığı (3 dk) beklemek zorunda kalmasın.
+    # Run once shortly after startup: the user should not have to wait
+    # the first interval (3 min) to see usage data after the container
+    # restarts.
     from datetime import timedelta
     from .timezone import now_local
     scheduler.add_job(
@@ -97,14 +94,14 @@ def start_scheduler():
         replace_existing=True,
     )
     scheduler.start()
-    # Kalıcı zamanlanmış raporları DB'den scheduler'a geri yükle.
-    # (Eskiden bellek-içi tutuldukları için her yeniden başlatmada kayboluyorlardı.)
+    # Reload persistent scheduled reports from the DB into the scheduler.
+    # (They used to be in-memory and were lost on every restart.)
     try:
         from ..api.reports import register_all_scheduled_reports
         register_all_scheduled_reports()
     except Exception as exc:
-        logger.warning("Zamanlanmış raporlar yüklenemedi: %s", exc)
-    logger.info("Zamanlayıcı başlatıldı: tam senkr. %s dk, kullanım tazeleme %s dk",
+        logger.warning("Could not load scheduled reports: %s", exc)
+    logger.info("Scheduler started: full sync %s min, usage refresh %s min",
                 full_min, usage_min)
 
 

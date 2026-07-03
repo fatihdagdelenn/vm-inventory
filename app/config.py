@@ -1,6 +1,5 @@
 """
-Uygulama yapılandırması.
-Tüm ayarlar ortam değişkenlerinden (.env) okunur.
+Application configuration. All settings come from environment variables (.env).
 """
 from functools import lru_cache
 from pydantic_settings import BaseSettings
@@ -10,24 +9,24 @@ class Settings(BaseSettings):
     # Genel
     app_name: str = "VM Envanter Yönetim Sistemi"
     debug: bool = False
-    secret_key: str = "degistir-bunu"          # Oturum imzalama anahtarı
-    encryption_key: str = ""                   # Fernet anahtarı (kimlik bilgisi şifreleme)
+    secret_key: str = "degistir-bunu"          # Session signing key
+    encryption_key: str = ""                   # Fernet key (credential encryption)
 
-    # Veritabanı
+    # Database
     database_url: str = "sqlite:///./data/vminventory.db"
 
     # Oturum
     session_timeout_minutes: int = 30
 
-    # Zaman dilimi (görüntüleme + zamanlanmış görevler).
-    # DB'de zamanlar UTC saklanır; arayüze ve cron'a bu TZ uygulanır.
+    # Timezone (display + scheduled jobs).
+    # Times are stored UTC in the DB; this TZ applies to the UI and cron.
     app_timezone: str = "Europe/Istanbul"
 
     # Senkronizasyon
     sync_interval_minutes: int = 15
-    usage_sync_interval_minutes: int = 3   # anlık kullanım tazeleme aralığı (dk)
+    usage_sync_interval_minutes: int = 3   # instant-usage refresh interval (min)
 
-    # Zamanlanmış raporların yazılacağı klasör (Docker'da volume'e bağlanır)
+    # Folder scheduled reports are written to (a volume in Docker)
     report_dir: str = "data/reports"
 
     # LDAP
@@ -44,5 +43,5 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    """Ayarları tek sefer yükle ve önbellekte tut."""
+    """Load settings once and cache them."""
     return Settings()

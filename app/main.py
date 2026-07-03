@@ -1,10 +1,8 @@
 """
-VM Envanter Yönetim Sistemi - FastAPI ana uygulaması.
-
-Mimari özet:
-- REST API + Jinja2 ile sunulan Bootstrap 5 arayüzü
-- Zamanlanmış arka plan senkronizasyonu (APScheduler)
-- Kullanıcı istekleri her zaman lokal veritabanından yanıtlanır
+VM Inventory Management System - FastAPI main application.
+Architecture summary:
+- REST API + a Bootstrap 5 UI served via Jinja2
+- Background sync with APScheduler -> local DB (searches never hit platforms)
 """
 import logging
 import os
@@ -30,40 +28,40 @@ settings = get_settings()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
-# Önbellek kırıcı: her uygulama başlangıcında değişen sürüm damgası.
-# Statik dosya URL'lerine ?v= olarak eklenir; böylece güncellemelerden
-# sonra tarayıcı asla eski CSS/JS kullanmaz (Ctrl+F5 gerekmez).
+# Cache buster: a version stamp that changes on every app start.
+# Appended to static URLs as ?v= so the browser never uses stale
+# CSS/JS after updates (no Ctrl+F5 needed).
 import time as _time
 templates.env.globals["asset_version"] = int(_time.time())
-# Arayüzde gösterilen uygulama sürümü (footer). Her fazda version.py güncellenir.
+# App version shown in the UI (footer). version.py is bumped every phase.
 from .core.version import APP_VERSION
 templates.env.globals["app_version"] = APP_VERSION
-# Arayüzde tarih/saatleri çevirmek için kullanılan zaman dilimi (window.APP_TZ).
+# Timezone used to render dates/times in the UI (window.APP_TZ).
 templates.env.globals["app_tz"] = settings.app_timezone
 
 
 def _create_default_admin():
-    """İlk kurulumda varsayılan admin kullanıcısı oluştur (admin / admin123)."""
+    """Create the default admin user on first install (admin / admin123)."""
     db = SessionLocal()
     try:
         if not db.query(User).count():
             db.add(User(username="admin", full_name="Sistem Yöneticisi",
                         role="admin", password_hash=hash_password("admin123")))
             db.commit()
-            logging.warning("Varsayılan admin oluşturuldu: admin / admin123 "
-                            "- İLK GİRİŞTEN SONRA PAROLAYI DEĞİŞTİRİN!")
+            logging.warning("Default admin created: admin / admin123 "
+                        "- CHANGE THE PASSWORD AFTER FIRST LOGIN!")
     finally:
         db.close()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Açılış: tabloları oluştur, admin'i kur, zamanlayıcıyı başlat
+    # Startup: create tables, seed the admin, start the scheduler
     os.makedirs("data", exist_ok=True)
     Base.metadata.create_all(bind=engine)
     from .database import ensure_schema
-    ensure_schema(engine)   # mevcut tablolara yeni kolonları ekle (hafif migrasyon)
-    # Eski "mac_addresses" değişiklik kayıtlarını temizle (artık izlenmiyor — kirli veri)
+    ensure_schema(engine)   # add new columns to existing tables (light migration)
+    # Purge old "mac_addresses" change rows (no longer tracked - dirty data)
     try:
         from .models import ChangeHistory
         _db = SessionLocal()
@@ -86,12 +84,10 @@ app = FastAPI(title=settings.app_name, lifespan=lifespan,
 @app.middleware("http")
 async def _slide_session(request: Request, call_next):
     """
-    Kayan oturum: kimliği doğrulanmış her istekten sonra oturum çerezini taze
-    zaman damgasıyla yeniden yazar; böylece zaman aşımı son hareketten itibaren
-    sayılır (aktif kullanıcı ortada atılmaz). get_current_user başarılıysa
-    request.state.session_refresh=True olur. Logout bu yoldan geçmediği için
-    çerez yenilenmez ve çıkış düzgün çalışır.
-    """
+        Sliding session: after every authenticated request the session cookie is
+        rewritten with a fresh timestamp, so the timeout counts from the LAST
+        activity, not from login.
+        """
     response = await call_next(request)
     if getattr(request.state, "session_refresh", False):
         token = request.cookies.get("session")
@@ -103,7 +99,7 @@ async def _slide_session(request: Request, call_next):
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")),
           name="static")
 
-# API rotaları
+# API routes
 for router in (auth.router, dashboard.router, vms.router, hosts.router,
                networks.router, platforms.router, reports.router, admin.router,
                clusters.router, datastores.router, snapshots.router, backups.router,
@@ -111,7 +107,7 @@ for router in (auth.router, dashboard.router, vms.router, hosts.router,
     app.include_router(router)
 
 
-# ---------- HTML sayfaları ----------
+# ---------- HTML pages ----------
 PAGES = {
     "/": ("dashboard.html", "Dashboard"),
     "/vms": ("vms.html", "Sanal Makineler"),
@@ -129,7 +125,7 @@ PAGES = {
 
 
 def _render(request: Request, path: str):
-    """Oturum kontrolü yaparak sayfayı render et; oturum yoksa /login'e yönlendir."""
+    """Render the page with a session check; redirect to /login when absent."""
     from .database import SessionLocal
     db = SessionLocal()
     try:
@@ -151,9 +147,9 @@ def login_page(request: Request, error: int = 0):
                                       {"request": request, "error": error})
 
 
-# Her sayfa için rota oluştur.
-# Not: lambda kullanılamaz; FastAPI'nin Request nesnesini enjekte etmesi için
-# parametrenin "Request" tip açıklamasına sahip olması gerekir.
+# Create a route per page.
+# Note: lambda won't do; FastAPI injects the Request object only when
+# the parameter carries the "Request" type annotation.
 def _make_page_handler(path: str):
     def page(request: Request):
         return _render(request, path)

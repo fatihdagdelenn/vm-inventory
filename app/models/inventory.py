@@ -1,10 +1,8 @@
 """
-Envanter modelleri: Host, Sanal Makine, Ağ, Datastore, Etiket ve Değişiklik Geçmişi.
-
-Performans notu: Tüm veriler arka planda zamanlanmış görevlerle toplanır ve bu
-tablolarda saklanır. Kullanıcı aramaları SADECE bu lokal tablolara gider;
-hiçbir kullanıcı isteği canlı vCenter/Proxmox API çağrısı tetiklemez.
-500+ VM için kritik alanlar indekslidir.
+Inventory models: Host, Virtual Machine, Network, Datastore, Tag and
+Change History.
+Performance note: all data is collected by the background sync; user
+searches only read these local tables.
 """
 from datetime import datetime
 from sqlalchemy import (Column, Integer, String, Boolean, DateTime, Date, Text,
@@ -12,7 +10,7 @@ from sqlalchemy import (Column, Integer, String, Boolean, DateTime, Date, Text,
 from sqlalchemy.orm import relationship
 from ..database import Base
 
-# VM <-> Etiket çoktan-çoğa ilişki tablosu (manuel gruplama için)
+# VM <-> Tag many-to-many table (for manual grouping)
 vm_tags = Table(
     "vm_tags", Base.metadata,
     Column("vm_id", Integer, ForeignKey("virtual_machines.id", ondelete="CASCADE"), primary_key=True),
@@ -26,20 +24,20 @@ class Host(Base):
 
     id = Column(Integer, primary_key=True)
     platform_id = Column(Integer, ForeignKey("platforms.id"), index=True, nullable=False)
-    external_id = Column(String(128), index=True)   # Platform tarafındaki benzersiz kimlik
-    name = Column(String(255), index=True)          # Host adı
-    mgmt_ip = Column(String(64), index=True)        # Yönetim IP adresi
-    os_version = Column(String(255))                # İşletim sistemi / hypervisor sürümü
+    external_id = Column(String(128), index=True)   # Unique id on the platform side
+    name = Column(String(255), index=True)          # Host name
+    mgmt_ip = Column(String(64), index=True)        # Management IP address
+    os_version = Column(String(255))                # OS / hypervisor version
     cpu_model = Column(String(255))                 # CPU modeli
-    cpu_cores = Column(Integer)                     # Çekirdek sayısı
+    cpu_cores = Column(Integer)                     # Core count
     ram_total_mb = Column(BigInteger)               # Toplam RAM (MB)
-    ram_used_mb = Column(BigInteger)                # Kullanılan RAM (MB)
-    cpu_usage_pct = Column(Float)                   # CPU kullanım yüzdesi
+    ram_used_mb = Column(BigInteger)                # Used RAM (MB)
+    cpu_usage_pct = Column(Float)                   # CPU usage percent
     disk_total_gb = Column(Float)                   # Toplam disk kapasitesi (GB)
-    disk_used_gb = Column(Float)                    # Kullanılan disk (GB)
-    cluster = Column(String(128), index=True)       # Cluster adı
+    disk_used_gb = Column(Float)                    # Used disk (GB)
+    cluster = Column(String(128), index=True)       # Cluster name
     status = Column(String(16), index=True)         # online | offline | maintenance
-    last_boot = Column(DateTime)                     # Son açılış zamanı (uptime hesabı için)
+    last_boot = Column(DateTime)                     # Last boot time (for uptime)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     platform = relationship("Platform", back_populates="hosts")
@@ -47,48 +45,48 @@ class Host(Base):
 
 
 class VirtualMachine(Base):
-    """Sanal makine envanter kaydı."""
+    """Virtual machine inventory record."""
     __tablename__ = "virtual_machines"
 
     id = Column(Integer, primary_key=True)
     platform_id = Column(Integer, ForeignKey("platforms.id"), index=True, nullable=False)
     host_id = Column(Integer, ForeignKey("hosts.id"), index=True)
     external_id = Column(String(128), index=True)   # vCenter MoRef veya Proxmox VMID
-    vmid = Column(String(64), index=True)           # Görünen VM ID
+    vmid = Column(String(64), index=True)           # Visible VM ID
     name = Column(String(255), index=True)
-    ip_addresses = Column(Text)                     # Virgülle ayrılmış IP listesi
-    mac_addresses = Column(Text)                    # Virgülle ayrılmış MAC listesi
-    guest_os = Column(String(255), index=True)      # İşletim sistemi
-    kernel = Column(String(128))                     # Çekirdek sürümü (Proxmox agent / —)
+    ip_addresses = Column(Text)                     # Comma-separated IP list
+    mac_addresses = Column(Text)                    # Comma-separated MAC list
+    guest_os = Column(String(255), index=True)      # Operating system
+    kernel = Column(String(128))                     # Kernel version (Proxmox agent / -)
     arch = Column(String(32))                        # Mimari: x86_64 / aarch64 …
     cpu_count = Column(Integer)
     ram_mb = Column(BigInteger)
     disk_total_gb = Column(Float)
-    disks_json = Column(Text)                       # Disk detayları (JSON)
+    disks_json = Column(Text)                       # Disk details (JSON)
     power_state = Column(String(16), index=True)    # running | stopped | suspended
     cluster = Column(String(128), index=True)
-    datastore = Column(String(255), index=True)     # Virgülle ayrılmış datastore listesi
-    vlans = Column(String(255), index=True)         # Virgülle ayrılmış VLAN listesi
-    networks = Column(Text)                         # Bağlı ağ/portgroup adları
-    created_date = Column(DateTime)                 # VM oluşturulma tarihi
-    last_boot = Column(DateTime)                    # Son açılış zamanı
+    datastore = Column(String(255), index=True)     # Comma-separated datastore list
+    vlans = Column(String(255), index=True)         # Comma-separated VLAN list
+    networks = Column(Text)                         # Attached network/portgroup names
+    created_date = Column(DateTime)                 # VM creation date
+    last_boot = Column(DateTime)                    # Last boot time
     tools_status = Column(String(64))               # VMware Tools / QEMU Agent durumu
     owner = Column(String(128))                     # Manuel: VM sahibi
     notes = Column(Text)                            # Manuel: notlar
     guest_notes = Column(Text)                      # Platformdan: vCenter annotation / Proxmox description
-    platform_tags = Column(Text)                    # Platform etiketleri (vCenter tag / Proxmox tags), virgülle
+    platform_tags = Column(Text)                    # Platform tags (vCenter tag / Proxmox tags), comma-separated
     pool = Column(String(255), index=True)          # Resource pool (vCenter) / pool (Proxmox)
-    folder = Column(String(512))                    # VM klasörü (vCenter); Proxmox'ta yok
+    folder = Column(String(512))                    # VM folder (vCenter); absent on Proxmox
     environment = Column(String(32), index=True)    # production | test | development
     is_template = Column(Boolean, default=False)
-    cpu_usage_pct = Column(Float)                   # Anlık CPU kullanımı (%) — hafif senkr. günceller
-    ram_usage_mb = Column(BigInteger)               # Anlık RAM kullanımı (MB) — hafif senkr. günceller
-    disk_used_gb = Column(Float)                    # Gerçek disk kullanımı (GB) — vCenter committed / PX agent
-    net_kbps = Column(Float)                        # Anlık ağ trafiği (KB/s) — netin+netout delta'sından
-    diskio_kbps = Column(Float)                     # Anlık disk I/O (KB/s) — diskread+diskwrite delta'sından
-    io_net_bytes = Column(BigInteger)               # Son kümülatif netin+netout (delta hesabı için)
-    io_disk_bytes = Column(BigInteger)              # Son kümülatif diskread+diskwrite (delta hesabı için)
-    io_ts = Column(DateTime)                        # Son IO örneği zamanı (oran = delta / dt)
+    cpu_usage_pct = Column(Float)                   # Instant CPU usage (%) - updated by the light sync
+    ram_usage_mb = Column(BigInteger)               # Instant RAM usage (MB) - updated by the light sync
+    disk_used_gb = Column(Float)                    # Real disk usage (GB) - vCenter committed / PX agent
+    net_kbps = Column(Float)                        # Instant network traffic (KB/s) - from the netin+netout delta
+    diskio_kbps = Column(Float)                     # Instant disk I/O (KB/s) - from the diskread+diskwrite delta
+    io_net_bytes = Column(BigInteger)               # Last cumulative netin+netout (for delta computation)
+    io_disk_bytes = Column(BigInteger)              # Last cumulative diskread+diskwrite (for delta computation)
+    io_ts = Column(DateTime)                        # Last IO sample time (rate = delta / dt)
     first_seen = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -96,7 +94,7 @@ class VirtualMachine(Base):
     platform = relationship("Platform")
     tags = relationship("Tag", secondary=vm_tags, back_populates="vms")
 
-    # Sık kullanılan birleşik aramalar için kompozit indeks
+    # Composite index for frequent combined searches
     __table_args__ = (
         Index("ix_vm_power_cluster", "power_state", "cluster"),
         Index("ix_vm_platform_name", "platform_id", "name"),
@@ -104,38 +102,38 @@ class VirtualMachine(Base):
 
 
 class Network(Base):
-    """Ağ envanteri: VLAN, vSwitch/Bridge, Port Group bilgileri."""
+    """Network inventory: VLAN, vSwitch/Bridge, Port Group info."""
     __tablename__ = "networks"
 
     id = Column(Integer, primary_key=True)
     platform_id = Column(Integer, ForeignKey("platforms.id"), index=True, nullable=False)
-    name = Column(String(255), index=True)          # Network / Port Group adı
+    name = Column(String(255), index=True)          # Network / Port Group name
     vlan = Column(String(32), index=True)           # VLAN ID
-    vswitch = Column(String(128))                   # vSwitch veya Linux Bridge adı
+    vswitch = Column(String(128))                   # vSwitch or Linux Bridge name
     portgroup = Column(String(128))                 # Port Group (vCenter)
-    subnet = Column(String(64))                     # IP Subnet (CIDR) - manuel/öğrenilmiş
-    host_name = Column(String(255))                 # Hangi host üzerinde tanımlı
+    subnet = Column(String(64))                     # IP subnet (CIDR) - manual/learned
+    host_name = Column(String(255))                 # The host it is defined on
     kind = Column(String(16), index=True)           # portgroup | bridge | vnet | pnic
     mac = Column(String(64))                         # Fiziksel kart (pnic) MAC adresi
-    link_speed = Column(String(32))                  # Fiziksel kart bağlantı hızı
+    link_speed = Column(String(32))                  # Physical NIC link speed
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class Datastore(Base):
-    """Depolama alanları (Datastore / Proxmox Storage)."""
+    """Storage areas (Datastore / Proxmox Storage)."""
     __tablename__ = "datastores"
 
     id = Column(Integer, primary_key=True)
     platform_id = Column(Integer, ForeignKey("platforms.id"), index=True, nullable=False)
     name = Column(String(255), index=True)
     type = Column(String(64))                       # VMFS, NFS, ZFS, LVM, Ceph...
-    node = Column(String(128))                      # Proxmox yerel depo için node; paylaşımlı/vCenter'da boş
-    shared = Column(Boolean, default=False)         # birden çok host/node tarafından paylaşılıyor mu
+    node = Column(String(128))                      # Node for local Proxmox stores; blank for shared/vCenter
+    shared = Column(Boolean, default=False)         # shared by multiple hosts/nodes?
     capacity_gb = Column(Float)
     used_gb = Column(Float)
     free_gb = Column(Float)
-    host_count = Column(Integer, default=0)         # bağlı host/node sayısı
-    vm_count = Column(Integer, default=0)           # bu depoyu kullanan VM sayısı
+    host_count = Column(Integer, default=0)         # attached host/node count
+    vm_count = Column(Integer, default=0)           # VM count using this store
     status = Column(String(32))                     # active | inactive | maintenance
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -151,20 +149,20 @@ class Datastore(Base):
 
 
 class Snapshot(Base):
-    """VM anlık görüntüleri (vCenter snapshot ağacı / Proxmox qemu+lxc snapshot)."""
+    """VM snapshots (vCenter snapshot tree / Proxmox qemu+lxc snapshots)."""
     __tablename__ = "snapshots"
 
     id = Column(Integer, primary_key=True)
     platform_id = Column(Integer, ForeignKey("platforms.id"), index=True, nullable=False)
     vm_id = Column(Integer, ForeignKey("virtual_machines.id"), index=True)
-    vm_external_id = Column(String(128), index=True)  # eşleştirme için
+    vm_external_id = Column(String(128), index=True)  # for matching
     vm_name = Column(String(255), index=True)
     name = Column(String(255))
     description = Column(Text)
-    created_at = Column(DateTime, index=True)         # snapshot oluşturulma zamanı (UTC)
-    is_current = Column(Boolean, default=False)       # aktif/çalışılan snapshot mı
-    parent = Column(String(255))                      # üst snapshot adı (zincir)
-    size_gb = Column(Float)                           # API çoğunlukla vermez → None ("—")
+    created_at = Column(DateTime, index=True)         # snapshot creation time (UTC)
+    is_current = Column(Boolean, default=False)       # is it the active/current snapshot
+    parent = Column(String(255))                      # parent snapshot name (chain)
+    size_gb = Column(Float)                           # the API mostly omits it -> None ("-")
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     platform = relationship("Platform")
@@ -182,24 +180,21 @@ class Snapshot(Base):
 
 
 class Backup(Base):
-    """Proxmox yedekleri (vzdump dosyaları + PBS anlık görüntüleri).
-
-    Yalnızca Proxmox: vCenter'ın yedek API'si yoktur. Depo içeriğinden
-    (content=backup) toplanır; PBS bağlı depolar da yedek içeriği döndürür.
-    """
+    """Proxmox backups (vzdump files + PBS snapshots).
+        Proxmox only: vCenter has no backup API. Collected from storage content."""
     __tablename__ = "backups"
 
     id = Column(Integer, primary_key=True)
     platform_id = Column(Integer, ForeignKey("platforms.id"), index=True, nullable=False)
     vm_id = Column(Integer, ForeignKey("virtual_machines.id"), index=True)
-    vmid = Column(String(32), index=True)        # Proxmox sayısal VM id
+    vmid = Column(String(32), index=True)        # Numeric Proxmox VM id
     vm_name = Column(String(255), index=True)
     storage = Column(String(128), index=True)
     volid = Column(String(512))                  # depo:backup/vzdump-...
     fmt = Column(String(48))                     # vma.zst, tar.zst, pbs...
     created_at = Column(DateTime, index=True)
     size_gb = Column(Float)
-    protected = Column(Boolean, default=False)   # silinmeye karşı korumalı
+    protected = Column(Boolean, default=False)   # protected against deletion
     notes = Column(String(512))
     source = Column(String(32))                  # vzdump | pbs
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -219,7 +214,7 @@ class Backup(Base):
 
 
 class Tag(Base):
-    """Manuel etiketler (gruplama için)."""
+    """Manual tags (for grouping)."""
     __tablename__ = "tags"
 
     id = Column(Integer, primary_key=True)
@@ -231,10 +226,9 @@ class Tag(Base):
 
 class ChangeHistory(Base):
     """
-    Envanter değişiklik geçmişi.
-    Her senkronizasyonda eski ve yeni değerler karşılaştırılır,
-    farklılıklar bu tabloya yazılır (örn: RAM artırıldı, IP değişti, VM silindi).
-    """
+        Inventory change history. Every sync compares old and new values and
+        writes the differences here, enriched with category/actor/source info.
+        """
     __tablename__ = "change_history"
 
     id = Column(Integer, primary_key=True)
@@ -242,33 +236,29 @@ class ChangeHistory(Base):
     entity_name = Column(String(255), index=True)
     platform_id = Column(Integer, ForeignKey("platforms.id"))
     change_type = Column(String(24))                # created|updated|deleted|migrated|access
-    field = Column(String(64))                      # Değişen alan adı
+    field = Column(String(64))                      # Name of the changed field
     old_value = Column(Text)
     new_value = Column(Text)
-    actor = Column(String(128))                     # Platformda işlemi yapan kullanıcı (görev/olay kaydından)
+    actor = Column(String(128))                     # Platform user who performed the action (from the task/event log)
     changed_at = Column(DateTime, default=datetime.utcnow, index=True)
 
-    # --- faz35: zenginleştirilmiş köken / kaynak / aktör bilgisi ---
+    # --- phase35: enriched provenance / source / actor info ---
     # Bu kolonlar ensure_schema ile mevcut kurulumlara otomatik eklenir.
     category = Column(String(24), index=True)       # hardware|disk|network|power|migrate|lifecycle|console|os|other
-    op_type = Column(String(64))                    # Platform işleminin ham tipi (qmconfig / VmReconfiguredEvent…)
+    op_type = Column(String(64))                    # Raw type of the platform operation (qmconfig / VmReconfiguredEvent...)
     platform_type = Column(String(16), index=True)  # vcenter | proxmox
-    cluster = Column(String(128))                   # Değişikliğin yapıldığı cluster
-    host = Column(String(255))                       # VM'in bulunduğu host/node (göç için: kaynak→hedef)
+    cluster = Column(String(128))                   # Cluster the change happened in
+    host = Column(String(255))                       # Host/node the VM lives on (for migrations: source->target)
     vm_external_id = Column(String(128), index=True)  # moId veya node/vmid
-    actor_ip = Column(String(64))                    # İşlemi yapan istemci IP (varsa; çoğu platform vermez)
-    actor_agent = Column(String(255))                # İşlemi yapan istemci User-Agent (varsa)
+    actor_ip = Column(String(64))                    # Client IP of the actor (if any; most platforms omit it)
+    actor_agent = Column(String(255))                # Client User-Agent of the actor (if any)
 
 
 class ClusterSetting(Base):
     """
-    Cluster görünürlük ayarı.
-
-    Cluster'lar envanterden türetilir (VM/Host üzerindeki string alan);
-    bu tablo yalnızca GİZLENEN cluster'ları ve tercihlerini tutar.
-    Gizli cluster'lar dashboard sayılarına/grafiklerine girmez ve VM
-    listesinde varsayılan olarak görünmez (istenirse dahil edilebilir).
-    """
+        Cluster visibility setting. Clusters are derived from the inventory
+        (a string field on VM/Host); this table only stores the HIDDEN ones.
+        """
     __tablename__ = "cluster_settings"
 
     id = Column(Integer, primary_key=True)
@@ -278,11 +268,8 @@ class ClusterSetting(Base):
 
 
 class AppSetting(Base):
-    """Genel anahtar-değer uygulama ayarları (senkronizasyon aralıkları vb.).
-
-    Çalışma zamanında arayüzden değiştirilebilen, .env varsayılanlarını
-    geçersiz kılan ayarlar burada tutulur.
-    """
+    """General key-value app settings (sync intervals etc.).
+        Runtime-changeable from the UI; .env provides the defaults."""
     __tablename__ = "app_settings"
 
     key = Column(String(64), primary_key=True)
@@ -292,29 +279,25 @@ class AppSetting(Base):
 
 class ScheduledReport(Base):
     """
-    Zamanlanmış rapor tanımı (KALICI).
-
-    Eskiden zamanlanmış raporlar yalnızca APScheduler'ın bellek-içi
-    jobstore'unda tutuluyordu; uygulama yeniden başlayınca tümü kayboluyordu
-    ("oluşturdum ama yerinde yok"). Artık tanım bu tabloda saklanır ve her
-    açılışta scheduler'a yeniden kaydedilir. Cron saati uygulama zaman
-    dilimine (APP_TIMEZONE) göre yorumlanır.
-    """
+        Scheduled report definition (PERSISTENT). Reports used to live only in
+        APScheduler's in-memory jobstore and were lost on restart; now they are
+        stored here and re-registered on startup.
+        """
     __tablename__ = "scheduled_reports"
 
     id = Column(Integer, primary_key=True)
-    name = Column(String(128))                       # Görünen ad (opsiyonel)
+    name = Column(String(128))                       # Display name (optional)
     target = Column(String(16), default="vms")       # vms | hosts
     fmt = Column(String(8), default="xlsx")          # xlsx | csv | pdf
     query = Column(Text, default="")                 # Arama filtresi (q)
-    hour = Column(Integer, default=7)                # Çalışma saati (yerel TZ)
+    hour = Column(Integer, default=7)                # Run hour (local TZ)
     minute = Column(Integer, default=0)
     enabled = Column(Boolean, default=True)
     created_by = Column(String(128))
     created_at = Column(DateTime, default=datetime.utcnow)
-    last_run = Column(DateTime)                      # Son çalışma (UTC)
+    last_run = Column(DateTime)                      # Last run (UTC)
     last_status = Column(String(16))                 # success | error
-    last_path = Column(String(512))                  # Son üretilen dosya yolu
+    last_path = Column(String(512))                  # Path of the last generated file
     last_error = Column(Text)
 
     @property
@@ -324,47 +307,41 @@ class ScheduledReport(Base):
 
 class CapacitySnapshot(Base):
     """
-    Günlük kapasite anlık görüntüsü (kapasite öngörüsü için).
-    sync_usage_all her çalıştığında bugünün satırı upsert edilir; böylece
-    günler içinde tahsisli/kullanılan kaynak serisi birikir ve forecast
-    DOĞRUSAL REGRESYONLA (sezgisel deltalar yerine) hesaplanır.
-    Tüm ortam geneli (gizli cluster filtresi UYGULANMAZ — fiziksel kapasite global).
-    """
+        Daily capacity snapshot (for the capacity forecast).
+        sync_usage_all upserts today's row on every run.
+        """
     __tablename__ = "capacity_snapshots"
 
     id = Column(Integer, primary_key=True)
-    snap_date = Column(Date, unique=True, index=True)   # günde bir satır
+    snap_date = Column(Date, unique=True, index=True)   # one row per day
     alloc_disk_gb = Column(Float)        # tahsisli toplam (sum VM disk_total_gb)
     alloc_ram_mb = Column(BigInteger)    # tahsisli toplam (sum VM ram_mb)
-    used_disk_gb = Column(Float)         # gerçek kullanım (sum VM disk_used_gb)
-    used_ram_mb = Column(BigInteger)     # gerçek kullanım (sum VM ram_usage_mb)
-    datastore_capacity_gb = Column(Float)  # fiziksel disk tavanı
-    datastore_used_gb = Column(Float)      # datastore gerçek kullanımı (doluluk)
-    host_ram_mb = Column(BigInteger)       # fiziksel RAM tavanı
+    used_disk_gb = Column(Float)         # real usage (sum VM disk_used_gb)
+    used_ram_mb = Column(BigInteger)     # real usage (sum VM ram_usage_mb)
+    datastore_capacity_gb = Column(Float)  # physical disk ceiling
+    datastore_used_gb = Column(Float)      # real datastore usage (fill)
+    host_ram_mb = Column(BigInteger)       # physical RAM ceiling
     vm_count = Column(Integer)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class VmUsageDaily(Base):
     """
-    VM başına GÜNLÜK kullanım toplulaştırması (zombi/boşta tespiti için).
-    sync_usage_all her çalıştığında bugünün satırı güncellenir (gün içi
-    ortalama + tepe). 7 günlük pencerede tepe CPU < %2 olan çalışan VM'ler
-    'zombi' kabul edilir — tek anlık örnek yerine GERÇEK 7 günlük veri.
-    35 günden eski satırlar otomatik budanır.
-    """
+        DAILY per-VM usage aggregation (for zombie/idle detection).
+        sync_usage_all upserts today's row on every run (running averages).
+        """
     __tablename__ = "vm_usage_daily"
 
     id = Column(Integer, primary_key=True)
     vm_id = Column(Integer, ForeignKey("virtual_machines.id", ondelete="CASCADE"), index=True)
     day = Column(Date, index=True)
-    cpu_avg = Column(Float)              # gün içi ortalama CPU %
-    cpu_max = Column(Float)              # gün içi tepe CPU %
-    ram_avg_mb = Column(BigInteger)      # gün içi ortalama RAM kullanımı (MB)
-    ram_min_mb = Column(BigInteger)      # gün içi en düşük RAM (düz-çizgi/varyans tespiti)
-    ram_max_mb = Column(BigInteger)      # gün içi en yüksek RAM
-    net_kbps = Column(Float)             # gün içi ortalama ağ trafiği (KB/s)
-    diskio_kbps = Column(Float)          # gün içi ortalama disk I/O (KB/s)
+    cpu_avg = Column(Float)              # intraday average CPU %
+    cpu_max = Column(Float)              # intraday peak CPU %
+    ram_avg_mb = Column(BigInteger)      # intraday average RAM usage (MB)
+    ram_min_mb = Column(BigInteger)      # intraday minimum RAM (flat-line/variance detection)
+    ram_max_mb = Column(BigInteger)      # intraday maximum RAM
+    net_kbps = Column(Float)             # intraday average net traffic (KB/s)
+    diskio_kbps = Column(Float)          # intraday average disk I/O (KB/s)
     samples = Column(Integer, default=0)
 
     __table_args__ = (UniqueConstraint("vm_id", "day", name="uq_vm_usage_day"),)

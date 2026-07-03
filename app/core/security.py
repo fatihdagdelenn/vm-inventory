@@ -1,10 +1,9 @@
 """
-Güvenlik katmanı:
-- Parola hashleme (bcrypt)
-- Platform kimlik bilgilerinin şifrelenmesi (Fernet / AES-128)
-- Oturum yönetimi (imzalı çerez + zaman aşımı)
-- Rol bazlı yetkilendirme dependency'leri
-- CSRF token üretimi/doğrulaması
+Security layer:
+- Password hashing (bcrypt)
+- Platform credential encryption (Fernet / AES-128)
+- Signed session tokens (itsdangerous) + sliding timeout
+- CSRF double-submit verification
 """
 import secrets
 from datetime import datetime, timedelta
@@ -24,7 +23,7 @@ settings = get_settings()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 session_serializer = URLSafeTimedSerializer(settings.secret_key, salt="session")
 
-# Rol hiyerarşisi: admin her şeyi yapabilir, operator düzenleyebilir, viewer sadece görür
+# Role hierarchy: admin can do everything, operator can edit, viewer read-only
 ROLE_LEVELS = {"viewer": 1, "operator": 2, "admin": 3}
 
 
@@ -37,26 +36,26 @@ def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
 
 
-# ---------- Kimlik bilgisi şifreleme ----------
+# ---------- Credential encryption ----------
 def _get_fernet() -> Fernet:
     key = settings.encryption_key
     if not key:
         raise RuntimeError(
-            "ENCRYPTION_KEY tanımlı değil! .env dosyasına bir Fernet anahtarı ekleyin: "
+            "ENCRYPTION_KEY is not set! Add a Fernet key to your .env: "
             'python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"'
         )
     return Fernet(key.encode())
 
 
 def encrypt_secret(plain: str) -> str:
-    """Parola/token'ı veritabanında saklamadan önce şifrele."""
+    """Encrypt a password/token before storing it in the database."""
     if not plain:
         return ""
     return _get_fernet().encrypt(plain.encode()).decode()
 
 
 def decrypt_secret(encrypted: str) -> str:
-    """Şifreli kimlik bilgisini API çağrısı için çöz (sadece bellek içinde)."""
+    """Decrypt a stored credential for an API call (in memory only)."""
     if not encrypted:
         return ""
     return _get_fernet().decrypt(encrypted.encode()).decode()
@@ -67,15 +66,15 @@ SESSION_COOKIE_NAME = "session"
 
 
 def create_session_token(user: User) -> str:
-    """İmzalı, zaman damgalı oturum token'ı üret."""
+    """Produce a signed, timestamped session token."""
     return session_serializer.dumps({"uid": user.id, "role": user.role})
 
 
 def set_session_cookie(response, token: str) -> None:
     """
-    Oturum çerezini standart niteliklerle yaz (login + kayan yenileme tek
-    yerden). HttpOnly + SameSite=Lax; max_age idle (hareketsizlik) penceresi.
-    """
+        Write the session cookie with standard attributes (login + sliding refresh
+        in one place). HttpOnly + SameSite=Lax; max_age = idle timeout.
+        """
     response.set_cookie(
         SESSION_COOKIE_NAME, token, httponly=True, samesite="lax",
         max_age=settings.session_timeout_minutes * 60)
@@ -83,10 +82,9 @@ def set_session_cookie(response, token: str) -> None:
 
 def refresh_session_token(token: str) -> Optional[str]:
     """
-    Geçerli bir oturum token'ını taze zaman damgasıyla yeniden imzala.
-    Kayan oturum için kullanılır: her aktif istekte süre baştan başlar.
-    Token geçersiz/süresi dolmuşsa None döner (yenileme yapılmaz).
-    """
+        Re-sign a valid session token with a fresh timestamp.
+        Used for sliding sessions: every active request pushes the expiry forward.
+        """
     try:
         data = session_serializer.loads(
             token, max_age=settings.session_timeout_minutes * 60)
@@ -97,9 +95,9 @@ def refresh_session_token(token: str) -> Optional[str]:
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     """
-    Çerezdeki oturum token'ını doğrula.
-    Zaman aşımı (SESSION_TIMEOUT_MINUTES) dolmuşsa 401 döner.
-    """
+        Verify the session token in the cookie.
+        Returns 401 when the timeout (SESSION_TIMEOUT_MINUTES) has passed.
+        """
     token = request.cookies.get("session")
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Oturum bulunamadı")
@@ -113,14 +111,14 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     user = db.get(User, data["uid"])
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="Kullanıcı bulunamadı veya pasif")
-    # Kayan oturum: doğrulama başarılı → middleware yanıtta çerezi tazeleyecek.
-    # (logout get_current_user'dan geçmediği için bayrağı koymaz, çıkış bozulmaz)
+    # Sliding session: verification OK -> middleware refreshes the cookie in the response.
+    # (logout doesn't pass through get_current_user, so no flag - logout stays intact)
     request.state.session_refresh = True
     return user
 
 
 def require_role(min_role: str):
-    """Belirli bir minimum rol gerektiren dependency üretir."""
+    """Produce a dependency requiring a minimum role."""
     def checker(user: User = Depends(get_current_user)) -> User:
         if ROLE_LEVELS.get(user.role, 0) < ROLE_LEVELS[min_role]:
             raise HTTPException(status_code=403, detail="Bu işlem için yetkiniz yok")
@@ -134,7 +132,7 @@ def generate_csrf_token() -> str:
 
 
 def validate_csrf(request: Request, token_from_form: Optional[str]):
-    """Çerezdeki CSRF token'ı ile formdan/headerdan gelen token'ı karşılaştır."""
+    """Compare the CSRF cookie token with the form/header token."""
     cookie_token = request.cookies.get("csrf_token")
     header_token = request.headers.get("X-CSRF-Token") or token_from_form
     if not cookie_token or not header_token or not secrets.compare_digest(cookie_token, header_token):

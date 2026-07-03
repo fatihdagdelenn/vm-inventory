@@ -1,18 +1,9 @@
 """
-İşletim sistemi ailesi sınıflandırması (tek doğruluk kaynağı).
-
-Hem dashboard OS pastası hem de VM sayfasındaki "İşletim Sistemi" filtre
-menüsü buradan beslenir. Her ailenin tıklama/seçim sorgusu tek bir `osfam:<key>`
-token'ıdır; arama motoru (core/search.py) bu token'ı buradaki anahtar
-kelimelere göre SQL koşuluna çevirir. Böylece grafikteki/menüdeki sayı ile
-filtreye tıklayınca gelen liste her zaman birebir aynıdır.
-
-Sıra önemlidir: bir guest_os İLK eşleşen aileye atanır. Her ailenin koşulu,
-kendisinden ÖNCEKİ ailelerin anahtar kelimelerini dışlar — böylece SQL filtresi
-"ilk eşleşen kazanır" mantığını birebir yeniden üretir.
+OS family classification (single source of truth).
+Used by both the dashboard OS pie and the VM page family filter.
 """
 
-# (key, etiket, anahtar kelimeler [küçük harf])
+# (key, label, keywords [lowercase])
 FAMILIES = [
     ("windows",    "Windows",            ["windows", "w2k"]),
     ("ubuntu",     "Ubuntu",             ["ubuntu"]),
@@ -36,7 +27,7 @@ LABELS[CATCHALL_KEY] = CATCHALL_LABEL
 
 
 def classify(guest_os: str) -> str:
-    """guest_os -> aile key'i (ilk eşleşen); eşleşme yoksa CATCHALL_KEY."""
+    """guest_os -> family key (first match); CATCHALL_KEY when none."""
     s = (guest_os or "").lower()
     for key, _label, kws in FAMILIES:
         if any(k in s for k in kws):
@@ -46,11 +37,10 @@ def classify(guest_os: str) -> str:
 
 def match_keywords(key: str):
     """
-    Bir aile key'i için (include, exclude) anahtar kelime listeleri döndür.
-    - include: bu aileyi seçen kelimeler (CATCHALL için None = "hepsi")
-    - exclude: kendisinden önceki ailelerin kelimeleri (ilk-eşleşen mantığı)
-    Bilinmeyen key için (None, None) döner.
-    """
+        Return (include, exclude) keyword lists for a family key.
+        - include: words selecting the family (empty for CATCHALL)
+        - exclude: words of families ranked above it (first-match-wins logic)
+        """
     key = (key or "").lower()
     before = []
     for idx, (k, _label, kws) in enumerate(FAMILIES):
@@ -58,16 +48,15 @@ def match_keywords(key: str):
             return list(kws), list(before)
         before.extend(kws)
     if key == CATCHALL_KEY:
-        return None, before          # hiçbir aileye uymayan (boş OS dahil)
+        return None, before          # anything that fits no family (incl. blank OS)
     return None, None                # bilinmeyen key
 
 
 def distribution(rows):
     """
-    rows: (guest_os, count) ikilileri.
-    Dönüş: sayıya göre azalan [{key, label, count, query}] listesi.
-    query, tek token'lık `osfam:<key>` filtresidir.
-    """
+        rows: (guest_os, count) pairs. Returns [{key, label, count, query}]
+        sorted by count desc. query is the single-token search filter.
+        """
     agg = {}
     for os_name, count in rows:
         agg[classify(os_name)] = agg.get(classify(os_name), 0) + count

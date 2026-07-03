@@ -1,9 +1,6 @@
-"""Ağ envanteri API'si: VLAN, vSwitch/Bridge, Port Group, SDN vnet ve fiziksel NIC.
-
-Gruplama (host / cluster / VLAN / fiziksel kart) istemci tarafında yapılır;
-bu uç nokta tüm ağ kayıtlarını cluster ve platform bilgisiyle zenginleştirip
-döndürür. Veri kümesi küçük olduğundan tek çağrı yeterlidir.
-"""
+"""Network inventory API: VLAN, vSwitch/Bridge, Port Group, SDN vnet and
+physical NICs. Grouping (host / cluster / VLAN / physical) is done client-side;
+this endpoint returns the flat list."""
 from fastapi import APIRouter, Depends
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -26,7 +23,7 @@ def list_networks(q: str = "", db: Session = Depends(get_db),
             Network.vswitch.ilike(like), Network.subnet.ilike(like),
             Network.host_name.ilike(like), Network.mac.ilike(like)))
 
-    # host adı -> cluster ve platform_id -> ad eşlemeleri (N+1 sorgusundan kaçın)
+    # host name -> cluster and platform_id -> name maps (avoid N+1 queries)
     host_cluster = {h.name: h.cluster for h in db.query(Host).all()}
     platform_name = {p.id: p.name for p in db.query(Platform).all()}
 

@@ -1,4 +1,4 @@
-"""Yönetim API'si: kullanıcılar, audit log, değişiklik geçmişi (admin)."""
+"""Admin API: users, audit log, change history (admin)."""
 import re
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from sqlalchemy import or_, and_, not_, func
@@ -104,16 +104,16 @@ def change_history(entity: str = "", q: str = "", category: str = "",
                    limit: int = 200,
                    db: Session = Depends(get_db),
                    user: User = Depends(get_current_user)):
-    """Envanter değişiklik geçmişi (tüm roller görebilir)."""
+    """Inventory change history (visible to all roles)."""
     query = db.query(ChangeHistory)
     if entity in ("vm", "host"):
         query = query.filter_by(entity_type=entity)
     if category:
         query = query.filter(ChangeHistory.category == category)
     if q:
-        # Dahil/dışla arama: "-yedek" veya "!yedek" → bu terimi İÇEREN satırları ELE
-        # (ör. sürekli log üreten yedekleme makinesini gizleyip diğerlerini incele).
-        # Pozitif terimler ad/host/VM-ID/kullanıcı/işlem alanlarında aranır (VE mantığı).
+        # Include/exclude search: "-yedek" or "!yedek" -> DROP rows CONTAINING the term
+        # (e.g. hide a backup machine that floods the log and inspect the rest).
+        # Positive terms search name/host/VM-ID/user/action fields (AND logic).
         cols = [ChangeHistory.entity_name, ChangeHistory.host,
                 ChangeHistory.vm_external_id, ChangeHistory.actor, ChangeHistory.op_type]
         for m in re.finditer(r'([-!]?)(?:"([^"]+)"|(\S+))', q):
@@ -179,7 +179,7 @@ def update_sync_settings(request: Request, payload: dict = Body(...),
         from ..core.scheduler import reschedule_sync
         reschedule_sync(full, usage)
     except Exception:
-        pass   # ayar kaydedildi; yeniden zamanlama olmazsa sonraki açılışta geçerli olur
+        pass   # setting saved; without a reschedule it takes effect on next startup
     return {"ok": True, "sync_interval_minutes": full,
             "usage_sync_interval_minutes": usage,
             "track_console_access": console}
@@ -189,7 +189,7 @@ def update_sync_settings(request: Request, payload: dict = Body(...),
 def clear_console_history(request: Request, payload: dict = Body(default={}),
                           db: Session = Depends(get_db),
                           user: User = Depends(require_role("admin"))):
-    """Konsol erişimi (category='console') geçmiş satırlarını topluca siler."""
+    """Bulk-delete console-access (category='console') history rows."""
     validate_csrf(request, (payload or {}).pop("csrf_token", None))
     n = db.query(ChangeHistory).filter(ChangeHistory.category == "console").delete()
     log_audit(db, user, "delete", target="change-history",

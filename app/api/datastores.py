@@ -1,9 +1,5 @@
-"""Datastore (depolama) listesi API'si — arama, filtre, sıralama.
-
-Veriler senkronizasyonda toplanır ve mükerrer kayıt önlenir:
-paylaşımlı depolar (NFS/Ceph/PBS, vCenter VMFS) tek satırda birleşir;
-yerel Proxmox depoları node bazında ayrılır.
-"""
+"""Datastore (storage) list API - search, filter, sort.
+Data is collected during sync with duplicate prevention."""
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
@@ -62,12 +58,9 @@ def list_datastores(q: str = "", sort: str = "name", order: str = "asc",
 @router.get("/{ds_id}")
 def datastore_detail(ds_id: int, db: Session = Depends(get_db),
                      user=Depends(get_current_user)):
-    """Bir datastore'u kullanan VM'ler + host'lar (drill-down modalları için).
-
-    VM eşleşmesi list/sync ile aynı mantık: VM'in 'datastore' alanında (virgülle
-    ayrık) bu deponun adı geçer; yerel (paylaşımsız) depoda ayrıca VM'in host'unun
-    node'u datastore'un node'u ile eşleşmelidir.
-    """
+    """VMs + hosts using a datastore (for drill-down modals).
+        VM matching uses the same logic as list/sync: the VM's comma-separated
+        'datastore' field (node-aware for local Proxmox stores)."""
     d = db.query(Datastore).filter_by(id=ds_id).first()
     if not d:
         raise HTTPException(status_code=404, detail="Datastore bulunamadı")
@@ -80,7 +73,7 @@ def datastore_detail(ds_id: int, db: Session = Depends(get_db),
     for vm, hname in rows:
         tokens = [t.strip() for t in (vm.datastore or "").split(",") if t.strip()]
         if d.name not in tokens:
-            continue                       # alt-dize yanlış eşleşmesini önle (ds1≠ds10)
+            continue                       # avoid substring mismatches (ds1 != ds10)
         if not (d.shared or not d.node or hname == d.node):
             continue
         ext = vm.external_id or ""

@@ -1,12 +1,8 @@
 """
-Cluster yönetimi API'si.
+Cluster management API.
 
-Cluster'lar envanterden türetilir (VM/Host üzerindeki alan); burada
-görünürlükleri yönetilir. Gizlenen cluster'lar:
-- Dashboard sayılarına ve grafiklerine GİRMEZ
-- VM listesi ve facets'te varsayılan olarak GÖRÜNMEZ
-  (gelişmiş panelden "gizli cluster'ları dahil et" ile veya doğrudan
-   cluster: araması yapılarak yine erişilebilir — veri silinmez)
+Clusters are derived from the inventory (a string field on VM/Host); this
+module only manages their visibility.
 """
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -21,17 +17,17 @@ from ..core.audit import log_audit
 
 router = APIRouter(prefix="/api/clusters", tags=["clusters"])
 
-# Cluster'ı boş olan VM/host'lar için sanal grup kimliği.
-# Standalone host'lardaki VM'lerin cluster alanı doğal olarak boştur;
-# bu sentinel sayesinde onlar da tek grup olarak gizlenip gösterilebilir.
+# Virtual group id for VMs/hosts with an empty cluster.
+# VMs on standalone hosts naturally have a blank cluster; this sentinel
+# lets them be hidden/shown as a single group too.
 NONE_SENTINEL = "__none__"
 
 
 def hidden_cluster_names(db: Session) -> list[str]:
     """
-    Gizli cluster adlarını döndürür (dashboard ve VM listesi kullanır).
-    Liste NONE_SENTINEL içeriyorsa cluster'ı boş kayıtlar da gizlidir.
-    """
+        Returns hidden cluster names (used by the dashboard and VM list).
+        If the list contains NONE_SENTINEL, blank-cluster records are hidden too.
+        """
     rows = db.query(ClusterSetting.name)\
              .filter(ClusterSetting.visible == False).all()  # noqa: E712
     return [r[0] for r in rows]
@@ -39,9 +35,9 @@ def hidden_cluster_names(db: Session) -> list[str]:
 
 def hidden_vm_filter(db: Session, model):
     """
-    Gizli cluster'ları dışlayan SQLAlchemy koşulu üretir (VM veya Host için).
-    Dönüş None ise hiçbir şey gizli değildir.
-    """
+        Builds a SQLAlchemy condition excluding hidden clusters (for VM or Host).
+        A None return means nothing is hidden.
+        """
     from sqlalchemy import func, or_
     hidden = hidden_cluster_names(db)
     if not hidden:
@@ -59,10 +55,9 @@ def hidden_vm_filter(db: Session, model):
 def list_clusters(db: Session = Depends(get_db),
                   user: User = Depends(get_current_user)):
     """
-    Tüm cluster'ları VM/host sayıları ve görünürlük durumuyla listele.
-    Envanterde artık bulunmayan ama ayarı kalmış cluster'lar da gösterilir
-    (kullanıcı ayarı temizleyebilsin diye).
-    """
+        List all clusters with VM/host counts and visibility. Clusters that left
+        the inventory but still have a setting are listed too (marked accordingly).
+        """
     vm_counts = dict(db.query(VirtualMachine.cluster,
                               func.count(VirtualMachine.id))
                      .filter(VirtualMachine.is_template == False)  # noqa: E712
@@ -71,26 +66,26 @@ def list_clusters(db: Session = Depends(get_db),
                        .group_by(Host.cluster).all())
     settings = {s.name: s.visible for s in db.query(ClusterSetting).all()}
 
-    # Boş cluster'ları sanal "(Cluster'sız)" grubunda topla
+    # Collect empty clusters under the virtual "(No cluster)" group
     none_vm = vm_counts.pop(None, 0) + vm_counts.pop("", 0)
     none_host = host_counts.pop(None, 0) + host_counts.pop("", 0)
 
     names = set(vm_counts) | set(host_counts) | set(settings)
     names.discard(None)
     names.discard("")
-    names.discard(NONE_SENTINEL)   # ayrı işlenir
+    names.discard(NONE_SENTINEL)   # handled separately
 
     items = [{
         "name": n,
         "vm_count": vm_counts.get(n, 0),
         "host_count": host_counts.get(n, 0),
-        "visible": settings.get(n, True),       # ayar yoksa görünür kabul edilir
+        "visible": settings.get(n, True),       # no setting -> considered visible
         "in_inventory": n in vm_counts or n in host_counts,
         "is_none": False,
     } for n in sorted(names)]
 
-    # "(Cluster'sız)" grubu: envanterde boş cluster'lı kayıt varsa
-    # veya gizleme ayarı bir kez yapılmışsa listede yer alır
+    # The "(No cluster)" group: listed when the inventory has blank-cluster
+    # records or the hide setting was made at least once
     if none_vm or none_host or NONE_SENTINEL in settings:
         items.insert(0, {
             "name": NONE_SENTINEL,
@@ -113,10 +108,10 @@ class VisibilityPayload(BaseModel):
 def set_visibility(payload: VisibilityPayload,
                    db: Session = Depends(get_db),
                    user: User = Depends(require_role("operator"))):
-    """Bir cluster'ı göster/gizle. Operatör ve üzeri yapabilir."""
+    """Show/hide a cluster. Operator and above."""
     if not payload.name.strip():
         raise HTTPException(400, "Cluster adı boş olamaz")
-    # NONE_SENTINEL geçerli bir addır: "(Cluster'sız)" sanal grubunu temsil eder
+    # NONE_SENTINEL is a valid name: represents the virtual "(No cluster)" group
     setting = db.query(ClusterSetting).filter_by(name=payload.name).first()
     if setting is None:
         setting = ClusterSetting(name=payload.name)

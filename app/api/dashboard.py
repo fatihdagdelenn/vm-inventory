@@ -15,10 +15,9 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 @router.get("/summary")
 def summary(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """
-    Ana ekran kartları ve grafikler için tüm özet veriler.
-    GİZLİ cluster'lardaki VM ve host'lar sayılara/grafiklere DAHİL EDİLMEZ;
-    böylece dashboard yalnızca takip etmek istediğiniz ortamı yansıtır.
-    """
+        All summary data for the main-screen cards and charts.
+        VMs and hosts in HIDDEN clusters are EXCLUDED from counts/charts.
+        """
     from .clusters import hidden_cluster_names, hidden_vm_filter
     hidden = hidden_cluster_names(db)
     vm_cond = hidden_vm_filter(db, VirtualMachine)
@@ -212,8 +211,8 @@ def summary(db: Session = Depends(get_db), user: User = Depends(get_current_user
 
 
 def _to_float(v):
-    """ChangeHistory old/new values are raw numbers (ram_mb=MB, disk_total_gb=GB)
-    saklanır; metinden ilk sayıyı güvenle ayrıştırır."""
+    """ChangeHistory old/new values are raw numbers (ram_mb=MB,
+        disk_total_gb=GB); safely parse the first number out of the text."""
     try:
         return float(str(v).strip().split()[0].replace(",", "."))
     except (TypeError, ValueError, IndexError):
@@ -223,10 +222,9 @@ def _to_float(v):
 @router.get("/insights")
 def insights(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """
-    Premium 'akıllı' metrikler: kapasite öngörüsü, zombi (boşta) VM'ler,
-    küçük trend serileri (sparkline) ve canlılık/senkron bilgisi.
-    Hepsi lokal DB'den; tahminler sezgisel (gerçek geçmiş veriye dayanır).
-    """
+        Premium 'smart' metrics: capacity forecast, zombie (idle) VMs, small trend
+        series (sparklines) and liveness/sync info.
+        """
     from datetime import datetime as _dt, timedelta as _td
     from .clusters import hidden_cluster_names, hidden_vm_filter
     from ..models import ChangeHistory

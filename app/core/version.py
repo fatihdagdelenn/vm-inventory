@@ -1,4 +1,4 @@
-"""Uygulama sürümü. Biçim: <ana>.<alt>.<yama>.<faz>
-Her yeni faz teslim edildiğinde son bileşen (faz) artırılır."""
+"""Application version. Format: <major>.<minor>.<patch>.<phase>
+The last component (phase) is bumped on every delivered phase."""
 
-APP_VERSION = "1.0.3.81"
+APP_VERSION = "1.0.3.82"
