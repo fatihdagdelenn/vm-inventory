@@ -55,13 +55,29 @@ class ProxmoxCollector:
         if self.token_name and self.token_value:
             # "user@realm!tokenid" -> user="user@realm", token_name="tokenid"
             user_part, _, tokenid = self.token_name.partition("!")
-            self.api = ProxmoxAPI(self.host, port=self.port, user=user_part,
-                                  token_name=tokenid, token_value=self.token_value,
-                                  verify_ssl=self.verify_ssl)
+            self._conn_kwargs = dict(port=self.port, user=user_part,
+                                     token_name=tokenid,
+                                     token_value=self.token_value,
+                                     verify_ssl=self.verify_ssl)
         else:
-            self.api = ProxmoxAPI(self.host, port=self.port, user=self.username,
-                                  password=self.password, verify_ssl=self.verify_ssl)
+            self._conn_kwargs = dict(port=self.port, user=self.username,
+                                     password=self.password,
+                                     verify_ssl=self.verify_ssl)
+        self.api = ProxmoxAPI(self.host, **self._conn_kwargs)
         return self.api
+
+    def _slow_api(self, timeout: int = 60):
+        """A second client with a long timeout for slow endpoints.
+
+        /nodes/{node}/report runs pvereport server-side, which easily exceeds
+        the default 5 s timeout. Built lazily and cached; falls back to the
+        main client if connection kwargs are unavailable.
+        """
+        if getattr(self, "_slow", None) is None:
+            kw = getattr(self, "_conn_kwargs", None)
+            self._slow = (ProxmoxAPI(self.host, timeout=timeout, **kw)
+                          if kw else self.api)
+        return self._slow
 
     def test_connection(self) -> dict:
         """Connection test: queries version info."""
@@ -124,6 +140,11 @@ class ProxmoxCollector:
     _HW_PLACEHOLDER = re.compile(
         r"to be filled|o\.e\.m|default string|system (product name|manufacturer)"
         r"|not specified|unknown|empty", re.IGNORECASE)
+    # component vendors that must not be mistaken for the box OEM
+    _HW_COMPONENT = re.compile(
+        r"intel|advanced micro|\bamd\b|nvidia|broadcom|realtek|mellanox"
+        r"|qlogic|emulex|samsung|micron|kioxia|western digital|seagate"
+        r"|\blsi\b|avago|marvell|aquantia|red hat|aspeed", re.IGNORECASE)
 
     def _node_hw_model(self, node: str) -> str:
         """Physical vendor+model of a node (e.g. 'Dell Inc. PowerEdge R750').
@@ -141,7 +162,7 @@ class ProxmoxCollector:
             return self._hw_cache[node]
         result = ""
         try:
-            rep = self.api.nodes(node).report.get()
+            rep = self._slow_api().nodes(node).report.get()
             text = rep if isinstance(rep, str) else str(rep or "")
             block = re.search(r"System Information([\s\S]{0,400})", text)
             scope = block.group(1) if block else text
@@ -162,6 +183,11 @@ class ProxmoxCollector:
                 cnt = Counter((d.get("subsystem_vendor_name") or "").strip()
                               for d in devs)
                 cnt.pop("", None)
+                # Component makers are not the box OEM - drop them from the vote
+                # (an "Intel Corporation" majority just means Intel NICs/chipset).
+                for v in list(cnt):
+                    if self._HW_COMPONENT.search(v):
+                        del cnt[v]
                 if cnt:
                     best, n = cnt.most_common(1)[0]
                     if n >= 3 and not self._HW_PLACEHOLDER.search(best):
@@ -209,7 +235,9 @@ class ProxmoxCollector:
                         self.api.nodes(name).network.get())
                 except Exception as exc:
                     logger.warning("Could not fetch node details %s: %s", name, exc)
-                entry["hw_model"] = self._node_hw_model(name)
+                hw = self._node_hw_model(name)
+                if hw:  # empty must not overwrite a previously good value
+                    entry["hw_model"] = hw
             hosts.append(entry)
 
         # Resolve the cluster name and assign it to all nodes

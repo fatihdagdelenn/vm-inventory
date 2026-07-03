@@ -76,6 +76,24 @@ async def lifespan(app: FastAPI):
     yield
     stop_scheduler()
 
+    # Purge hw_model values that captured a component maker instead of the OEM
+    # (early PCI-fallback bug wrote e.g. "Intel Corporation"); the fixed
+    # collector refills them on the next sync.
+    try:
+        from .models import Host as _H
+        _db = SessionLocal()
+        _bad = ["Intel%", "Advanced Micro%", "AMD%", "Broadcom%", "Realtek%",
+                "NVIDIA%", "Mellanox%", "Red Hat%"]
+        n = 0
+        for _p in _bad:
+            n += _db.query(_H).filter(_H.hw_model.ilike(_p)) \
+                    .update({_H.hw_model: None}, synchronize_session=False)
+        _db.commit(); _db.close()
+        if n:
+            logging.info("Cleared %d component-vendor hw_model values", n)
+    except Exception:
+        pass
+
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan,
               docs_url="/api/docs" if settings.debug else None)
