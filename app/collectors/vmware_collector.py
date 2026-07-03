@@ -272,6 +272,7 @@ class VMwareCollector:
                     "mgmt_ip": mgmt_ip,
                     "os_version": summary.config.product.fullName if summary.config.product else "",
                     "cpu_model": hw.cpuModel or "",
+                    "hw_model": " ".join(x for x in (hw.vendor, hw.model) if x),
                     "cpu_cores": hw.numCpuCores or 0,
                     "ram_total_mb": int((hw.memorySize or 0) / 1024**2),
                     "ram_used_mb": int(summary.quickStats.overallMemoryUsage or 0),

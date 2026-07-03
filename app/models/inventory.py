@@ -29,6 +29,7 @@ class Host(Base):
     mgmt_ip = Column(String(64), index=True)        # Management IP address
     os_version = Column(String(255))                # OS / hypervisor version
     cpu_model = Column(String(255))                 # CPU modeli
+    hw_model = Column(String(255))                  # Physical hardware vendor+model (e.g. Dell PowerEdge R750)
     cpu_cores = Column(Integer)                     # Core count
     ram_total_mb = Column(BigInteger)               # Toplam RAM (MB)
     ram_used_mb = Column(BigInteger)                # Used RAM (MB)

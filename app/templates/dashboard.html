@@ -59,13 +59,28 @@
 
     <!-- ===== Kaynak toplamları ===== -->
     <div class="dash-widget" data-widget="mini-vcpu" data-w="3" data-title="vCPU (Atanan/Toplam)">
-      <div class="mini-stat"><i class="bi bi-cpu"></i><div><span id="st-vcpu">—</span><small><span data-i18n="dash.assigned">Atanan</span> vCPU</small><small class="mini-total"><span data-i18n="dash.totalWord">Toplam</span>: <b id="st-vcpu-total">—</b></small></div></div>
+      <div class="mini-stat">
+        <i class="bi bi-cpu"></i>
+        <div class="ms-body"><span class="ms-val" id="st-vcpu">—</span><small class="ms-lbl"><span data-i18n="dash.assigned">Atanan</span> vCPU</small></div>
+        <div class="ms-tot"><small data-i18n="dash.totalWord">Toplam</small><b id="st-vcpu-total">—</b>
+          <div class="ms-ratio"><i id="st-vcpu-bar"></i></div></div>
+      </div>
     </div>
     <div class="dash-widget" data-widget="mini-ram" data-w="3" data-title="RAM (Atanan/Toplam)">
-      <div class="mini-stat"><i class="bi bi-memory"></i><div><span id="st-ram">—</span><small><span data-i18n="dash.assigned">Atanan</span> RAM</small><small class="mini-total"><span data-i18n="dash.totalWord">Toplam</span>: <b id="st-ram-total">—</b></small></div></div>
+      <div class="mini-stat">
+        <i class="bi bi-memory"></i>
+        <div class="ms-body"><span class="ms-val" id="st-ram">—</span><small class="ms-lbl"><span data-i18n="dash.assigned">Atanan</span> RAM</small></div>
+        <div class="ms-tot"><small data-i18n="dash.totalWord">Toplam</small><b id="st-ram-total">—</b>
+          <div class="ms-ratio"><i id="st-ram-bar"></i></div></div>
+      </div>
     </div>
     <div class="dash-widget" data-widget="mini-disk" data-w="3" data-title="Disk (Atanan/Toplam)">
-      <div class="mini-stat"><i class="bi bi-device-hdd"></i><div><span id="st-disk">—</span><small><span data-i18n="dash.assigned">Atanan</span> Disk</small><small class="mini-total"><span data-i18n="dash.totalWord">Toplam</span>: <b id="st-disk-total">—</b></small></div></div>
+      <div class="mini-stat">
+        <i class="bi bi-device-hdd"></i>
+        <div class="ms-body"><span class="ms-val" id="st-disk">—</span><small class="ms-lbl"><span data-i18n="dash.assigned">Atanan</span> Disk</small></div>
+        <div class="ms-tot"><small data-i18n="dash.totalWord">Toplam</small><b id="st-disk-total">—</b>
+          <div class="ms-ratio"><i id="st-disk-bar"></i></div></div>
+      </div>
     </div>
     <div class="dash-widget" data-widget="mini-suspended" data-w="3" data-title="Askıdaki VM">
       <div class="mini-stat"><i class="bi bi-pause-circle"></i><div><span id="st-suspended">—</span><small data-i18n="dash.suspendedVm">Askıdaki VM</small></div></div>
@@ -100,7 +115,7 @@
           <button type="button" class="btn btn-outline-secondary active" data-age="30">30+</button>
         </span></div>
         <div class="card-body p-0 d-flex flex-column"><div class="table-responsive flex-1" style="overflow:auto">
-          <table class="table table-sm table-hover mb-0"><thead><tr><th>VM</th><th data-i18n="dash.snapName">Snapshot</th><th class="text-end" data-i18n="bk.age">Yaş</th></tr></thead>
+          <table class="table table-sm table-hover mb-0 snap-table"><thead><tr><th style="width:34%">VM</th><th data-i18n="dash.snapName">Snapshot</th><th class="text-end" style="width:72px" data-i18n="bk.age">Yaş</th></tr></thead>
           <tbody id="oldSnapBody"><tr><td colspan="3" class="text-muted p-3" data-i18n="common.loading">Yükleniyor…</td></tr></tbody></table>
         </div></div></div>
     </div>

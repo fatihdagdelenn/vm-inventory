@@ -52,6 +52,7 @@ const Hosts = {
       case 'name':       return (h.name || '').toLowerCase();
       case 'mgmt_ip':    return Hosts.ipKey(h.mgmt_ip);
       case 'os_version': return (h.os_version || '').toLowerCase();
+      case 'hw_model':   return (h.hw_model || '').toLowerCase();
       case 'cpu_model':  return (h.cpu_model || '').toLowerCase();
       case 'cpu_cores':  return h.cpu_cores || 0;
       case 'ram':        return h.ram_total_mb ? 100 * (h.ram_used_mb || 0) / h.ram_total_mb : -1;
@@ -91,7 +92,7 @@ const Hosts = {
   render() {
     const body = document.getElementById('hostBody');
     if (!Hosts.items.length) {
-      body.innerHTML = '<tr><td colspan="11" class="text-center text-muted p-4">' + t('vm.noResults','Sonuç bulunamadı.') + '</td></tr>';
+      body.innerHTML = '<tr><td colspan="12" class="text-center text-muted p-4">' + t('vm.noResults','Sonuç bulunamadı.') + '</td></tr>';
       Hosts.markHeaders();
       return;
     }
@@ -113,6 +114,7 @@ const Hosts = {
           '<br><small class="text-muted">' + App.esc(h.platform) + '</small></td>' +
         '<td>' + App.esc(h.mgmt_ip || '—') + '</td>' +
         '<td class="small">' + App.esc(h.os_version || '—') + '</td>' +
+        '<td class="small">' + App.esc(h.hw_model || '—') + '</td>' +
         '<td class="small">' + App.esc(h.cpu_model || '—') + '</td>' +
         '<td>' + resCell((h.cpu_cores || '—') + ' ' + t('hs.coresLower','çekirdek'), cpuPct, 'CPU') + '</td>' +
         '<td>' + resCell(App.fmtRam(h.ram_used_mb) + ' / ' + App.fmtRam(h.ram_total_mb), ramPct, 'RAM') + '</td>' +

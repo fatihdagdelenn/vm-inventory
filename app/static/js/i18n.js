@@ -125,7 +125,7 @@ const I18N = {
     'st.maintenance': 'Maintenance', 'st.unknown': 'Unknown',
     // Hosts page
     'hs.searchPh': 'Search host name, IP, cluster or CPU model…',
-    'hs.name': 'Host Name', 'hs.mgmtIp': 'Mgmt IP', 'hs.cpuModel': 'CPU Model', 'hs.cores': 'Cores',
+    'hs.name': 'Host Name', 'hs.mgmtIp': 'Mgmt IP', 'hs.cpuModel': 'CPU Model', 'hs.hwModel': 'Hardware', 'hs.cores': 'Cores',
     'hs.runningOpen': 'running — open VM list', 'hs.coresLower': 'cores',
     // Datastores page
     'ds.searchPh': 'Search datastore name, type, node or platform…',

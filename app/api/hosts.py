@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api/hosts", tags=["hosts"])
 
 def _host_to_dict(h: Host) -> dict:
     return {"id": h.id, "name": h.name, "mgmt_ip": h.mgmt_ip,
-            "os_version": h.os_version, "cpu_model": h.cpu_model,
+            "os_version": h.os_version, "cpu_model": h.cpu_model, "hw_model": h.hw_model,
             "cpu_cores": h.cpu_cores, "ram_total_mb": h.ram_total_mb,
             "ram_used_mb": h.ram_used_mb, "cpu_usage_pct": h.cpu_usage_pct,
             "disk_total_gb": h.disk_total_gb, "disk_used_gb": h.disk_used_gb,
@@ -32,7 +32,8 @@ def list_hosts(q: str = "", db: Session = Depends(get_db),
     if q:
         like = f"%{q}%"
         query = query.filter(or_(Host.name.ilike(like), Host.mgmt_ip.ilike(like),
-                                 Host.cluster.ilike(like), Host.cpu_model.ilike(like)))
+                                 Host.cluster.ilike(like), Host.cpu_model.ilike(like),
+                                 Host.hw_model.ilike(like)))
     return {"items": [_host_to_dict(h) for h in query.order_by(Host.name).all()]}
 
 

@@ -73,13 +73,25 @@ function barGrad(chart, base, horizontal) {
   const P = d.phys || {};
   const el = id => document.getElementById(id);
   const setT = (id, v) => { const x = el(id); if (x) x.textContent = v || '—'; };
+  // Assigned/Total ratio bar: fills toward 100%; overcommit (>100%) turns amber.
+  const ratioBar = (id, alloc, tot) => {
+    const b = el(id); if (!b) return;
+    if (!tot) { b.parentElement.style.display = 'none'; return; }
+    const pct = 100 * alloc / tot;
+    b.style.width = Math.min(100, pct) + '%';
+    b.classList.toggle('over', pct > 100);
+    b.parentElement.title = t('fc.alloc','Tahsis') + ': %' + Math.round(pct);
+  };
   set('st-vcpu', d.total_vcpu);
   setT('st-vcpu-total', P.cores);
+  ratioBar('st-vcpu-bar', d.total_vcpu, P.cores);
   const gbf = g => g >= 1024 ? (g/1024).toFixed(1)+' TB' : g+' GB';
   set('st-ram', gbf(d.total_ram_gb));
   setT('st-ram-total', P.ram_gb ? gbf(P.ram_gb) : null);
+  ratioBar('st-ram-bar', d.total_ram_gb, P.ram_gb);
   set('st-disk', d.total_disk_tb + ' TB');
   setT('st-disk-total', P.disk_tb ? P.disk_tb + ' TB' : null);
+  ratioBar('st-disk-bar', d.total_disk_tb, P.disk_tb);
   set('at-noip', d.attention.no_ip);       set('at-notools', d.attention.no_tools);
   set('at-noowner', d.attention.no_owner);  set('at-oldsnap', d.attention.old_snapshots);
   set('at-nobackup', d.attention.no_backup);
