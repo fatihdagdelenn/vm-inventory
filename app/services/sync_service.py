@@ -1,15 +1,15 @@
 """
-Senkronizasyon servisi.
+Synchronization service.
 
-Akış:
-1. Zamanlayıcı (veya kullanıcı 'Tümünü Yenile' butonu) sync_all_platforms() çağırır.
-2. Her platform için ilgili collector çalışır, veriler API'den çekilir.
-3. upsert mantığıyla lokal veritabanı güncellenir.
-4. Eski/yeni değer karşılaştırması yapılır -> ChangeHistory'ye yazılır.
-5. Artık platformda olmayan VM/Host kayıtları silinir (ve geçmişe işlenir).
-6. Sonuç SyncLog'a kaydedilir.
+Flow:
+1. The scheduler (or the user's 'Refresh All' button) calls sync_all_platforms().
+2. The matching collector runs per platform; data is pulled from the API.
+3. The local database is updated with upsert logic.
+4. Old/new values are compared -> written to ChangeHistory.
+5. VM/Host records no longer on the platform are deleted (and logged).
+6. The result is stored in SyncLog.
 
-Bu sayede kullanıcı aramaları her zaman hızlı lokal verilerle çalışır.
+This keeps user searches always fast, served from local data.
 """
 import re
 import logging
@@ -26,22 +26,24 @@ from ..collectors.proxmox_collector import ProxmoxCollector
 
 logger = logging.getLogger("sync")
 
-# Değişiklik geçmişinde izlenen VM alanları
+# VM fields tracked in the change history
 TRACKED_VM_FIELDS = ["name", "ip_addresses", "guest_os", "cpu_count", "ram_mb",
                      "disk_total_gb", "power_state", "cluster", "datastore", "vlans",
                      "networks"]
-# NOT: mac_addresses bilerek İZLENMEZ — sık MAC oynaması (geçici/otomatik MAC,
-# guest.net gürültüsü) Değişiklik Geçmişi'ni kirletiyordu. MAC değeri VM kaydında
-# saklanmaya/gösterilmeye devam eder; yalnızca değişiklik kaydı tutulmaz.
+# NOTE: mac_addresses is deliberately NOT tracked - frequent MAC churn (temporary/auto
+# MACs, guest.net noise) polluted the Change History. The MAC value is still stored
+# and shown on the VM record; only change records are skipped.
 TRACKED_HOST_FIELDS = ["name", "mgmt_ip", "cpu_cores", "ram_total_mb", "cluster", "status"]
 
-# Misafir agent'ı / config sorgusu geçici başarısız olunca bu alanlar "iyi" değerden
-# jenerik/boş değere düşebilir. Geçmiş'i (ChangeHistory) gürültüden korumak için
-# bu düşüşlerde eski (iyi) değeri koruruz.
+# When the guest agent / config query fails transiently, these fields can drop from a
+# "good" value to a generic/empty one. To protect ChangeHistory from noise we keep
+# the old (good) value on such drops.
 _ENRICH_FIELDS = ("guest_os", "ip_addresses", "datastore", "vlans", "networks",
                   "mac_addresses", "kernel", "arch", "disk_total_gb", "ram_mb",
                   "guest_notes", "platform_tags")
-# Jenerik / belirsiz OS adları (agent yokken ostype/guestFullName'den gelir)
+# Generic / vague OS names (from ostype/guestFullName when no agent).
+# NOTE: the Turkish words in the regex are intentional - they match data values
+# the collectors emit (e.g. "Diğer", "eski çekirdek"); translating them breaks matching.
 _GENERIC_OS_RE = re.compile(
     r"çekirdek|kernel\)|\bother\b|^diğer$|^linux$|^windows$|2\.6\+|2\.4 ",
     re.IGNORECASE)
@@ -52,12 +54,12 @@ def _is_generic_os(s) -> bool:
 
 
 def _preserve_old(field, old, new) -> bool:
-    """Geçici agent/enrich düşüşünde eski iyi değer korunmalı mı?"""
+    """Should the old good value be kept on a transient agent/enrich drop?"""
     if field == "guest_os":
         return new is not None and _is_generic_os(new) and old and not _is_generic_os(old)
     if field in ("ip_addresses", "datastore", "vlans", "disk_total_gb",
                  "networks", "mac_addresses"):
-        return (not new) and bool(old)   # eski doluyken yeni boş/0 → geçici düşüş
+        return (not new) and bool(old)   # old non-empty, new empty/0 -> transient drop
     return False
 
 
@@ -76,14 +78,14 @@ def _record_change(db, entity_type, entity_name, platform_id, change_type,
         vm_external_id=vm_external_id, actor_ip=actor_ip, actor_agent=actor_agent))
 
 
-# Saptanan alan değişimi → kabul edilebilir işlem kategorileri (öncelik sırası).
-# Bir değişimi YALNIZ uygun kategorideki işlemle eşleriz; böylece bir kullanıcının
-# işlemi (ör. 'açtı') başka bir kullanıcının değişikliğine (ör. 'RAM artırdı')
-# atfedilmez. Uygun işlem yoksa aktör BOŞ bırakılır (yanlış kişi yazmaktansa).
+# Detected field change -> acceptable operation categories (priority order).
+# A change is matched ONLY to an operation in a fitting category, so one user's
+# action (e.g. 'powered on') is never credited with another user's change
+# (e.g. 'raised RAM'). With no fitting op the actor stays EMPTY (better than wrong).
 _FIELD_OP_CATEGORIES = {
     "cpu_count":     ["config"],
     "ram_mb":        ["config"],
-    "guest_os":      ["config"],            # zayıf; genelde agent kaynaklı → boş kalabilir
+    "guest_os":      ["config"],            # weak; usually agent-driven -> may stay empty
     "disk_total_gb": ["disk", "config", "lifecycle"],
     "datastore":     ["migrate", "disk", "config"],
     "vlans":         ["config"],
@@ -92,9 +94,9 @@ _FIELD_OP_CATEGORIES = {
     "name":          ["config"],            # rename de 'config' kategorisinde
     "cluster":       ["migrate"],
     "power_state":   ["power"],
-    "ip_addresses":  [],                    # misafir içi (agent) → operatör işlemi değil
+    "ip_addresses":  [],                    # in-guest (agent) -> not an operator action
 }
-# Alanın görsel kategorisi (eşleşen işlem bulunamasa bile UI gruplaması için).
+# Visual category of the field (for UI grouping even when no op matches).
 _FIELD_CATEGORY = {
     "cpu_count": "hardware", "ram_mb": "hardware", "guest_os": "os",
     "disk_total_gb": "disk", "datastore": "disk",
@@ -102,7 +104,7 @@ _FIELD_CATEGORY = {
     "networks": "network", "mac_addresses": "network",
     "name": "other", "cluster": "migrate", "power_state": "power",
 }
-# Yeni power_state değeri → beklenen işlem yönü.
+# New power_state value -> expected operation direction.
 _POWER_DIRECTION = {
     "running": "on", "poweredOn": "on", "on": "on",
     "stopped": "off", "poweredOff": "off", "off": "off",
@@ -111,11 +113,11 @@ _POWER_DIRECTION = {
 
 
 def _match_op(ops, categories, direction=None, min_ts=0):
-    """VM'in işlem listesinden (en yeni → en eski) kategoriye uyan ilk işlem.
+    """First op in the VM's op list (newest to oldest) matching the category.
 
-    direction verildiyse önce yön+kategori eşleşmesi aranır, bulunamazsa yalnız
-    kategori. min_ts verilirse o zamandan ESKİ işlemler elenir (taze bir değişimi
-    eski bir kuruluş işlemine atfetmeyi önler). Hiç uygun işlem yoksa None."""
+    With direction given, direction+category is tried first, then category only.
+    With min_ts, ops OLDER than that are dropped (prevents crediting a fresh
+    change to an old setup operation). None when nothing fits."""
     if not ops or not categories:
         return None
     cand = [o for o in ops if (o.get("ts") or 0) >= min_ts] if min_ts else ops
@@ -131,7 +133,7 @@ def _match_op(ops, categories, direction=None, min_ts=0):
 
 
 def _epoch(dt):
-    """Naive-UTC datetime (collector utcfromtimestamp ile üretir) → epoch saniye."""
+    """Naive-UTC datetime (collectors produce via utcfromtimestamp) -> epoch seconds."""
     if not dt:
         return 0
     try:
@@ -142,13 +144,13 @@ def _epoch(dt):
 
 
 def _find_op_by_vid(vm_ops, vid, categories, directions=None, min_ts=0):
-    """vmid'e göre TÜM op listelerinde (node bağımsız) en yeni uygun işlemi bul.
+    """Find the newest fitting op by vmid across ALL op lists (node-independent).
 
-    Proxmox'ta bazı görevler beklenmedik node/anahtarda olabilir (ör. klon işlemi
-    kaynak node'a yazılır, qmigrate kaynak node'da kayıtlıdır). '/{vid}' ile biten
-    tüm anahtarları tarar; kategori (+ varsa yön) eşleşen, aktörü dolu ve min_ts'ten
-    yeni işlemlerden en yenisini döner. min_ts genelde VM'in oluşturulma zamanıdır
-    (vmid yeniden kullanıldığında eski VM'in işlemleri elensin diye)."""
+    In Proxmox some tasks live under unexpected nodes/keys (e.g. a clone is
+    logged on the source node, qmigrate on the source node). Scans all keys
+    ending in '/{vid}'; returns the newest op that matches the category (+
+    direction if given), has an actor and is newer than min_ts. min_ts is
+    usually the VM's creation time (drops the old VM's ops on vmid reuse)."""
     best = None
     suffix = "/" + str(vid)
     for ext, ops in vm_ops.items():
@@ -168,19 +170,19 @@ def _find_op_by_vid(vm_ops, vid, categories, directions=None, min_ts=0):
     return best
 
 
-# Yaşam döngüsü yönleri: "Eklendi" yalnız oluşturma-yönlü işlemlerle eşleşmeli,
-# ASLA "destroy" ile (vmid yeniden kullanımında eski VM'in silme görevine bulaşmasın).
+# Lifecycle directions: "Added" must only match create-direction ops,
+# NEVER "destroy" (avoid picking up the old VM's delete task on vmid reuse).
 _CREATE_DIRECTIONS = {"create", "clone", "restore", "register"}
 _DESTROY_DIRECTIONS = {"destroy"}
 
 
 def _nearest_clone_op(clone_ops, ctime, window=900):
-    """Zaman yakınlığıyla klon işlemini bul.
+    """Find the clone op by time proximity.
 
-    Proxmox klon görevinin UPID'i KAYNAK vmid'i taşır (yeni vmid'i değil), bu yüzden
-    yeni VM kendi klon işlemini vmid anahtarıyla bulamaz. Yeni VM'in oluşturulma
-    zamanı (ctime) ≈ klon görevinin zamanı olduğundan, ctime'a en yakın klon
-    işlemini (pencere içinde) eşleriz → klonu yapan kullanıcı doğru bulunur."""
+    The Proxmox clone task's UPID carries the SOURCE vmid (not the new one),
+    so the new VM can't find its clone op by vmid key. Since the new VM's
+    creation time (ctime) ~ the clone task time, we match the clone op nearest
+    to ctime (within a window) -> the cloning user is found correctly."""
     if not ctime:
         return None
     best, best_d = None, None
@@ -192,19 +194,19 @@ def _nearest_clone_op(clone_ops, ctime, window=900):
 
 
 def _record_console_ops(db, platform, vm, ops, ext_id, host_name, window=1800, cap=8):
-    """VM konsoluna erişen kullanıcıları bilgi satırı olarak işle.
+    """Record users who accessed the VM console as info rows.
 
-    Konsol erişimi bir envanter DEĞİŞİMİ değildir; ayrı satır (change_type='access')
-    olarak yazılır. Proxmox'ta her noVNC açılışı/yeniden bağlanışı ayrı bir
-    'vncproxy' görevi ürettiğinden geçmiş bunlarla dolabilir. Bu yüzden aynı
-    kullanıcının erişimleri 'window' saniyelik pencerelere (varsayılan 30 dk)
-    toplanır: kullanıcı başına pencere başına EN FAZLA bir satır. Pencere başlangıcı
-    new_value'ya yazılır → hem deterministik tekilleştirme hem sade görünüm.
+    Console access is not an inventory CHANGE; it is written as a separate row
+    (change_type='access'). In Proxmox every noVNC open/reconnect spawns its
+    own 'vncproxy' task, which could flood the history. So one user's accesses
+    are grouped into 'window'-second windows (default 30 min): AT MOST one row
+    per user per window. The window start goes into new_value -> deterministic
+    dedup and a clean view.
     """
     console = [o for o in ops if o.get("category") == "console" and o.get("actor")]
     if not console:
         return
-    # Mevcut konsol satırlarının (aktör, pencere-ISO) anahtarları
+    # Keys (actor, window-ISO) of existing console rows
     seen = set()
     for r in db.query(ChangeHistory.actor, ChangeHistory.new_value).filter(
             ChangeHistory.vm_external_id == ext_id,
@@ -218,7 +220,7 @@ def _record_console_ops(db, platform, vm, ops, ext_id, host_name, window=1800, c
         ts = o.get("ts") or 0
         if not ts:
             continue
-        bucket = int(ts) - (int(ts) % window)   # pencere başlangıcı (epoch)
+        bucket = int(ts) - (int(ts) % window)   # window start (epoch)
         try:
             iso = datetime.utcfromtimestamp(bucket).isoformat(timespec="seconds")
         except Exception:
@@ -238,7 +240,7 @@ def _record_console_ops(db, platform, vm, ops, ext_id, host_name, window=1800, c
 
 
 def _build_collector(platform: Platform):
-    """Platform kaydından uygun collector nesnesi oluştur (şifreleri çözerek)."""
+    """Build the right collector from a platform record (decrypting secrets)."""
     if platform.type == "vcenter":
         return VMwareCollector(
             host=platform.host, port=platform.port, verify_ssl=platform.verify_ssl,
@@ -276,21 +278,21 @@ def sync_platform(platform_id: int):
             snaps_data = collector.collect_snapshots()
         except Exception as exc:
             snaps_data = []
-            logger.warning("Snapshot toplanamadı (%s): %s", platform.name, exc)
+            logger.warning("Could not collect snapshots (%s): %s", platform.name, exc)
         try:
             backups_data = collector.collect_backups()
         except Exception as exc:
             backups_data = []
-            logger.warning("Yedek toplanamadı (%s): %s", platform.name, exc)
+            logger.warning("Could not collect backups (%s): %s", platform.name, exc)
         try:
             vm_ops = collector.collect_recent_actors() or {}
         except Exception as exc:
             vm_ops = {}
-            logger.warning("İşlem yapan kullanıcılar alınamadı (%s): %s", platform.name, exc)
-        # Bu sync'te saptanan ALAN değişiklikleri (RAM/CPU/ağ…) ÖNCEKİ sync'ten
-        # sonra olmuştur. Aktör eşleştirmesini bu zamanla sınırlarsak, değişikliğin
-        # log kaydı yakalanamadığında elde kalan ESKİ kuruluş işlemine (yanlış kişi)
-        # atfetmeyiz; "—" kalır. last_sync bu noktada hâlâ önceki değeri tutar.
+            logger.warning("Could not collect actors (%s): %s", platform.name, exc)
+        # Field changes detected in this sync happened AFTER the previous sync.
+        # Bounding actor matching to that time means that when the change's log
+        # record was missed, we do not attribute it to a leftover OLD setup
+        # operation (wrong person); it stays '-'. last_sync still holds the old value here.
         prev_sync_ts = _epoch(platform.last_sync) if platform.last_sync else 0
         if hasattr(collector, "disconnect"):
             collector.disconnect()
@@ -308,14 +310,14 @@ def sync_platform(platform_id: int):
                 db.add(host)
                 _record_change(db, "host", hd["name"], platform.id, "created")
             else:
-                for f in TRACKED_HOST_FIELDS:  # değişiklikleri geçmişe işle
+                for f in TRACKED_HOST_FIELDS:  # write changes into the history
                     if getattr(host, f) != hd.get(f) and hd.get(f) is not None:
                         _record_change(db, "host", host.name, platform.id,
                                        "updated", f, getattr(host, f), hd[f])
                 for k, v in hd.items():
                     setattr(host, k, v)
             host_by_name[hd["name"]] = host
-        # Artık görünmeyen host'ları sil
+        # Delete hosts no longer visible
         for ext_id, host in existing_hosts.items():
             if ext_id not in seen_hosts:
                 _record_change(db, "host", host.name, platform.id, "deleted")
@@ -323,13 +325,13 @@ def sync_platform(platform_id: int):
         db.flush()
 
         # ---------- VM upsert ----------
-        # Göç tespiti için host id → ad eşlemesi (flush sonrası id'ler hazır).
+        # host id -> name map for migration detection (ids ready after flush).
         host_name_by_id = {h.id: h.name for h in host_by_name.values() if h.id}
         ptype = platform.type
         from ..core.app_settings import get_bool_setting
         track_console = get_bool_setting(db, "track_console_access", False)
-        # Proxmox klon işlemleri (yön='clone') — klon görevi kaynak vmid'e yazıldığı
-        # için yeni VM'e zaman-yakınlığıyla eşlenir.
+        # Proxmox clone ops (direction='clone') - the clone task is logged on the
+        # source vmid, so it is matched to the new VM by time proximity.
         pmx_clone_ops = []
         if ptype == "proxmox":
             for _lst in vm_ops.values():
@@ -338,7 +340,7 @@ def sync_platform(platform_id: int):
                         pmx_clone_ops.append(_op)
 
         def _meta(op):
-            """Eşleşen işlemden aktör/IP/op meta sözlüğü (None-güvenli)."""
+            """Actor/IP/op meta dict from a matched op (None-safe)."""
             op = op or {}
             return dict(actor=op.get("actor"), op_type=op.get("op"),
                         actor_ip=op.get("actor_ip"), actor_agent=op.get("actor_agent"))
@@ -346,10 +348,10 @@ def sync_platform(platform_id: int):
         existing_vms = {v.external_id: v for v in
                         db.query(VirtualMachine).filter_by(platform_id=platform.id)}
 
-        # --- faz36: Proxmox node-arası göç tespiti ---
-        # Proxmox'ta external_id = node/vmid olduğundan, bir VM başka node'a göç
-        # edince eski external_id "silindi", yeni external_id "eklendi" görünür.
-        # Aynı vmid'in farklı node'a taşınmasını TEK bir göç olayı olarak tanırız.
+        # --- phase36: Proxmox cross-node migration detection ---
+        # In Proxmox external_id = node/vmid, so when a VM migrates to another
+        # node the old external_id looks 'deleted' and the new one 'added'.
+        # We recognize the same vmid moving to a different node as ONE migration.
         migrated_pmx = {}   # vmid -> (old_ext, old_node, new_ext, new_node)
         if ptype == "proxmox":
             def _vid(ext): return ext.split("/", 1)[1] if "/" in ext else ext
@@ -371,14 +373,14 @@ def sync_platform(platform_id: int):
             host_name = vd.pop("host_name", "")
             host_obj = host_by_name.get(host_name)
             enrich_failed = vd.pop("enrich_failed", False)
-            os_from_agent = vd.pop("os_from_agent", True)   # vCenter/LXC için varsayılan: güven
+            os_from_agent = vd.pop("os_from_agent", True)   # default for vCenter/LXC: trust
             ip_from_agent = vd.pop("ip_from_agent", True)
             vm = existing_vms.get(vd["external_id"])
             ext_id = vd["external_id"]
             vid = ext_id.split("/", 1)[1] if "/" in ext_id else ext_id
-            # ctime filtresi: VM'in oluşturulma zamanından ÖNCEKİ işlemleri ele.
-            # vmid yeniden kullanıldığında (eski VM silinip aynı id ile yeni VM)
-            # eski VM'in görevleri (destroy/konsol/config) yeni VM'e bulaşmasın.
+            # ctime filter: drop operations from BEFORE the VM's creation time.
+            # On vmid reuse (old VM deleted, new VM with the same id) the old VM's
+            # tasks (destroy/console/config) must not contaminate the new VM.
             ctime = _epoch(vd.get("created_date"))
             min_ts = (ctime - 300) if ctime else 0      # 5 dk pay
             ops = [o for o in (vm_ops.get(ext_id) or [])
@@ -391,14 +393,14 @@ def sync_platform(platform_id: int):
                 mig = migrated_pmx.get(vid) \
                     if (ptype == "proxmox" and "/" in ext_id) else None
                 if mig and mig[2] == ext_id:
-                    # Bu "yeni" kayıt aslında bir göçün hedef tarafı (node değişti).
+                    # This 'new' record is actually the target side of a migration (node changed).
                     old_ext, old_node, _new_ext, new_node = mig
-                    # qmigrate görevini vmid'e göre tüm op listelerinde ara
-                    # (kaynak/hedef node anahtarından bağımsız → aktör boş kalmasın).
+                    # search the qmigrate task by vmid across all op lists
+                    # (independent of source/target node key -> actor not left empty).
                     op = _find_op_by_vid(vm_ops, vid, ["migrate"]) \
                         or _match_op(vm_ops.get(old_ext) or [], ["migrate"])
                     if not (op and op.get("actor")):
-                        logger.info("Goc aktoru bulunamadi vmid=%s; ops=%s", vid,
+                        logger.info("Migration actor not found vmid=%s; ops=%s", vid,
                                     [(o.get("op"), o.get("actor")) for o in
                                      (vm_ops.get(old_ext) or []) + (vm_ops.get(ext_id) or [])])
                     _record_change(db, "vm", vd["name"], platform.id, "migrated",
@@ -407,18 +409,18 @@ def sync_platform(platform_id: int):
                                    host=f"{old_node} → {new_node}",
                                    vm_external_id=ext_id, **_meta(op))
                 else:
-                    # "Eklendi" yalnız oluşturma-yönlü işlemle (create/clone/restore);
-                    # klon işlemi farklı node/anahtarda olabileceğinden vmid bazlı ara,
-                    # bulunamazsa ctime'a en yakın klon işlemiyle eşle (klon görevi
-                    # kaynak vmid'e yazıldığından yeni VM kendi anahtarında bulamaz).
+                    # 'Added' only matches create-direction ops (create/clone/restore);
+                    # the clone op may live under a different node/key, so search by vmid,
+                    # and if not found match the clone op nearest to ctime (the clone task
+                    # is logged on the source vmid, so the new VM can't find it under its own key).
                     op = _find_op_by_vid(vm_ops, vid, ["lifecycle"],
                                          _CREATE_DIRECTIONS, min_ts) \
                         or (_nearest_clone_op(pmx_clone_ops, ctime) if ptype == "proxmox" else None) \
                         or _match_op(ops, ["lifecycle"], None)
                     if op and op.get("direction") == "destroy":
-                        op = None      # güvenlik: created'a destroy eşleşmesin
+                        op = None      # safety: created must never match destroy
                     if not (op and op.get("actor")):
-                        logger.info("Olusturma aktoru bulunamadi vmid=%s; ops=%s", vid,
+                        logger.info("Creation actor not found vmid=%s; ops=%s", vid,
                                     [(o.get("op"), o.get("actor"), o.get("direction"))
                                      for o in ops])
                     _record_change(db, "vm", vd["name"], platform.id, "created",
@@ -426,15 +428,15 @@ def sync_platform(platform_id: int):
                                    cluster=vd.get("cluster"), host=host_name,
                                    vm_external_id=ext_id, **_meta(op))
             else:
-                # Bu turda VM detay sorgusu tümden başarısızsa, enrich'e bağlı
-                # alanları eskiye sabitle (jenerik/boş değerlerle ezilmesin).
+                # If the VM detail query failed entirely this round, pin enrich-dependent
+                # fields to their old values (don't overwrite with generic/empty ones).
                 if enrich_failed:
                     for f in _ENRICH_FIELDS:
                         if f in vd:
                             vd[f] = getattr(vm, f)
-                # Provenance: agent bu turda OS/IP veremediyse, eski (agent kaynaklı)
-                # değeri koru. Böylece "Server 2019" ↔ "Windows 10" gibi gidip gelmeler
-                # (agent osinfo arada yanıt vermediğinde) Geçmiş'i kirletmez.
+                # Provenance: if the agent gave no OS/IP this round, keep the old
+                # (agent-sourced) value. Prevents 'Server 2019' <-> 'Windows 10' flapping
+                # (when agent osinfo intermittently fails) from polluting the History.
                 if not os_from_agent and vm.guest_os:
                     for f in ("guest_os", "kernel", "arch"):
                         if f in vd:
@@ -445,30 +447,30 @@ def sync_platform(platform_id: int):
                             vd[f] = getattr(vm, f)
                 for f in TRACKED_VM_FIELDS:
                     old, new = getattr(vm, f), vd.get(f)
-                    if _preserve_old(f, old, new):   # geçici düşüş → eskiyi koru
+                    if _preserve_old(f, old, new):   # transient drop -> keep the old value
                         vd[f] = old
                         continue
                     if old != new and new is not None:
-                        # Değişimi YALNIZ uygun kategorideki işlemle eşle (yanlış kişi engeli)
+                        # Match the change ONLY to an op in a fitting category (wrong-person guard)
                         cats = _FIELD_OP_CATEGORIES.get(f, [])
                         direction = _POWER_DIRECTION.get(str(new)) if f == "power_state" else None
-                        # Değişim önceki sync'ten sonra olmuştur → eski işlemleri ele
-                        # (ör. RAM değişimini VM'i kuran kişiye değil, gerçekten
-                        #  değiştiren kişiye atfet). Pencere için 5 dk pay bırakılır.
+                        # The change happened after the previous sync -> drop older ops
+                        # (e.g. credit a RAM change to the person who actually changed it,
+                        #  not to whoever created the VM). A 5-minute margin is left.
                         op = _match_op(ops, cats, direction,
                                        min_ts=max(0, prev_sync_ts - 300))
-                        # Görsel kategori ALANDAN gelir (op kategorisi yalnız eşleştirme
-                        # içindir; ör. RAM değişimi op'u 'qmconfig'/'config' olsa da
-                        # kullanıcıya 'Donanım' olarak gösterilir).
+                        # The visual category comes from the FIELD (the op category is only
+                        # for matching; e.g. a RAM change op may be 'qmconfig'/'config' but
+                        # is shown to the user as 'Hardware').
                         cat = _FIELD_CATEGORY.get(f) or (op or {}).get("category") or "other"
                         _record_change(db, "vm", vm.name, platform.id, "updated",
                                        f, old, new, category=cat, platform_type=ptype,
                                        cluster=vd.get("cluster") or vm.cluster,
                                        host=host_name or host_name_by_id.get(vm.host_id),
                                        vm_external_id=ext_id, **_meta(op))
-                # Göç (host değişimi): aynı external_id'de host değiştiyse — vMotion.
-                # Proxmox'ta external_id=node/vmid olduğundan göç create+delete görünür
-                # (bu yüzden burada yalnız host_id sabit kalan platformlarda tetiklenir).
+                # Migration (host change): host changed under the same external_id - vMotion.
+                # In Proxmox external_id=node/vmid so migration shows as create+delete
+                # (hence this only triggers on platforms where host_id stays stable).
                 old_host = host_name_by_id.get(vm.host_id)
                 new_host = host_name
                 if old_host and new_host and old_host != new_host:
@@ -483,13 +485,13 @@ def sync_platform(platform_id: int):
                 for k, v in vd.items():
                     setattr(vm, k, v)
                 vm.host_id = host_obj.id if host_obj else None
-            # Konsol erişimleri: yalnız ayar açıksa (varsayılan kapalı; gürültülü).
+            # Console accesses: only when the setting is on (default off; noisy).
             if track_console:
                 _record_console_ops(db, platform, vm, ops, ext_id, host_name)
         for ext_id, vm in existing_vms.items():
             if ext_id not in seen_vms:
                 if ext_id in migrated_old_exts:
-                    db.delete(vm)   # göçün kaynak tarafı; "Göç" satırı zaten yazıldı
+                    db.delete(vm)   # source side of a migration; the 'Migration' row was already written
                     continue
                 vid = ext_id.split("/", 1)[1] if "/" in ext_id else ext_id
                 op = _find_op_by_vid(vm_ops, vid, ["lifecycle"], _DESTROY_DIRECTIONS) \
@@ -502,14 +504,14 @@ def sync_platform(platform_id: int):
                                vm_external_id=ext_id, **_meta(op))
                 db.delete(vm)
 
-        # ---------- Ağ ve datastore: basit yenileme (sil-yaz) ----------
+        # ---------- Networks and datastores: simple refresh (delete-write) ----------
         db.query(Network).filter_by(platform_id=platform.id).delete()
         for nd in nets_data:
             db.add(Network(platform_id=platform.id, **nd))
         db.query(Datastore).filter_by(platform_id=platform.id).delete()
-        # vm_count: bu platformdaki VM'lerin 'datastore' alanından (virgülle ayrık
-        # depo adları) çapraz hesaplanır. Yerel Proxmox depoları için ayrıca VM'in
-        # bulunduğu node, datastore'un node'u ile eşleşmelidir.
+        # vm_count: cross-computed from this platform's VMs' 'datastore' field
+        # (comma-separated store names). For local Proxmox stores the VM's node
+        # must additionally match the datastore's node.
         vm_ds_rows = db.query(Host.name, VirtualMachine.datastore)\
                        .outerjoin(Host, VirtualMachine.host_id == Host.id)\
                        .filter(VirtualMachine.platform_id == platform.id,
@@ -519,8 +521,8 @@ def sync_platform(platform_id: int):
             n = 0
             for host_name, dstr in vm_ds_rows:
                 tokens = [t.strip() for t in (dstr or "").split(",") if t.strip()]
-                # paylaşımlı depo tüm host'lardaki VM'lerce kullanılabilir; yerel depo
-                # yalnızca kendi node'undaki VM'lerce kullanılır
+                # a shared store is usable by VMs on all hosts; a local store only
+                # by VMs on its own node
                 if ds_name in tokens and (shared or not ds_node or host_name == ds_node):
                     n += 1
             return n
@@ -530,7 +532,7 @@ def sync_platform(platform_id: int):
                                           dd.get("shared", False))
             db.add(Datastore(platform_id=platform.id, **dd))
 
-        # ---------- Snapshot'lar: sil-yaz, VM'e external_id ile bağla ----------
+        # ---------- Snapshots: delete-write, linked to VM by external_id ----------
         db.query(Snapshot).filter_by(platform_id=platform.id).delete()
         vm_id_map = {ext: vid for ext, vid in
                      db.query(VirtualMachine.external_id, VirtualMachine.id)
@@ -542,7 +544,7 @@ def sync_platform(platform_id: int):
             db.add(Snapshot(platform_id=platform.id,
                             vm_id=vm_id_map.get(sd.get("vm_external_id")), **clean))
 
-        # ---------- Yedekler: sil-yaz, VM'e vmid ile bağla (yalnızca Proxmox) ----------
+        # ---------- Backups: delete-write, linked to VM by vmid (Proxmox only) ----------
         db.query(Backup).filter_by(platform_id=platform.id).delete()
         vmid_map = {str(vid): (i, nm) for vid, i, nm in
                     db.query(VirtualMachine.vmid, VirtualMachine.id, VirtualMachine.name)
@@ -557,7 +559,7 @@ def sync_platform(platform_id: int):
             db.add(Backup(platform_id=platform.id,
                           vm_id=link[0] if link else None, **clean))
 
-        # ---------- Sonuç ----------
+        # ---------- Result ----------
         platform.last_sync = datetime.utcnow()
         platform.last_sync_status = "success"
         platform.last_sync_error = None
@@ -567,10 +569,10 @@ def sync_platform(platform_id: int):
         log.vms_found = len(vms_data)
         log.message = f"{len(hosts_data)} host, {len(vms_data)} VM senkronize edildi"
         db.commit()
-        logger.info("Senkronizasyon tamam: %s (%s VM)", platform.name, len(vms_data))
+        logger.info("Sync done: %s (%s VMs)", platform.name, len(vms_data))
 
     except Exception as exc:
-        logger.exception("Senkronizasyon hatası (platform %s)", platform_id)
+        logger.exception("Sync error (platform %s)", platform_id)
         db.rollback()
         try:
             platform = db.get(Platform, platform_id)
@@ -590,15 +592,15 @@ def sync_platform(platform_id: int):
 
 
 import threading
-# Tam senkronizasyon ile hafif kullanım tazelemesinin AYNI ANDA çalışıp
-# DB'de (aynı VM satırlarına yazarak) çakışmasını önleyen paylaşımlı kilit.
-# Tam senkr. kilidi bekler (öncelikli); kullanım tazelemesi alamazsa O TURU ATLAR
-# (bir sonraki aralıkta yeniden dener) — böylece kuyruklanma/yavaşlama olmaz.
+# Shared lock preventing the full sync and the lightweight usage refresh
+# from running AT THE SAME TIME and clashing in the DB (same VM rows).
+# The full sync waits for the lock (priority); if the usage refresh can't get
+# it, it SKIPS THAT ROUND (retries next interval) - no queueing/slowdown.
 _sync_lock = threading.Lock()
 
 
 def sync_all_platforms():
-    """Tüm etkin platformları sırayla senkronize et (zamanlayıcı görevi)."""
+    """Sync all enabled platforms in order (scheduler job)."""
     with _sync_lock:
         _t0 = datetime.utcnow()
         db = SessionLocal()
@@ -608,9 +610,9 @@ def sync_all_platforms():
             db.close()
         for pid in ids:
             sync_platform(pid)
-        logger.info("Tam senkronizasyon tamamlandi: %d platform, %.1f sn",
+        logger.info("Full sync finished: %d platforms, %.1f s",
                     len(ids), (datetime.utcnow() - _t0).total_seconds())
-        # Topoloji haritası canlı tazelensin (SSE aboneleri haberdar olur).
+        # Keep the topology map fresh live (SSE subscribers get notified).
         try:
             from ..core import events
             events.publish({"kind": "sync",
@@ -619,21 +621,21 @@ def sync_all_platforms():
             pass
 
 
-# ==================== Hafif kullanım senkronizasyonu ====================
+# ==================== Lightweight usage sync ====================
 def sync_usage_all():
     """
-    Tüm platformlarda yalnızca ANLIK KULLANIM verilerini günceller
-    (VM cpu/ram kullanımı, host cpu/ram/disk kullanımı).
+    Updates ONLY the INSTANT USAGE data across all platforms
+    (VM cpu/ram usage, host cpu/ram/disk usage).
 
-    Tam senkronizasyondan farkları:
-    - Çok daha sık çalışır (varsayılan 3 dk; USAGE_SYNC_INTERVAL_MINUTES)
-    - Tek/az API çağrısıyla biter, config-agent sorgusu yapmaz
-    - ChangeHistory ve SyncLog üretmez (gürültü olmasın diye)
-    Böylece dashboard ve listelerdeki kullanım oranları neredeyse canlıdır.
+    Differences from the full sync:
+    - Runs much more often (default 3 min; USAGE_SYNC_INTERVAL_MINUTES)
+    - Finishes with one/few API calls, no config-agent queries
+    - Produces no ChangeHistory or SyncLog (avoids noise)
+    Usage figures on the dashboard and lists stay near-live this way.
     """
-    # Tam senkronizasyon devam ediyorsa çakışmamak için bu turu atla.
+    # Skip this round to avoid clashing with a running full sync.
     if not _sync_lock.acquire(blocking=False):
-        logger.info("Tam senkronizasyon devam ediyor; kullanim tazelemesi bu tur atlandi.")
+        logger.info("Full sync in progress; usage refresh skipped this round.")
         return
     try:
         _usage_sync_body()
@@ -657,7 +659,7 @@ def _usage_sync_body():
                     except Exception:
                         pass
 
-                # VM kullanımları: external_id ile eşle, toplu güncelle
+                # VM usage: match by external_id, bulk update
                 now = datetime.utcnow()
                 vm_rows = {v.external_id: v for v in
                            db.query(VirtualMachine)
@@ -672,8 +674,8 @@ def _usage_sync_body():
                         vm.ram_usage_mb = u["ram_used_mb"]
                     if u.get("disk_used_gb"):
                         vm.disk_used_gb = u["disk_used_gb"]
-                    # Ağ/Disk I/O oranı: kümülatif sayaç farkı / geçen süre (KB/s).
-                    # Negatif delta = VM yeniden başlamış (sayaç sıfırlandı) → atla.
+                    # Net/Disk I/O rate: cumulative counter delta / elapsed time (KB/s).
+                    # Negative delta = VM restarted (counters reset) -> skip.
                     nb, db_ = u.get("net_bytes"), u.get("disk_bytes")
                     if nb is not None and db_ is not None:
                         prev_ts = vm.io_ts
@@ -690,7 +692,7 @@ def _usage_sync_body():
                         vm.io_disk_bytes = db_
                         vm.io_ts = now
 
-                # Host kullanımları: ada göre eşle
+                # Host usage: match by name
                 host_rows = {h.name: h for h in
                              db.query(Host).filter_by(platform_id=platform.id).all()}
                 for u in usage.get("hosts", []):
@@ -708,10 +710,10 @@ def _usage_sync_body():
                 db.commit()
             except Exception as exc:
                 db.rollback()
-                logger.warning("Kullanım senkronizasyonu başarısız [%s]: %s",
+                logger.warning("Usage sync failed [%s]: %s",
                                platform.name, exc)
-        # Tarihsel örnekleme (kapasite öngörüsü + zombi tespiti). Asla
-        # usage sync'i düşürmesin diye ayrı try; hata yalnız loglanır.
+        # Historical sampling (capacity forecast + zombie detection). In a separate
+        # try so it never breaks the usage sync; errors are only logged.
         try:
             record_samples(db)
             db.commit()
@@ -724,24 +726,24 @@ def _usage_sync_body():
 
 def record_samples(db):
     """
-    Günlük tarihsel örnekleme — sync_usage_all her çalıştığında çağrılır.
-    1) VmUsageDaily: her çalışan VM için bugünün gün içi CPU ortalaması/tepesi
-       ve RAM ortalaması (running average ile güncellenir).
-    2) CapacitySnapshot: tüm ortam geneli tahsisli/kullanılan/kapasite toplamları
-       (günde bir satır, upsert).
-    Eski kayıtlar budanır. Bu veriler insights endpoint'inde DOĞRUSAL REGRESYON
-    (forecast) ve 7 GÜNLÜK pencere (zombi) için kullanılır.
+    Daily historical sampling - called on every sync_usage_all run.
+    1) VmUsageDaily: today's intraday CPU average/peak and RAM average per
+       running VM (updated with a running average).
+    2) CapacitySnapshot: environment-wide allocated/used/capacity totals
+       (one row per day, upsert).
+    Old rows are pruned. The insights endpoint uses this data for LINEAR
+    REGRESSION (forecast) and the 7-DAY window (zombie).
     """
     today = date.today()
 
-    # 1) VM günlük kullanım toplulaştırma (yalnız kullanım örneği olanlar)
+    # 1) Daily VM usage aggregation (only VMs with a usage sample)
     vms = db.query(VirtualMachine.id, VirtualMachine.cpu_usage_pct,
                    VirtualMachine.ram_usage_mb, VirtualMachine.net_kbps,
                    VirtualMachine.diskio_kbps).filter_by(is_template=False).all()
     existing = {r.vm_id: r for r in db.query(VmUsageDaily).filter_by(day=today).all()}
     for vm_id, cpu, ram, net_kbps, disk_kbps in vms:
         if cpu is None:
-            continue                      # kullanım örneği yok → atla
+            continue                      # no usage sample -> skip
         ram = ram or 0
         row = existing.get(vm_id)
         if row is None:
@@ -762,7 +764,7 @@ def record_samples(db):
                 row.diskio_kbps = (((row.diskio_kbps or 0) * n) + disk_kbps) / (n + 1)
             row.samples = n + 1
 
-    # 2) Kapasite snapshot (tüm ortam geneli; gizli cluster filtresi yok)
+    # 2) Capacity snapshot (whole environment; no hidden-cluster filter)
     t = db.query(
         func.coalesce(func.sum(VirtualMachine.disk_total_gb), 0),
         func.coalesce(func.sum(VirtualMachine.ram_mb), 0),
@@ -789,7 +791,7 @@ def record_samples(db):
     snap.host_ram_mb = int(host_ram)
     snap.vm_count = int(t[4] or 0)
 
-    # 3) Budama (depo şişmesin)
+    # 3) Pruning (keep the tables from bloating)
     db.query(VmUsageDaily).filter(VmUsageDaily.day < today - timedelta(days=35)).delete()
     db.query(CapacitySnapshot).filter(
         CapacitySnapshot.snap_date < today - timedelta(days=120)).delete()
