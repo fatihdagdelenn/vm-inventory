@@ -38,7 +38,7 @@ TRACKED_HOST_FIELDS = ["name", "mgmt_ip", "cpu_cores", "ram_total_mb", "cluster"
 # When the guest agent / config query fails transiently, these fields can drop from a
 # "good" value to a generic/empty one. To protect ChangeHistory from noise we keep
 # the old (good) value on such drops.
-_ENRICH_FIELDS = ("guest_os", "ip_addresses", "datastore", "vlans", "networks",
+_ENRICH_FIELDS = ("guest_os", "ip_addresses", "dns_servers", "datastore", "vlans", "networks",
                   "mac_addresses", "kernel", "arch", "disk_total_gb", "ram_mb",
                   "guest_notes", "platform_tags")
 # Generic / vague OS names (from ostype/guestFullName when no agent).

@@ -311,6 +311,16 @@ class VMwareCollector:
                             ips.extend(ip for ip in nic.ipAddress if ":" not in ip)  # IPv4 first
                 if not ips and guest and guest.ipAddress:
                     ips.append(guest.ipAddress)
+                # DNS servers reported by Tools (guest.ipStack dnsConfig)
+                dns = []
+                try:
+                    for st in (guest.ipStack or []) if guest else []:
+                        cfgd = getattr(st, "dnsConfig", None)
+                        for a in (getattr(cfgd, "ipAddress", None) or []):
+                            if a and a not in dns:
+                                dns.append(a)
+                except Exception:
+                    pass
 
                 # Disk details + network/VLAN info (from the hardware list)
                 disks, networks, vlans = [], [], []
@@ -355,6 +365,7 @@ class VMwareCollector:
                     "vmid": vm._moId,
                     "name": config.name if config else vm.name,
                     "ip_addresses": ",".join(sorted(set(ips))),
+                    "dns_servers": ",".join(dns),
                     "mac_addresses": ",".join(sorted(set(macs))),
                     "guest_os": _best_guest_os(vm, guest, config),
                     "arch": ("x86_64" if config and "64" in (config.guestId or "")

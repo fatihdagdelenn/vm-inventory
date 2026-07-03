@@ -55,6 +55,7 @@ class VirtualMachine(Base):
     vmid = Column(String(64), index=True)           # Visible VM ID
     name = Column(String(255), index=True)
     ip_addresses = Column(Text)                     # Comma-separated IP list
+    dns_servers = Column(Text)                      # Comma-separated DNS server list
     mac_addresses = Column(Text)                    # Comma-separated MAC list
     guest_os = Column(String(255), index=True)      # Operating system
     kernel = Column(String(128))                     # Kernel version (Proxmox agent / -)

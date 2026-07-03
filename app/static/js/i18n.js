@@ -112,7 +112,7 @@ const I18N = {
     'vm.h.infra': 'By infrastructure location', 'vm.h.platform': 'By platform name (use quotes if it has spaces)',
     'vm.h.ptype': 'By platform type / location', 'vm.h.tagenv': 'Tag, environment, datastore',
     'vm.h.and': 'Criteria are combined with spaces (AND logic):',
-    'vm.ipAddresses': 'IP Addresses',
+    'vm.ipAddresses': 'IP Addresses', 'vm.dns': 'DNS Servers',
     'vm.inUse': 'in use', 'vm.instantUsage': 'instant usage %',
     'vm.groupHint': 'Click a group to filter the VM list.', 'vm.groups': 'groups',
     'vm.noResults': 'No results found.', 'vm.page': 'page',

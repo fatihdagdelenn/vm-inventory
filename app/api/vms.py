@@ -59,6 +59,7 @@ def _vm_to_dict(vm: VirtualMachine) -> dict:
         "agent_state": _agent_state(vm.tools_status,
                                     vm.platform.type if vm.platform else ""),
         "guest_notes": vm.guest_notes,
+        "dns_servers": vm.dns_servers,
         "pool": vm.pool, "folder": vm.folder,
         "platform_tags": vm.platform_tags,
         "environment": vm.environment,

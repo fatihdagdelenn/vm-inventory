@@ -321,6 +321,8 @@ class ProxmoxCollector:
                 entry["guest_notes"] = desc
                 # Proxmox VM tags (config 'tags' field; ';'-separated)
                 entry["platform_tags"] = (cfg.get("tags") or "").replace(";", ",")
+                # DNS servers: cloud-init 'nameserver' (space/comma separated)
+                entry["dns_servers"] = ",".join(str(cfg.get("nameserver") or "").split())
                 if cfg.get("meta"):  # ctime=... creation time
                     for part in cfg["meta"].split(","):
                         if part.startswith("ctime="):
@@ -391,7 +393,8 @@ class ProxmoxCollector:
                                 int(datetime.utcnow().timestamp()) - int(status["uptime"]))
                     except Exception as exc:
                         logger.debug("Could not fetch status.current %s/%s: %s", node, vmid, exc)
-                    agent_ok = False
+                    agent_ok = False        # network-get-interfaces answered (IPs came)
+                    agent_alive = False     # ANY agent command answered (agent runs)
                     try:
                         agent = self.api.nodes(node).qemu(vmid).agent(
                             "network-get-interfaces").get()
@@ -403,10 +406,26 @@ class ProxmoxCollector:
                                         not ip.startswith("127."):
                                     ips.append(ip)
                         entry["ip_addresses"] = ",".join(sorted(set(ips)))
-                        entry["tools_status"] = "guestToolsRunning"
                         agent_ok = True
+                        agent_alive = True
                     except Exception:
-                        entry["tools_status"] = "guestToolsNotRunning"  # Agent not installed
+                        pass
+                    # Old/limited qemu-guest-agent builds (seen more on PVE 8.4.x) may
+                    # reject network-get-interfaces yet still run. Fall back to the
+                    # universal probes: 'info' (GET), then 'ping' (POST). Any answer
+                    # means the agent is alive -> don't report "not installed".
+                    if not agent_alive:
+                        try:
+                            self.api.nodes(node).qemu(vmid).agent("info").get()
+                            agent_alive = True
+                        except Exception:
+                            try:
+                                self.api.nodes(node).qemu(vmid).agent.ping.post()
+                                agent_alive = True
+                            except Exception:
+                                pass
+                    entry["tools_status"] = ("guestToolsRunning" if agent_alive
+                                             else "guestToolsNotRunning")
 
                     # Real OS name from the agent (e.g. "Ubuntu 22.04.3 LTS").
                     # Tried INDEPENDENTLY of the network call: some guests block
@@ -422,6 +441,7 @@ class ProxmoxCollector:
                         if pretty:
                             entry["guest_os"] = pretty
                             entry["tools_status"] = "guestToolsRunning"
+                            agent_alive = True
                             os_from_agent = True
                         kern = result.get("kernel-release", "") or \
                             result.get("kernel-version", "")
@@ -440,7 +460,7 @@ class ProxmoxCollector:
                     # cluster/resources 'disk' is 0 without an agent; on thin disks
                     # the qcow2 footprint exceeds real usage. The guest FS tells the
                     # truth (e.g. 80 GB allocated, 40 GB used). Agent-only.
-                    if agent_ok:
+                    if agent_alive:
                         try:
                             fs = self.api.nodes(node).qemu(vmid).agent(
                                 "get-fsinfo").get()
@@ -491,6 +511,7 @@ class ProxmoxCollector:
                 pass
         entry["guest_notes"] = desc
         entry["platform_tags"] = (cfg.get("tags") or "").replace(";", ",")
+        entry["dns_servers"] = ",".join(str(cfg.get("nameserver") or "").split())
 
         macs, vlans, bridges, disks, stores = [], [], [], [], []
         static_ips = []

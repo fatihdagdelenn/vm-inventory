@@ -197,6 +197,7 @@ const App = {
       row('VM ID', App.esc(v.vmid)) +
       row('IP Adresleri', App.esc(v.ip_addresses).split(',').join('<br>')) +
       row('MAC Adresleri', App.esc(v.mac_addresses).split(',').join('<br>')) +
+      row(t('vm.dns','DNS Sunucuları'), App.esc(v.dns_servers).split(',').join('<br>')) +
       row('İşletim Sistemi', App.esc(v.guest_os)) +
       row('Çekirdek / Mimari',
           [App.esc(v.kernel), App.esc(v.arch)].filter(Boolean).join(' · ') || '—') +
