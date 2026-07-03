@@ -255,7 +255,7 @@ def _build_collector(platform: Platform):
 
 
 def sync_platform(platform_id: int):
-    """Tek bir platformu senkronize et."""
+    """Sync a single platform."""
     db = SessionLocal()
     log = None
     try:
@@ -289,6 +289,18 @@ def sync_platform(platform_id: int):
         except Exception as exc:
             vm_ops = {}
             logger.warning("Could not collect actors (%s): %s", platform.name, exc)
+        try:
+            fn = getattr(collector, "collect_entity_actors", None)
+            entity_actors = (fn() or {}) if fn else {}
+        except Exception as exc:
+            entity_actors = {}
+            logger.warning("Could not collect entity actors (%s): %s", platform.name, exc)
+
+        def _ent_actor(etype, name):
+            """Actor + op meta for a datastore/network/host entity change."""
+            rec = entity_actors.get((etype, name)) or {}
+            return {"actor": rec.get("actor"), "op_type": rec.get("op"),
+                    "platform_type": platform.type}
         # Field changes detected in this sync happened AFTER the previous sync.
         # Bounding actor matching to that time means that when the change's log
         # record was missed, we do not attribute it to a leftover OLD setup
@@ -308,7 +320,9 @@ def sync_platform(platform_id: int):
             if host is None:
                 host = Host(platform_id=platform.id, **hd)
                 db.add(host)
-                _record_change(db, "host", hd["name"], platform.id, "created")
+                _record_change(db, "host", hd["name"], platform.id, "created",
+                               category="lifecycle", cluster=hd.get("cluster"),
+                               host=hd.get("name"), **_ent_actor("host", hd["name"]))
             else:
                 for f in TRACKED_HOST_FIELDS:  # write changes into the history
                     if getattr(host, f) != hd.get(f) and hd.get(f) is not None:
@@ -320,7 +334,9 @@ def sync_platform(platform_id: int):
         # Delete hosts no longer visible
         for ext_id, host in existing_hosts.items():
             if ext_id not in seen_hosts:
-                _record_change(db, "host", host.name, platform.id, "deleted")
+                _record_change(db, "host", host.name, platform.id, "deleted",
+                               category="lifecycle", cluster=host.cluster,
+                               host=host.name, **_ent_actor("host", host.name))
                 db.delete(host)
         db.flush()
 
@@ -505,6 +521,33 @@ def sync_platform(platform_id: int):
                 db.delete(vm)
 
         # ---------- Networks and datastores: simple refresh (delete-write) ----------
+        # Before rewriting, diff the old rows against the new data and record
+        # added/removed datastores and networks (with the acting user when the
+        # platform's own log/events reveal one). Distinct names are compared so
+        # per-host duplicate rows (portgroups, physical NICs) don't multiply rows.
+        old_net_names = {n.name for n in
+                         db.query(Network.name).filter_by(platform_id=platform.id)}
+        new_net_names = {nd.get("name") for nd in nets_data if nd.get("name")}
+        if old_net_names:  # skip on a brand-new platform (initial fill isn't "changes")
+            for name in sorted(new_net_names - old_net_names):
+                _record_change(db, "network", name, platform.id, "created",
+                               category="network", **_ent_actor("network", name))
+            for name in sorted(old_net_names - new_net_names):
+                _record_change(db, "network", name, platform.id, "deleted",
+                               category="network", **_ent_actor("network", name))
+        old_ds = {(d.name, d.node or ""): d for d in
+                  db.query(Datastore).filter_by(platform_id=platform.id)}
+        new_ds_keys = {(dd.get("name"), dd.get("node") or "") for dd in ds_data}
+        if old_ds:
+            for name, node in sorted(new_ds_keys - set(old_ds)):
+                _record_change(db, "datastore", name, platform.id, "created",
+                               category="disk", host=node or None,
+                               **_ent_actor("datastore", name))
+            for (name, node), d in sorted(old_ds.items()):
+                if (name, node) not in new_ds_keys:
+                    _record_change(db, "datastore", name, platform.id, "deleted",
+                                   category="disk", host=node or None,
+                                   **_ent_actor("datastore", name))
         db.query(Network).filter_by(platform_id=platform.id).delete()
         for nd in nets_data:
             db.add(Network(platform_id=platform.id, **nd))

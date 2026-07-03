@@ -1148,6 +1148,40 @@ class ProxmoxCollector:
                     len(ops), scanned, log_scanned, clone_resolved)
         return ops
 
+    # Cluster-log message pattern for storage / SDN entity changes.
+    _ENTITY_LOG_RE = re.compile(
+        r"\b(create|add|update|set|delete|remove)\s+"
+        r"(storage|vnet|sdn\s*vnet|zone)\s+'?([\w.\-:]+)'?", re.IGNORECASE)
+
+    def collect_entity_actors(self, days: int = 3):
+        """Who added/removed storages (datastores) and SDN vnets (networks).
+
+        Parsed from /cluster/log (needs Sys.Syslog, same as config actors).
+        Returns {(entity_type, name): {"actor", "ts", "op"}} (newest wins).
+        Best-effort: nothing matched -> empty dict, rows just get no actor.
+        """
+        out = {}
+        try:
+            entries = self.api.cluster.log.get(max=1000) or []
+        except Exception as exc:
+            logger.warning("Could not fetch cluster log (entity actors): %s", exc)
+            return out
+        min_ts = int(datetime.utcnow().timestamp()) - days * 86400
+        for en in entries:
+            ts = int(en.get("time") or 0)
+            if ts < min_ts:
+                continue
+            user = (en.get("user") or "").strip()
+            m = self._ENTITY_LOG_RE.search(str(en.get("msg") or ""))
+            if not m or not user:
+                continue
+            verb, kind, name = m.group(1).lower(), m.group(2).lower(), m.group(3)
+            ent = "datastore" if kind == "storage" else "network"
+            key = (ent, name)
+            if key not in out or ts > out[key]["ts"]:
+                out[key] = {"actor": user, "ts": ts, "op": f"{verb} {kind}"}
+        return out
+
     # ---------- Lightweight usage sync ----------
     def collect_usage(self) -> dict:
         """

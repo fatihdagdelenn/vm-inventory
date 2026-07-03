@@ -149,6 +149,7 @@ const I18N = {
     'hi.c.lifecycle': 'Lifecycle', 'hi.c.console': 'Console', 'hi.c.other': 'Other',
     'hi.consoleAccess': 'Console access', 'hi.window30': '30 min window',
     'hi.records': 'records', 'hi.noRecords': 'No records found.',
+    'hi.system': 'system',
     // Topology page
     'tp.searchPh': 'Search VM name \u2192 locate and focus on the map\u2026',
     'tp.expandAllT': 'Expand all hosts\' VMs', 'tp.expandAll': 'Expand All',

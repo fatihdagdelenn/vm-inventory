@@ -15,7 +15,7 @@ import ssl
 import json
 import re
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from pyVim.connect import SmartConnect, Disconnect
 from pyVmomi import vim
@@ -625,6 +625,56 @@ class VMwareCollector:
         logger.info("vCenter actors: %d VMs mapped (%d events)",
                     len(ops), scanned)
         return ops
+
+    # vCenter entity events -> (entity_type, op). Used to attribute datastore /
+    # network / host add-remove changes to the acting user.
+    _ENTITY_EVENTS = {
+        "DatastoreDiscoveredEvent": ("datastore", "created"),
+        "DatastoreDestroyedEvent": ("datastore", "deleted"),
+        "DatastoreRemovedOnHostEvent": ("datastore", "deleted"),
+        "DatastoreRenamedEvent": ("datastore", "updated"),
+        "HostAddedEvent": ("host", "created"),
+        "HostRemovedEvent": ("host", "deleted"),
+        "DVPortgroupCreatedEvent": ("network", "created"),
+        "DVPortgroupDestroyedEvent": ("network", "deleted"),
+        "DVPortgroupRenamedEvent": ("network", "updated"),
+    }
+
+    def collect_entity_actors(self, days: int = 3):
+        """Who added/removed datastores, networks and hosts.
+
+        Returns {(entity_type, name): {"actor", "ts", "op"}} (newest wins).
+        Machine accounts (vpxd, com.vmware.*) stay as-is; the frontend renders
+        them with a "system" badge. Fully defensive - errors return {}.
+        """
+        out = {}
+        try:
+            em = self.si.content.eventManager
+            fspec = vim.event.EventFilterSpec()
+            fspec.time = vim.event.EventFilterSpec.ByTime(
+                beginTime=datetime.now() - timedelta(days=days))
+            fspec.eventTypeId = list(self._ENTITY_EVENTS.keys())
+            for e in (em.QueryEvents(fspec) or []):
+                etype = type(e).__name__.split(".")[-1]
+                ent, op = self._ENTITY_EVENTS.get(etype, (None, None))
+                if not ent:
+                    continue
+                name = ""
+                for attr in ("datastore", "net", "host"):
+                    arg = getattr(e, attr, None)
+                    if arg is not None and getattr(arg, "name", ""):
+                        name = arg.name
+                        break
+                if not name:
+                    continue
+                key = (ent, name)
+                ts = int(e.createdTime.timestamp()) if e.createdTime else 0
+                if key not in out or ts > out[key]["ts"]:
+                    out[key] = {"actor": getattr(e, "userName", "") or "",
+                                "ts": ts, "op": etype}
+        except Exception as exc:
+            logger.warning("Could not fetch vCenter entity events: %s", exc)
+        return out
 
     # ---------- Lightweight usage sync ----------
     def collect_usage(self) -> dict:

@@ -105,6 +105,15 @@ const History = {
   /** Kullanıcı hücresi: aktör + (varsa) IP / User-Agent ipucu. */
   userCell(r) {
     if (!r.actor) return '<span class="text-muted">—</span>';
+    // Platform-initiated (system) operations: machine accounts and automation
+    // task types. Shown as a gear badge; the real account stays in the tooltip.
+    const sysActor = /^(vpxd|com\.vmware|vcls|vpxuser|dcui|nobody)|vpxd-extension/i.test(r.actor);
+    const sysOp = /^(ha[a-z]*|pvesr|replication|aptupdate)$/i.test(r.op_type || '');
+    if (sysActor || sysOp) {
+      return '<span class="badge text-bg-secondary" title="' + App.esc(r.actor) +
+             (r.op_type ? ' · ' + App.esc(r.op_type) : '') + '">' +
+             '<i class="bi bi-gear"></i> ' + t('hi.system', 'sistem') + '</span>';
+    }
     const extra = [];
     if (r.actor_ip) extra.push('IP: ' + r.actor_ip);
     if (r.actor_agent) extra.push('UA: ' + r.actor_agent);
@@ -178,7 +187,7 @@ const History = {
       '<td class="text-nowrap small">' + App.fmtDate(r.changed_at) + '</td>' +
       '<td>' + History.sourceCell(r) + '</td>' +
       '<td><strong>' + App.esc(r.entity_name) + '</strong>' +
-        '<div class="small text-muted">' + (r.entity_type === 'vm' ? 'VM' : 'Host') + '</div></td>' +
+        '<div class="small text-muted">' + ({vm:'VM', host:'Host', datastore:'Datastore', network:t('hi.cat.network','Ağ')}[r.entity_type] || r.entity_type) + '</div></td>' +
       '<td>' + History.categoryCell(r) + '</td>' +
       '<td>' + History.opCell(r) + '</td>' +
       '<td class="val-cell">' + History.valueCell(r) + '</td>' +
