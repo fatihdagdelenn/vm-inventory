@@ -120,6 +120,57 @@ class ProxmoxCollector:
         return ordered[0]["address"]            # 3) first in order
 
     # ---------- Host'lar (node'lar) ----------
+    # dmidecode placeholders that mean "no real value"
+    _HW_PLACEHOLDER = re.compile(
+        r"to be filled|o\.e\.m|default string|system (product name|manufacturer)"
+        r"|not specified|unknown|empty", re.IGNORECASE)
+
+    def _node_hw_model(self, node: str) -> str:
+        """Physical vendor+model of a node (e.g. 'Dell Inc. PowerEdge R750').
+
+        The PVE REST API has no DMI endpoint, but GET /nodes/{node}/report
+        (the GUI "System Report", readable with Sys.Audit) embeds dmidecode
+        output - Manufacturer / Product Name are parsed from its System
+        Information block. Fallback: the majority subsystem vendor of the
+        node's PCI devices (OEM boards report e.g. 'Dell Inc.') gives at
+        least the vendor. Fully defensive; failure returns ''.
+        """
+        if not hasattr(self, "_hw_cache"):
+            self._hw_cache = {}
+        if node in self._hw_cache:
+            return self._hw_cache[node]
+        result = ""
+        try:
+            rep = self.api.nodes(node).report.get()
+            text = rep if isinstance(rep, str) else str(rep or "")
+            block = re.search(r"System Information([\s\S]{0,400})", text)
+            scope = block.group(1) if block else text
+            man = re.search(r"Manufacturer:\s*(.+)", scope)
+            prod = re.search(r"Product Name:\s*(.+)", scope)
+            parts = []
+            for m in (man, prod):
+                val = (m.group(1).strip() if m else "")
+                if val and not self._HW_PLACEHOLDER.search(val):
+                    parts.append(val)
+            result = " ".join(dict.fromkeys(parts))  # dedupe, keep order
+        except Exception as exc:
+            logger.info("Node report unavailable (%s): %s", node, exc)
+        if not result:
+            try:  # fallback: majority PCI subsystem vendor -> at least the OEM
+                from collections import Counter
+                devs = self.api.nodes(node).hardware.pci.get() or []
+                cnt = Counter((d.get("subsystem_vendor_name") or "").strip()
+                              for d in devs)
+                cnt.pop("", None)
+                if cnt:
+                    best, n = cnt.most_common(1)[0]
+                    if n >= 3 and not self._HW_PLACEHOLDER.search(best):
+                        result = best
+            except Exception:
+                pass
+        self._hw_cache[node] = result
+        return result
+
     def collect_hosts(self) -> list[dict]:
         hosts = []
         for node in self.api.nodes.get():
@@ -158,6 +209,7 @@ class ProxmoxCollector:
                         self.api.nodes(name).network.get())
                 except Exception as exc:
                     logger.warning("Could not fetch node details %s: %s", name, exc)
+                entry["hw_model"] = self._node_hw_model(name)
             hosts.append(entry)
 
         # Resolve the cluster name and assign it to all nodes
