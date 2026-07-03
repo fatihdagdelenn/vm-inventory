@@ -9,6 +9,36 @@
 /* ============================ Yardımcılar ============================ */
 const CHARTS = [];                       // layout değişiminde resize için
 const LS_KEY = 'vmi-dash-layout-v1';
+
+/* Long-lived snapshots widget: age filter (7+/14+/30+) applied client-side. */
+const SnapWidget = {
+  items: [],
+  minAge: parseInt(localStorage.getItem('vmi-snap-age') || '30', 10) || 30,
+  render() {
+    const osb = document.getElementById('oldSnapBody');
+    if (!osb) return;
+    const rows = this.items.filter(it => (it.days || 0) >= this.minAge);
+    osb.innerHTML = rows.length ? rows.map(it =>
+      '<tr><td>' + App.esc(it.vm || '—') + '</td><td class="small">' + App.esc(it.name || '') +
+      '</td><td class="text-end"><span class="badge ' +
+      ((it.days || 0) >= 90 ? 'text-bg-danger'
+        : (it.days || 0) >= 30 ? 'text-bg-warning text-dark' : 'text-bg-secondary') + '">' +
+      (it.days != null ? it.days + ' ' + t('unit.day','gün') : '—') + '</span></td></tr>').join('')
+      : '<tr><td colspan="3" class="text-muted p-3">' +
+        this.minAge + '+ ' + t('dash.noSnapsAge','gün yaşında snapshot yok 🎉') + '</td></tr>';
+    document.querySelectorAll('.snap-age-chips [data-age]').forEach(b =>
+      b.classList.toggle('active', parseInt(b.dataset.age, 10) === this.minAge));
+  },
+  bind() {
+    document.querySelectorAll('.snap-age-chips [data-age]').forEach(b =>
+      b.addEventListener('click', () => {
+        SnapWidget.minAge = parseInt(b.dataset.age, 10) || 30;
+        try { localStorage.setItem('vmi-snap-age', String(SnapWidget.minAge)); } catch (e) {}
+        SnapWidget.render();
+      }));
+  },
+};
+document.addEventListener('DOMContentLoaded', () => SnapWidget.bind());
 const WIDTHS = [2, 3, 4, 6, 12];          // genişlik döngüsü (12-kolon grid)
 
 /** #rrggbb → rgba(r,g,b,a) */
@@ -41,24 +71,20 @@ function barGrad(chart, base, horizontal) {
   set('st-running', d.vm_running);     set('st-stopped', d.vm_stopped);
   set('st-suspended', d.vm_suspended);
   const P = d.phys || {};
-  const two = (a, tot) => tot ? a + ' <span class="text-muted small">/ ' + tot + '</span>' : a;
   const el = id => document.getElementById(id);
-  if (el('st-vcpu')) el('st-vcpu').innerHTML = two(d.total_vcpu, P.cores);
+  const setT = (id, v) => { const x = el(id); if (x) x.textContent = v || '—'; };
+  set('st-vcpu', d.total_vcpu);
+  setT('st-vcpu-total', P.cores);
   const gbf = g => g >= 1024 ? (g/1024).toFixed(1)+' TB' : g+' GB';
-  if (el('st-ram')) el('st-ram').innerHTML = two(gbf(d.total_ram_gb), P.ram_gb ? gbf(P.ram_gb) : 0);
-  if (el('st-disk')) el('st-disk').innerHTML = two(d.total_disk_tb + ' TB', P.disk_tb ? P.disk_tb + ' TB' : 0);
+  set('st-ram', gbf(d.total_ram_gb));
+  setT('st-ram-total', P.ram_gb ? gbf(P.ram_gb) : null);
+  set('st-disk', d.total_disk_tb + ' TB');
+  setT('st-disk-total', P.disk_tb ? P.disk_tb + ' TB' : null);
   set('at-noip', d.attention.no_ip);       set('at-notools', d.attention.no_tools);
   set('at-noowner', d.attention.no_owner);  set('at-oldsnap', d.attention.old_snapshots);
   set('at-nobackup', d.attention.no_backup);
-  const osb = document.getElementById('oldSnapBody');
-  if (osb) {
-    const items = d.old_snapshot_items || [];
-    osb.innerHTML = items.length ? items.map(it =>
-      '<tr><td>' + App.esc(it.vm || '—') + '</td><td class="small">' + App.esc(it.name || '') +
-      '</td><td class="text-end"><span class="badge ' + ((it.days||0) >= 90 ? 'text-bg-danger' : 'text-bg-warning text-dark') + '">' +
-      (it.days != null ? it.days + ' ' + t('unit.day','gün') : '—') + '</span></td></tr>').join('')
-      : '<tr><td colspan="3" class="text-muted p-3">' + t('dash.noOldSnaps','30 günden eski snapshot yok 🎉') + '</td></tr>';
-  }
+  SnapWidget.items = d.old_snapshot_items || [];
+  SnapWidget.render();
 
   const hi = document.getElementById('hiddenInfo');
   if (hi && d.hidden_clusters > 0) { hi.textContent = d.hidden_clusters + ' ' + t('dash.clustersHidden','cluster gizli'); hi.classList.remove('d-none'); }

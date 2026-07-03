@@ -161,6 +161,9 @@ html.theme-light .app-version { color: rgba(226,232,240,.5); }
   border-radius: 12px; padding: .65rem 1rem; box-shadow: var(--shadow-sm);
 }
 .mini-stat i { font-size: 1.15rem; color: var(--accent); }
+.mini-stat .mini-total { display: block; font-size: .68rem; color: var(--text-muted); margin-top: 1px; }
+.mini-stat .mini-total b { font-weight: 600; color: var(--text); }
+.snap-age-chips .btn { --bs-btn-padding-y: 0; --bs-btn-padding-x: .45rem; font-size: .68rem; }
 .mini-stat span { font-weight: 700; font-size: 1.02rem; color: var(--ink); display: block; line-height: 1.2; }
 .mini-stat small { color: var(--text-muted); font-size: .76rem; }
 

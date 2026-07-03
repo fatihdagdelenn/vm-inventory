@@ -199,13 +199,13 @@ def summary(db: Session = Depends(get_db), user: User = Depends(get_current_user
             "disk_tb": round(float(_dc) / 1024, 2)}
     # Oldest 30d+ snapshots (widget)
     from datetime import datetime as _dt2, timedelta as _td2
-    _cut = _dt2.utcnow() - _td2(days=30)
+    _cut = _dt2.utcnow() - _td2(days=7)   # widget filters 7+/14+/30+ client-side
     old_snapshot_items = [
         {"vm": r.vm_name, "name": r.name,
          "days": (_dt2.utcnow() - r.created_at).days if r.created_at else None}
         for r in db.query(Snapshot).filter(Snapshot.created_at != None,  # noqa: E711
                                            Snapshot.created_at < _cut)
-                   .order_by(Snapshot.created_at.asc()).limit(8).all()]
+                   .order_by(Snapshot.created_at.asc()).limit(40).all()]
 
     return {"vcenter_count": vcenter_count, "proxmox_count": proxmox_count,
             "host_count": host_count, "vm_total": vm_total,
