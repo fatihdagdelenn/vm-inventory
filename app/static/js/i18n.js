@@ -150,6 +150,11 @@ const I18N = {
     'hi.consoleAccess': 'Console access', 'hi.window30': '30 min window',
     'hi.records': 'records', 'hi.noRecords': 'No records found.',
     'hi.system': 'system',
+    'fc.cpuTitle': 'CPU (Cores)', 'unit.core': 'cores',
+    'dash.oldSnaps': 'Long-Lived Snapshots', 'dash.snapName': 'Snapshot',
+    'dash.noOldSnaps': 'No snapshots older than 30 days \ud83c\udf89',
+    'wt.pages': 'Pages (multi-select)',
+    'dashtitle.oldSnapshots': 'Long-Lived Snapshots',
     // Topology page
     'tp.searchPh': 'Search VM name \u2192 locate and focus on the map\u2026',
     'tp.expandAllT': 'Expand all hosts\' VMs', 'tp.expandAll': 'Expand All',

@@ -322,6 +322,9 @@ class CapacitySnapshot(Base):
     datastore_capacity_gb = Column(Float)  # physical disk ceiling
     datastore_used_gb = Column(Float)      # real datastore usage (fill)
     host_ram_mb = Column(BigInteger)       # physical RAM ceiling
+    host_cpu_cores = Column(Integer)       # physical core ceiling
+    alloc_vcpu = Column(Integer)           # allocated vCPU total
+    used_cpu_pct = Column(Float)           # core-weighted avg host CPU %
     vm_count = Column(Integer)
     created_at = Column(DateTime, default=datetime.utcnow)
 

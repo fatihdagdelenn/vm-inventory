@@ -92,6 +92,13 @@
     </div>
 
     <!-- ===== Dikkat gerektirenler ===== -->
+    <div class="dash-widget" data-widget="oldSnapshots" data-w="4" data-title="Uzun Süreli Snapshot'lar">
+      <div class="card panel h-100"><div class="card-header"><i class="bi bi-camera text-danger"></i> <span data-i18n="dash.oldSnaps">Uzun Süreli Snapshot'lar</span></div>
+        <div class="card-body p-0 d-flex flex-column"><div class="table-responsive flex-1" style="overflow:auto">
+          <table class="table table-sm table-hover mb-0"><thead><tr><th>VM</th><th data-i18n="dash.snapName">Snapshot</th><th class="text-end" data-i18n="bk.age">Yaş</th></tr></thead>
+          <tbody id="oldSnapBody"><tr><td colspan="3" class="text-muted p-3" data-i18n="common.loading">Yükleniyor…</td></tr></tbody></table>
+        </div></div></div>
+    </div>
     <div class="dash-widget" data-widget="attention" data-w="4" data-title="Dikkat Gerektirenler">
       <div class="card panel h-100"><div class="card-header"><i class="bi bi-exclamation-triangle text-warning"></i> <span data-i18n="dash.attention">Dikkat Gerektirenler</span></div>
         <div class="list-group list-group-flush" id="attentionList">

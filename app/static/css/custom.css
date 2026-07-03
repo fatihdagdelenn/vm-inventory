@@ -295,6 +295,17 @@ th.sorted-desc::after { content: " ▼"; color: var(--accent); font-size: .65rem
 
 /* ---------- Butonlar ---------- */
 .btn { border-radius: 9px; font-weight: 500; transition: all .16s; }
+.wt-pages { position: relative; display: inline-flex; }
+.wt-pages-btn { border: 1px solid var(--border); background: var(--panel); color: var(--text-muted);
+  border-radius: 6px; padding: 1px 6px; font-size: .72rem; cursor: pointer; }
+.wt-pages-btn:hover { color: var(--accent); border-color: var(--accent); }
+.wt-pages-menu { display: none; position: absolute; top: 110%; right: 0; z-index: 60;
+  min-width: 150px; padding: 6px 8px; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; box-shadow: var(--shadow-md); }
+.wt-pages.open .wt-pages-menu { display: block; }
+.wt-pages-item { display: flex; align-items: center; gap: 6px; font-size: .78rem;
+  color: var(--text); padding: 2px 0; cursor: pointer; white-space: nowrap; }
+
 .wt-help {
   display: inline-flex; align-items: center; justify-content: center;
   width: 17px; height: 17px; margin-left: 6px; padding: 0; vertical-align: 1px;

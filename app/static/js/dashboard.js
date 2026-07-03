@@ -40,12 +40,25 @@ function barGrad(chart, base, horizontal) {
   set('st-host', d.host_count);        set('st-vm', d.vm_total);
   set('st-running', d.vm_running);     set('st-stopped', d.vm_stopped);
   set('st-suspended', d.vm_suspended);
-  set('st-vcpu', d.total_vcpu);
-  set('st-ram', d.total_ram_gb >= 1024 ? (d.total_ram_gb/1024).toFixed(1)+' TB' : d.total_ram_gb+' GB');
-  set('st-disk', d.total_disk_tb + ' TB');
+  const P = d.phys || {};
+  const two = (a, tot) => tot ? a + ' <span class="text-muted small">/ ' + tot + '</span>' : a;
+  const el = id => document.getElementById(id);
+  if (el('st-vcpu')) el('st-vcpu').innerHTML = two(d.total_vcpu, P.cores);
+  const gbf = g => g >= 1024 ? (g/1024).toFixed(1)+' TB' : g+' GB';
+  if (el('st-ram')) el('st-ram').innerHTML = two(gbf(d.total_ram_gb), P.ram_gb ? gbf(P.ram_gb) : 0);
+  if (el('st-disk')) el('st-disk').innerHTML = two(d.total_disk_tb + ' TB', P.disk_tb ? P.disk_tb + ' TB' : 0);
   set('at-noip', d.attention.no_ip);       set('at-notools', d.attention.no_tools);
   set('at-noowner', d.attention.no_owner);  set('at-oldsnap', d.attention.old_snapshots);
   set('at-nobackup', d.attention.no_backup);
+  const osb = document.getElementById('oldSnapBody');
+  if (osb) {
+    const items = d.old_snapshot_items || [];
+    osb.innerHTML = items.length ? items.map(it =>
+      '<tr><td>' + App.esc(it.vm || '—') + '</td><td class="small">' + App.esc(it.name || '') +
+      '</td><td class="text-end"><span class="badge ' + ((it.days||0) >= 90 ? 'text-bg-danger' : 'text-bg-warning text-dark') + '">' +
+      (it.days != null ? it.days + ' ' + t('unit.day','gün') : '—') + '</span></td></tr>').join('')
+      : '<tr><td colspan="3" class="text-muted p-3">' + t('dash.noOldSnaps','30 günden eski snapshot yok 🎉') + '</td></tr>';
+  }
 
   const hi = document.getElementById('hiddenInfo');
   if (hi && d.hidden_clusters > 0) { hi.textContent = d.hidden_clusters + ' ' + t('dash.clustersHidden','cluster gizli'); hi.classList.remove('d-none'); }
@@ -236,14 +249,14 @@ function barGrad(chart, base, horizontal) {
       if (d >= 60) return `~${Math.round(d / 30)} ${t('unit.month','ay')}`;
       return `~${d} ${t('unit.day','gün')}`;
     };
-    const fcRow = (title, icon, f, unit) => {
+    const fcRow = (title, icon, f, unit, fmtFn) => {
       if (!f.capacity_gb) {
         return `<div class="forecast-row"><div class="d-flex align-items-center mb-1">
           <i class="bi ${icon} me-2"></i><strong>${title}</strong></div>
           <div class="small text-muted"><i class="bi bi-info-circle"></i> ${t('fc.noCap','Kapasite verisi yok — depolama toplanmadı veya izin (Datastore.Audit) eksik.')}</div></div>`;
       }
       const [cls, bi, txt] = STAT[f.status] || STAT.none;
-      const fmt = (gb) => gb >= 1024 ? (gb / 1024).toFixed(1) + ' TB' : Math.round(gb) + ' GB';
+      const fmt = fmtFn || ((gb) => gb >= 1024 ? (gb / 1024).toFixed(1) + ' TB' : Math.round(gb) + ' GB');
       let daysTxt;
       if (f.status === 'collecting')
         daysTxt = `<span class="text-info"><i class="bi bi-hourglass-split"></i> ${t('fc.collectingTrend','Doluluk trendi için veri toplanıyor.')}</span>`;
@@ -274,6 +287,7 @@ function barGrad(chart, base, horizontal) {
     const fb = document.getElementById('forecastBody');
     if (fb) fb.innerHTML = fcRow(t('fc.diskTitle','Disk (Datastore)'), 'bi-device-hdd', fc.disk, 'disk') +
                            fcRow(t('fc.ramTitle','RAM (Fiziksel)'), 'bi-memory', fc.ram, 'RAM') +
+      (fc.cpu && fc.cpu.capacity_gb ? fcRow(t('fc.cpuTitle','CPU (Çekirdek)'), 'bi-cpu', fc.cpu, 'vCPU', c => Math.round(c) + ' ' + t('unit.core','çekirdek')) : '') +
       `<div class="text-muted mt-1" style="font-size:.72rem; line-height:1.5">
         <i class="bi bi-info-circle"></i> ${t('fc.noteShort','Doluluk = gerçek kullanım, Tahsis = VM\'lere verilen. Öngörü doluluk artış hızına göredir')}` +
       (fc.method === 'trend' ? ` (${t('fc.lastN','son')} ${fc.window_days} ${t('unit.day','gün')}).` : `; ${t('fc.collectingShort','veri toplanıyor')}.`) +
@@ -362,6 +376,7 @@ const ROWH = 100, ROW_GAP = 16;           // sabit-satır grid: satır yüksekli
 const HMAX = 12, WMAX = 12;                // maksimum satır/kolon açıklığı
 // Widget başına varsayılan yükseklik (satır). Belirtilmeyen = 3.
 const DEFAULT_H = {
+  oldSnapshots: 3,
   'stat-vcenter': 1, 'stat-proxmox': 1, 'stat-host': 1, 'stat-vm': 1,
   'stat-running': 1, 'stat-stopped': 1,
   'mini-vcpu': 1, 'mini-ram': 1, 'mini-disk': 1, 'mini-suspended': 1,
@@ -395,18 +410,25 @@ const DashGrid = {
         ? v1.order.filter(id => ids.includes(id)) : ids.slice();
       ids.forEach(id => { if (!ord.includes(id)) ord.push(id); });
       st.order[p1] = ord;
-      ids.forEach(id => { st.assign[id] = p1; });
+      ids.forEach(id => { st.assign[id] = [p1]; });
       if (v1 && v1.width) st.width = { ...v1.width };
       if (v1 && v1.hidden) st.hidden = v1.hidden.filter(id => ids.includes(id));
     }
     st.height = st.height || {};
+    // Multi-page widgets: assign values are ARRAYS of page ids (a widget can
+    // live on several pages; only one page renders at a time, so one DOM node
+    // is enough). Old single-string layouts migrate transparently.
+    Object.keys(st.assign).forEach(k => {
+      if (!Array.isArray(st.assign[k])) st.assign[k] = [st.assign[k]];
+    });
     // Yeni eklenen widget'ları (kod güncellemesi) ilk sayfaya iliştir + varsayılan yükseklik
     const first = st.pages[0].id;
     ids.forEach(id => {
-      if (!(id in st.assign)) st.assign[id] = first;
-      const pg = st.assign[id];
-      st.order[pg] = st.order[pg] || [];
-      if (!st.order[pg].includes(id)) st.order[pg].push(id);
+      if (!(id in st.assign)) st.assign[id] = [first];
+      st.assign[id].forEach(pg => {
+        st.order[pg] = st.order[pg] || [];
+        if (!st.order[pg].includes(id)) st.order[pg].push(id);
+      });
       if (!(id in st.height)) st.height[id] = DEFAULT_H[id] || 3;
     });
     if (!st.pages.some(p => p.id === st.active)) st.active = st.pages[0].id;
@@ -428,14 +450,15 @@ const DashGrid = {
     });
     grid.querySelectorAll('.dash-widget').forEach(w => {
       const id = w.dataset.widget;
-      const onPage = (st.assign[id] || st.pages[0].id) === act;
+      const onPage = (st.assign[id] || [st.pages[0].id]).includes(act);
       const hidden = st.hidden.includes(id);
       w.style.display = (onPage && !hidden) ? '' : 'none';
       const cols = st.width[id] || parseInt(w.dataset.w, 10) || 4;
       const rows = st.height[id] || DEFAULT_H[id] || 3;
       DashGrid.setSize(w, cols, rows);
-      const sel = w.querySelector('.wt-page');
-      if (sel) sel.value = st.assign[id] || st.pages[0].id;
+      w.querySelectorAll('.wt-pages-menu input').forEach(cb => {
+        cb.checked = (st.assign[id] || []).includes(cb.value);
+      });
     });
     DashGrid.refreshHiddenMenu();
     DashGrid.resizeCharts();
@@ -497,14 +520,20 @@ const DashGrid = {
     DashGrid.save(); DashGrid.applyView();
   },
 
-  /* ---- Widget'ı başka sayfaya taşı ---- */
-  moveToPage(id, pid) {
+  /* ---- Toggle a widget on/off a page (multi-page membership) ---- */
+  togglePage(id, pid, on) {
     const st = DashGrid.state;
-    const old = st.assign[id];
-    if (st.order[old]) st.order[old] = st.order[old].filter(x => x !== id);
-    st.assign[id] = pid;
-    st.order[pid] = st.order[pid] || [];
-    if (!st.order[pid].includes(id)) st.order[pid].push(id);
+    let arr = st.assign[id] || [st.pages[0].id];
+    if (on) {
+      if (!arr.includes(pid)) arr.push(pid);
+      st.order[pid] = st.order[pid] || [];
+      if (!st.order[pid].includes(id)) st.order[pid].push(id);
+    } else {
+      if (arr.length <= 1) { DashGrid.applyView(); return; }  // keep at least one page
+      arr = arr.filter(p => p !== pid);
+      if (st.order[pid]) st.order[pid] = st.order[pid].filter(x => x !== id);
+    }
+    st.assign[id] = arr;
     DashGrid.save(); DashGrid.applyView();
   },
 
@@ -514,7 +543,7 @@ const DashGrid = {
     const st = DashGrid.state;
     // aktif sayfaya ait gizli kartlar
     const hidden = [...document.querySelectorAll('.dash-widget')].filter(w =>
-      st.hidden.includes(w.dataset.widget) && (st.assign[w.dataset.widget] || st.pages[0].id) === st.active);
+      st.hidden.includes(w.dataset.widget) && (st.assign[w.dataset.widget] || [st.pages[0].id]).includes(st.active));
     if (cnt) cnt.textContent = hidden.length;
     if (!menu) return;
     menu.innerHTML = hidden.length ? hidden.map(w =>
@@ -565,12 +594,19 @@ const DashGrid = {
     if (st.pages.length <= 1) return;
     if (!confirm(t('dash.deletePageConfirm','Bu sayfa silinsin mi? Kartları ilk sayfaya taşınır.'))) return;
     const target = st.pages.find(p => p.id !== pid).id;
-    (st.order[pid] || []).forEach(id => { st.assign[id] = target;
-      st.order[target] = st.order[target] || []; if (!st.order[target].includes(id)) st.order[target].push(id); });
+    (st.order[pid] || []).forEach(id => {
+      let arr = (st.assign[id] || []).filter(p => p !== pid);
+      if (!arr.length) {
+        arr = [target];
+        st.order[target] = st.order[target] || [];
+        if (!st.order[target].includes(id)) st.order[target].push(id);
+      }
+      st.assign[id] = arr;
+    });
     delete st.order[pid];
     st.pages = st.pages.filter(p => p.id !== pid);
     if (st.active === pid) st.active = target;
-    DashGrid.save(); DashGrid.renderTabs(); DashGrid.applyView();
+    DashGrid.save(); DashGrid.renderTabs(); DashGrid.refreshPageSelectors(); DashGrid.applyView();
   },
 
   /* ---- Düzenleme modu ---- */
@@ -584,7 +620,7 @@ const DashGrid = {
     btn.querySelector('span').textContent = DashGrid.editing ? t('dash.done','Bitti') : t('dash.edit',"Dashboard'u Düzenle");
     btn.querySelector('i').className = DashGrid.editing ? 'bi bi-check2' : 'bi bi-grid-1x2';
     grid.querySelectorAll('.dash-widget').forEach(w => { w.draggable = DashGrid.editing; });
-    grid.querySelectorAll('.wt-page').forEach(s => { s.classList.toggle('d-none', !DashGrid.editing); });
+    grid.querySelectorAll('.wt-pages').forEach(s => { s.classList.toggle('d-none', !DashGrid.editing); });
     DashGrid.renderTabs();
   },
 
@@ -665,7 +701,9 @@ const DashGrid = {
       tools.className = 'widget-tools';
       tools.innerHTML =
         '<span class="wt wt-drag" title="' + t('wt.move','Taşı (sürükle)') + '"><i class="bi bi-grip-vertical"></i></span>' +
-        '<select class="wt wt-page d-none" title="' + t('wt.page','Sayfaya taşı') + '"></select>' +
+        '<span class="wt wt-pages d-none dropdown"><button type="button" class="wt wt-pages-btn" ' +
+          'title="' + t('wt.pages','Sayfalar (birden çok seçilebilir)') + '"><i class="bi bi-collection"></i></button>' +
+          '<div class="wt-pages-menu"></div></span>' +
         '<button type="button" class="wt wt-size" title="' + t('wt.width','Genişliği hızlı değiştir') + '"><i class="bi bi-aspect-ratio"></i></button>' +
         '<button type="button" class="wt wt-hide" title="' + t('wt.hide','Kartı gizle') + '"><i class="bi bi-x-lg"></i></button>';
       w.appendChild(tools);
@@ -696,9 +734,20 @@ const DashGrid = {
       DashGrid.startResize(e, e.target.closest('.dash-widget'));
     });
     grid.addEventListener('change', e => {
-      const sel = e.target.closest('.wt-page'); if (!sel) return;
+      const cb = e.target.closest('.wt-pages-menu input'); if (!cb) return;
       const w = e.target.closest('.dash-widget');
-      DashGrid.moveToPage(w.dataset.widget, sel.value);
+      DashGrid.togglePage(w.dataset.widget, cb.value, cb.checked);
+    });
+    grid.addEventListener('click', e => {
+      const btn = e.target.closest('.wt-pages-btn');
+      document.querySelectorAll('.wt-pages.open').forEach(x => {
+        if (!btn || x !== btn.parentElement) x.classList.remove('open');
+      });
+      if (btn) btn.parentElement.classList.toggle('open');
+    });
+    document.addEventListener('click', e => {
+      if (!e.target.closest('.wt-pages'))
+        document.querySelectorAll('.wt-pages.open').forEach(x => x.classList.remove('open'));
     });
 
     // Sekme çubuğu olayları
@@ -725,8 +774,14 @@ const DashGrid = {
   },
 
   refreshPageSelectors() {
-    const opts = DashGrid.state.pages.map(p => `<option value="${p.id}">→ ${App.esc(p.name)}</option>`).join('');
-    document.querySelectorAll('#dashGrid .wt-page').forEach(sel => { sel.innerHTML = opts; });
+    const st = DashGrid.state;
+    document.querySelectorAll('#dashGrid .dash-widget').forEach(w => {
+      const menu = w.querySelector('.wt-pages-menu'); if (!menu) return;
+      const cur = st.assign[w.dataset.widget] || [];
+      menu.innerHTML = st.pages.map(p =>
+        `<label class="wt-pages-item"><input type="checkbox" value="${p.id}"` +
+        (cur.includes(p.id) ? ' checked' : '') + `> ${App.esc(p.name)}</label>`).join('');
+    });
   },
 
   /* Kontrolleri üst çubuğa taşı (tek satır). Tema global. */

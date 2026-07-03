@@ -820,6 +820,13 @@ def record_samples(db):
     ds_cap = ds[0] or 0
     ds_used = ds[1] or 0
     host_ram = db.query(func.coalesce(func.sum(Host.ram_total_mb), 0)).scalar() or 0
+    # CPU: physical cores, allocated vCPU, core-weighted average host CPU %.
+    host_cpu = db.query(Host.cpu_cores, Host.cpu_usage_pct).all()
+    tot_cores = sum(int(c or 0) for c, _ in host_cpu)
+    w_used = sum(int(c or 0) * float(u or 0) for c, u in host_cpu)
+    used_cpu_pct = round(w_used / tot_cores, 1) if tot_cores else None
+    alloc_vcpu = int(db.query(func.coalesce(func.sum(VirtualMachine.cpu_count), 0))
+                     .filter(VirtualMachine.is_template == False).scalar() or 0)  # noqa: E712
 
     snap = db.query(CapacitySnapshot).filter_by(snap_date=today).first()
     if snap is None:
@@ -829,6 +836,9 @@ def record_samples(db):
     snap.alloc_ram_mb = int(t[1] or 0)
     snap.used_disk_gb = float(t[2] or 0)
     snap.used_ram_mb = int(t[3] or 0)
+    snap.host_cpu_cores = tot_cores or None
+    snap.alloc_vcpu = alloc_vcpu
+    snap.used_cpu_pct = used_cpu_pct
     snap.datastore_capacity_gb = float(ds_cap)
     snap.datastore_used_gb = float(ds_used)
     snap.host_ram_mb = int(host_ram)

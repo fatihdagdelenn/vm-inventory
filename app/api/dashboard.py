@@ -190,6 +190,23 @@ def summary(db: Session = Depends(get_db), user: User = Depends(get_current_user
                        "old_value": c.old_value, "new_value": c.new_value}
                       for c in changes]
 
+    # Physical ceilings (allocated vs total on the mini cards)
+    _hc = host_q().with_entities(func.coalesce(func.sum(Host.cpu_cores), 0),
+                                 func.coalesce(func.sum(Host.ram_total_mb), 0)).one()
+    _dc = db.query(func.coalesce(func.sum(Datastore.capacity_gb), 0)).scalar() or 0
+    phys = {"cores": int(_hc[0] or 0),
+            "ram_gb": round(float(_hc[1] or 0) / 1024, 1),
+            "disk_tb": round(float(_dc) / 1024, 2)}
+    # Oldest 30d+ snapshots (widget)
+    from datetime import datetime as _dt2, timedelta as _td2
+    _cut = _dt2.utcnow() - _td2(days=30)
+    old_snapshot_items = [
+        {"vm": r.vm_name, "name": r.name,
+         "days": (_dt2.utcnow() - r.created_at).days if r.created_at else None}
+        for r in db.query(Snapshot).filter(Snapshot.created_at != None,  # noqa: E711
+                                           Snapshot.created_at < _cut)
+                   .order_by(Snapshot.created_at.asc()).limit(8).all()]
+
     return {"vcenter_count": vcenter_count, "proxmox_count": proxmox_count,
             "host_count": host_count, "vm_total": vm_total,
             "vm_running": vm_running, "vm_stopped": vm_stopped,
@@ -197,6 +214,7 @@ def summary(db: Session = Depends(get_db), user: User = Depends(get_current_user
             "total_vcpu": int(totals[0]),
             "total_ram_gb": round(totals[1] / 1024, 1),
             "total_disk_tb": round(totals[2] / 1024, 2),
+            "phys": phys, "old_snapshot_items": old_snapshot_items,
             "attention": {"no_ip": no_ip, "no_tools": no_tools, "no_owner": no_owner,
                           "old_snapshots": old_snapshots, "no_backup": no_backup},
             "env_distribution": env_dist, "cluster_distribution": cluster_dist,
@@ -263,6 +281,12 @@ def insights(db: Session = Depends(get_db), user: User = Depends(get_current_use
     used_ram_gb = round(float(g[2] or 0) / 1024, 1)        # real consumed RAM
 
     ram_cap_gb = round(float(db.query(func.coalesce(func.sum(Host.ram_total_mb), 0)).scalar() or 0) / 1024, 1)
+    host_cpu_rows = db.query(Host.cpu_cores, Host.cpu_usage_pct).all()
+    cpu_cores_total = sum(int(c or 0) for c, _ in host_cpu_rows)
+    _w = sum(int(c or 0) * float(u or 0) for c, u in host_cpu_rows)
+    used_cpu_cores = round(_w / 100.0, 1) if cpu_cores_total else 0.0
+    alloc_vcpu_total = int(db.query(func.coalesce(func.sum(VirtualMachine.cpu_count), 0))
+                           .filter(VirtualMachine.is_template == False).scalar() or 0)  # noqa: E712
     ds = db.query(func.coalesce(func.sum(Datastore.capacity_gb), 0),
                   func.coalesce(func.sum(Datastore.used_gb), 0)).one()
     disk_cap_gb = round(float(ds[0] or 0), 1)
@@ -300,9 +324,14 @@ def insights(db: Session = Depends(get_db), user: User = Depends(get_current_use
                             for s in snaps if s.used_ram_mb is not None])
         per_day_disk_gb = max(0.0, slope_disk or 0)
         per_day_ram_gb = max(0.0, slope_ram or 0)
+        slope_cpu = _slope([(i, (s.used_cpu_pct or 0) * (s.host_cpu_cores or 0) / 100.0)
+                            for i, s in enumerate(snaps) if s.used_cpu_pct is not None
+                            and s.host_cpu_cores])
+        per_day_cpu_cores = max(0.0, slope_cpu or 0)
         fc_method = "trend"
     else:
         fc_method = "collecting"
+        per_day_cpu_cores = 0.0
     fc_window = span
     days_collected = len(snaps)
     days_needed = MIN_SPAN + 1
@@ -333,7 +362,9 @@ def insights(db: Session = Depends(get_db), user: User = Depends(get_current_use
     forecast = {"window_days": fc_window, "method": fc_method,
                 "days_collected": days_collected, "days_needed": days_needed,
                 "disk": _forecast(disk_cap_gb, used_disk_gb, alloc_disk_gb, per_day_disk_gb),
-                "ram": _forecast(ram_cap_gb, used_ram_gb, alloc_ram_gb, per_day_ram_gb)}
+                "ram": _forecast(ram_cap_gb, used_ram_gb, alloc_ram_gb, per_day_ram_gb),
+                "cpu": _forecast(cpu_cores_total, used_cpu_cores, alloc_vcpu_total,
+                                 per_day_cpu_cores)}
 
     # ===== Zombie (idle) VMs - MULTI-METRIC CORRELATION =====
     # CPU alone is misleading (false positives). Over a 14-30 day window CPU/RAM/Disk/Net
