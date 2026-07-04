@@ -151,6 +151,22 @@ class ProxmoxCollector:
         r"|qlogic|emulex|samsung|micron|kioxia|western digital|seagate"
         r"|\blsi\b|avago|marvell|aquantia|red hat|aspeed", re.IGNORECASE)
 
+    @staticmethod
+    def _best_chassis(cands):
+        """Pick the most specific chassis name from regex candidates.
+
+        pci.ids often carries generic family entries ("PowerEdge Rx5xx");
+        a concrete model ("PowerEdge R750xd") has more digits and no 'x'
+        wildcards between them - score by digit count minus wildcard penalty.
+        """
+        def score(c):
+            c = c.strip()
+            digits = sum(ch.isdigit() for ch in c)
+            wild = len(re.findall(r"(?i)(?<=[a-z0-9])x(?=[0-9x])|(?<=[0-9])x", c))
+            return (digits - 2 * wild, len(c))
+        cands = [c.strip() for c in cands if c and c.strip()]
+        return max(cands, key=score) if cands else ""
+
     def _node_hw_model(self, node: str) -> str:
         """Physical vendor+model of a node (e.g. 'Dell Inc. PowerEdge R750').
 
@@ -178,20 +194,23 @@ class ProxmoxCollector:
                 val = (m.group(1).strip() if m else "")
                 if val and not self._HW_PLACEHOLDER.search(val):
                     parts.append(val)
-            # Some pvereport builds embed only "dmidecode -t bios" (no System
-            # Information). Recover: BIOS Vendor gives the OEM, and a chassis-
-            # family scan over the whole report (lspci subsystem lines often
-            # spell the model, e.g. "Dell PowerEdge R750") gives the model.
+            # pvereport's hardware section is only "dmidecode -t bios" +
+            # "lspci -nnk" (verified in pve-manager PVE/Report.pm), so the
+            # exact system Product Name is NOT exposed by the API. Best
+            # achievable: BIOS Vendor (OEM) + the most specific chassis name
+            # found in the lspci subsystem lines (pci.ids may only carry a
+            # generic family like "PowerEdge Rx5xx" - taken as-is).
             if not any(self._HW_CHASSIS.search(x or "") for x in parts):
-                ch = self._HW_CHASSIS.search(text)
-                if ch:
-                    parts.append(ch.group(1).strip())
-            if not parts:
+                best = self._best_chassis(self._HW_CHASSIS.findall(text))
+                if best:
+                    parts.append(best)
+            has_vendor = any(not self._HW_CHASSIS.search(x) for x in parts)
+            if not has_vendor:
                 ven = re.search(r"^\s*Vendor:\s*(.+)$", text, re.MULTILINE)
                 val = (ven.group(1).strip() if ven else "")
                 if val and not self._HW_PLACEHOLDER.search(val) \
                         and not self._HW_COMPONENT.search(val):
-                    parts.append(val)
+                    parts.insert(0, val)
             result = " ".join(dict.fromkeys(parts))  # dedupe, keep order
             if not result:
                 logger.info("Node report parsed but no hardware id (%s): "
@@ -218,13 +237,11 @@ class ProxmoxCollector:
                         vendor = best
                 # On OEM boards the PCI subsystem DEVICE name frequently spells
                 # the chassis (e.g. "PowerEdge R750 System Board") - take it.
-                model = ""
+                cands = []
                 for d in devs:
-                    ch = self._HW_CHASSIS.search(
+                    cands += self._HW_CHASSIS.findall(
                         (d.get("subsystem_device_name") or ""))
-                    if ch:
-                        model = ch.group(1).strip()
-                        break
+                model = self._best_chassis(cands)
                 result = " ".join(x for x in dict.fromkeys([vendor, model]) if x)
             except Exception:
                 pass
