@@ -613,6 +613,11 @@ html.theme-light .wt-resize { background: #fff; color: #475569; border-color: #c
 .dash-tab { background: rgba(148,163,184,.08); border: 1px solid rgba(148,163,184,.2);
   color: #aab8cc; padding: .34rem .8rem; border-radius: 9px; font-size: .85rem; font-weight: 600;
   cursor: pointer; display: inline-flex; align-items: center; gap: .45rem; line-height: 1.1; }
+.dash-cycle { display: inline-flex; align-items: center; gap: 4px; }
+.dash-cycle-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.dash-cycle-btn.active i { animation: none; }
+.dash-cycle-sec { width: auto; min-width: 62px; font-size: .8rem; padding: 2px 22px 2px 8px; }
+html.theme-dark .dash-cycle-sec { background-color: var(--panel); color: var(--text); border-color: var(--border); }
 .dash-tab:hover { border-color: rgba(59,155,255,.4); color: #cfe0f5; }
 .dash-tab.active { background: rgba(59,155,255,.18); border-color: rgba(59,155,255,.55); color: #fff; }
 .dash-tab .tab-x, .dash-tab .tab-ren { opacity: .55; font-size: .78rem; }

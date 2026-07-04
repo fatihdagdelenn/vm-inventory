@@ -606,6 +606,20 @@ const DashGrid = {
     }).join('');
     if (DashGrid.editing)
       html += `<button class="dash-tab dash-tab-add" id="dashAddPage" title="${t('dash.addPageT','Sayfa ekle')}"><i class="bi bi-plus-lg"></i> ${t('dash.pageWord','Sayfa')}</button>`;
+    // Cycle (monitoring/kiosk) control: only meaningful with multiple pages
+    // and while not editing the layout.
+    if (!DashGrid.editing && st.pages.length > 1) {
+      const on = Kiosk.running;
+      html += `<span class="dash-cycle ms-2">` +
+        `<button class="dash-tab dash-cycle-btn${on ? ' active' : ''}" id="dashCycle" ` +
+        `title="${t('dash.cycleHint','Sayfalar arası otomatik geçiş (monitöring)')}">` +
+        `<i class="bi bi-${on ? 'pause-fill' : 'play-fill'}"></i> ${t('dash.cycle','Döngü')}</button>` +
+        `<select class="form-select form-select-sm dash-cycle-sec" id="dashCycleSec" ` +
+        `title="${t('dash.cycleEvery','Geçiş aralığı')}">` +
+        [10, 15, 30, 60, 120].map(n =>
+          `<option value="${n}"${n === Kiosk.sec ? ' selected' : ''}>${n}s</option>`).join('') +
+        `</select></span>`;
+    }
     bar.innerHTML = html;
   },
 
@@ -650,6 +664,7 @@ const DashGrid = {
   /* ---- Düzenleme modu ---- */
   toggleEdit() {
     DashGrid.editing = !DashGrid.editing;
+    if (DashGrid.editing && Kiosk.running) Kiosk.stop(true);  // don't rotate while editing
     const grid = document.getElementById('dashGrid');
     grid.classList.toggle('editing', DashGrid.editing);
     document.getElementById('btnResetDash').classList.toggle('d-none', !DashGrid.editing);
@@ -752,6 +767,7 @@ const DashGrid = {
       w.appendChild(rz);
     });
     DashGrid.initHelp();
+    Kiosk.bind();
     DashGrid.refreshPageSelectors();
     DashGrid.renderTabs();
     DashGrid.applyView();
@@ -792,9 +808,15 @@ const DashGrid = {
     const bar = document.getElementById('dashTabs');
     bar.addEventListener('click', e => {
       if (e.target.closest('#dashAddPage')) { DashGrid.addPage(); return; }
+      if (e.target.closest('#dashCycle')) { Kiosk.toggle(); return; }
       const ren = e.target.closest('[data-ren]'); if (ren) { e.stopPropagation(); DashGrid.renamePage(ren.dataset.ren); return; }
       const del = e.target.closest('[data-del]'); if (del) { e.stopPropagation(); DashGrid.deletePage(del.dataset.del); return; }
-      const tab = e.target.closest('.dash-tab[data-page]'); if (tab) DashGrid.switchPage(tab.dataset.page);
+      const tab = e.target.closest('.dash-tab[data-page]');
+      if (tab) { DashGrid.switchPage(tab.dataset.page); if (Kiosk.running) Kiosk._arm(); }
+    });
+    bar.addEventListener('change', e => {
+      const sel = e.target.closest('#dashCycleSec');
+      if (sel) Kiosk.setSec(parseInt(sel.value, 10) || 30);
     });
 
     // Async içerik/grafikler yüklendikçe ve pencere boyutlandıkça yeniden paketle
@@ -832,6 +854,72 @@ const DashGrid = {
 // renderTabs içinde sayfa eklendiğinde/ad değişince seçicileri tazele
 const _origRenderTabs = DashGrid.renderTabs;
 DashGrid.renderTabs = function () { _origRenderTabs.call(DashGrid); DashGrid.refreshPageSelectors && DashGrid.refreshPageSelectors(); };
+/* ============ Kiosk / monitoring: auto-cycle dashboard pages ============ */
+const Kiosk = {
+  running: false,
+  sec: parseInt(localStorage.getItem('vmi-dash-cycle-sec') || '30', 10) || 30,
+  _timer: null,
+
+  bind() {
+    // Restore "was cycling" across reloads (a wall monitor should resume).
+    if (localStorage.getItem('vmi-dash-cycle-on') === '1'
+        && DashGrid.state.pages.length > 1) {
+      Kiosk.start(true);
+    }
+    // Pause on any real user interaction, resume shortly after they stop.
+    ['click', 'keydown', 'wheel', 'touchstart', 'mousemove'].forEach(ev =>
+      document.addEventListener(ev, Kiosk._nudge, { passive: true }));
+  },
+
+  start(silent) {
+    if (DashGrid.state.pages.length < 2) return;
+    Kiosk.running = true;
+    localStorage.setItem('vmi-dash-cycle-on', '1');
+    Kiosk._arm();
+    DashGrid.renderTabs();
+    if (!silent) App.toast(t('dash.cycleOn', 'Sayfa döngüsü açık — her ') +
+      Kiosk.sec + 's', 'info');
+  },
+
+  stop(silent) {
+    Kiosk.running = false;
+    localStorage.setItem('vmi-dash-cycle-on', '0');
+    clearTimeout(Kiosk._timer); Kiosk._timer = null;
+    DashGrid.renderTabs();
+    if (!silent) App.toast(t('dash.cycleOff', 'Sayfa döngüsü kapalı'), 'info');
+  },
+
+  toggle() { Kiosk.running ? Kiosk.stop() : Kiosk.start(); },
+
+  setSec(n) {
+    Kiosk.sec = n;
+    localStorage.setItem('vmi-dash-cycle-sec', String(n));
+    if (Kiosk.running) Kiosk._arm();
+  },
+
+  _arm() {
+    clearTimeout(Kiosk._timer);
+    Kiosk._timer = setTimeout(Kiosk._advance, Kiosk.sec * 1000);
+  },
+
+  _advance() {
+    const st = DashGrid.state;
+    if (!Kiosk.running || st.pages.length < 2) return;
+    const i = st.pages.findIndex(p => p.id === st.active);
+    const next = st.pages[(i + 1) % st.pages.length];
+    st.active = next.id; DashGrid.save();
+    DashGrid.renderTabs(); DashGrid.applyView();
+    Kiosk._arm();
+  },
+
+  // Debounced pause: hold the rotation while the user is active, then resume.
+  _nudge() {
+    if (!Kiosk.running) return;
+    clearTimeout(Kiosk._timer);
+    Kiosk._timer = setTimeout(Kiosk._advance, Math.max(Kiosk.sec, 5) * 1000);
+  },
+};
+
 DashGrid.init();
 
 /* ============================ Cluster görünürlük yönetimi ============================ */

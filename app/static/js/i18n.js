@@ -156,6 +156,9 @@ const I18N = {
     'dash.noSnapsAge': 'days-old snapshots: none \ud83c\udf89',
     'dash.assigned': 'Assigned', 'dash.totalWord': 'Total',
     'wt.pages': 'Pages (multi-select)',
+    'dash.cycle': 'Cycle', 'dash.cycleHint': 'Auto-rotate pages (monitoring)',
+    'dash.cycleEvery': 'Rotation interval',
+    'dash.cycleOn': 'Page cycle on \u2014 every ', 'dash.cycleOff': 'Page cycle off',
     'dashtitle.oldSnapshots': 'Long-Lived Snapshots',
     // Topology page
     'tp.searchPh': 'Search VM name \u2192 locate and focus on the map\u2026',
