@@ -1,4 +1,4 @@
-"""Application version. Format: <major>.<minor>.<patch>.<phase>
-The last component (phase) is bumped on every delivered phase."""
+"""Application version. Format: <major>.<minor>.<patch>[.<build>]
+Bumped per release; the optional build component tracks incremental work."""
 
-APP_VERSION = "1.0.3.92"
+APP_VERSION = "1.1.0"
