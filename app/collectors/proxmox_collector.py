@@ -19,13 +19,25 @@ logger = logging.getLogger("collector.proxmox")
 # connection resets - all seen on busy nodes and PVE 8.4.x channel flaps)
 # is INDETERMINATE: the agent may well be alive but slow/busy (fsfreeze
 # during backup, boot storm, Windows with many NICs).
+# EXCEPTION: 403 permission failures are their own class ('denied') - the
+# agent endpoints require the VM.Monitor privilege (PVEAuditor does NOT
+# include it); a 403 will never recover on its own and must be surfaced
+# as a clear permission warning, not logged as a transient problem.
 _AGENT_DOWN_RE = re.compile(
     r"agent is not running|no qemu guest agent configured|not enabled", re.I)
+_AGENT_DENIED_RE = re.compile(
+    r"403|permission check failed", re.I)
 
 
 def _agent_err_kind(exc) -> str:
-    """Classify an agent-call failure: 'down' (PVE said so) or 'indeterminate'."""
-    return "down" if _AGENT_DOWN_RE.search(str(exc)) else "indeterminate"
+    """Classify an agent-call failure: 'down' (PVE said so), 'denied'
+    (missing VM.Monitor privilege) or 'indeterminate'."""
+    msg = str(exc)
+    if _AGENT_DOWN_RE.search(msg):
+        return "down"
+    if _AGENT_DENIED_RE.search(msg):
+        return "denied"
+    return "indeterminate"
 
 
 def _agent_enabled_in_config(cfg: dict) -> bool:
@@ -581,6 +593,7 @@ class ProxmoxCollector:
                     if not agent_enabled:
                         entry["tools_status"] = "toolsNotInstalled"
                     else:
+                        last_exc = None
                         try:
                             agent = qa.agent("network-get-interfaces").get()
                             ips = []
@@ -595,24 +608,45 @@ class ProxmoxCollector:
                             agent_alive = True
                         except Exception as exc:
                             agent_kind = _agent_err_kind(exc)
+                            last_exc = exc
                         # Old/limited qemu-guest-agent builds (seen more on PVE 8.4.x)
                         # may reject network-get-interfaces yet still run. Fall back to
                         # the universal probes: 'ping' (POST, lightest, supported by
                         # every qga build), then 'info' (GET). Any answer = alive.
-                        if not agent_alive:
+                        # 'denied' (403) short-circuits: the follow-up probes hit the
+                        # same permission check and would 403 too.
+                        if not agent_alive and agent_kind != "denied":
                             try:
                                 qa.agent.ping.post()
                                 agent_alive = True
                             except Exception as exc:
                                 agent_kind = _agent_err_kind(exc)
+                                last_exc = exc
                                 if agent_kind == "indeterminate":
                                     try:
                                         qa.agent("info").get()
                                         agent_alive = True
                                     except Exception as exc2:
                                         agent_kind = _agent_err_kind(exc2)
+                                        last_exc = exc2
                         if agent_alive:
                             entry["tools_status"] = "guestToolsRunning"
+                        elif agent_kind == "denied":
+                            # Missing VM.Monitor privilege: the agent state is simply
+                            # UNKNOWABLE with this token - report 'unknown', never
+                            # 'not running', and warn ONCE per sync with the fix.
+                            entry["tools_status"] = "unknown"
+                            if not getattr(self, "_agent_denied_warned", False):
+                                self._agent_denied_warned = True
+                                logger.warning(
+                                    "Agent queries denied (403) e.g. %s/%s: the token "
+                                    "role lacks the VM.Monitor privilege, so agent "
+                                    "status / in-guest IPs / disk usage cannot be "
+                                    "collected. Fix: pveum role add EnvanterVMMon "
+                                    "-privs VM.Monitor; pveum aclmod / -token "
+                                    "'user@realm!tokenid' -role EnvanterVMMon "
+                                    "(add the same ACL to the user if privilege "
+                                    "separation is enabled)", node, vmid)
                         else:
                             entry["tools_status"] = "guestToolsNotRunning"
                             if agent_kind == "indeterminate":
@@ -624,15 +658,18 @@ class ProxmoxCollector:
                                 entry["agent_indeterminate"] = True
                                 logger.info(
                                     "Agent state indeterminate %s/%s (enabled in "
-                                    "config, probe failed transiently)", node, vmid)
+                                    "config, probe failed transiently): %s",
+                                    node, vmid, last_exc)
 
                     # Real OS name from the agent (e.g. "Ubuntu 22.04.3 LTS").
                     # Tried INDEPENDENTLY of the network call: some guests block
                     # network-get-interfaces but get-osinfo still works. Skipped when
-                    # the agent option is off or PVE positively reported it down.
+                    # the agent option is off, access is denied (403 would repeat)
+                    # or PVE positively reported the agent down.
                     os_from_agent = False
                     try:
-                        if not agent_enabled or (not agent_alive and agent_kind == "down"):
+                        if not agent_enabled or \
+                                (not agent_alive and agent_kind in ("down", "denied")):
                             raise RuntimeError("agent unavailable")
                         osinfo = qa.agent("get-osinfo").get()
                         result = osinfo.get("result", {}) if isinstance(osinfo, dict) else {}
