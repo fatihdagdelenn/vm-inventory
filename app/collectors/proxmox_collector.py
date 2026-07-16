@@ -14,6 +14,36 @@ from proxmoxer import ProxmoxAPI
 
 logger = logging.getLogger("collector.proxmox")
 
+# PVE answered POSITIVELY that the agent is down / not configured.
+# Anything else (client ReadTimeout, QMP "got timeout", 596 broken pipe,
+# connection resets - all seen on busy nodes and PVE 8.4.x channel flaps)
+# is INDETERMINATE: the agent may well be alive but slow/busy (fsfreeze
+# during backup, boot storm, Windows with many NICs).
+_AGENT_DOWN_RE = re.compile(
+    r"agent is not running|no qemu guest agent configured|not enabled", re.I)
+
+
+def _agent_err_kind(exc) -> str:
+    """Classify an agent-call failure: 'down' (PVE said so) or 'indeterminate'."""
+    return "down" if _AGENT_DOWN_RE.search(str(exc)) else "indeterminate"
+
+
+def _agent_enabled_in_config(cfg: dict) -> bool:
+    """Parse the VM config 'agent' option: '1', '1,fstrim_cloned_disks=1',
+    'enabled=1,...' or 0/absent. If the option is off, EVERY agent call is
+    guaranteed to fail -> the caller skips the probes entirely."""
+    raw = str(cfg.get("agent", "") or "").strip()
+    if not raw:
+        return False
+    first = raw.split(",", 1)[0].strip()
+    if "=" not in first:
+        return first.lower() in ("1", "true", "on", "yes")
+    for piece in raw.split(","):
+        k, _, v = piece.partition("=")
+        if k.strip() == "enabled":
+            return v.strip().lower() in ("1", "true", "on", "yes")
+    return True  # 'agent' key present but unrecognized form -> assume enabled
+
 # Proxmox internal "ostype" codes -> readable names.
 # If the Guest Agent runs, the real OS name from the guest overrides this.
 OSTYPE_MAP = {
@@ -78,6 +108,20 @@ class ProxmoxCollector:
             self._slow = (ProxmoxAPI(self.host, timeout=timeout, **kw)
                           if kw else self.api)
         return self._slow
+
+    def _agent_api(self):
+        """Client for QEMU Guest Agent calls with a 30 s timeout.
+
+        The default proxmoxer timeout is 5 s, but PVE itself waits ~10 s on
+        the QMP guest-agent channel before answering 'got timeout'. With the
+        5 s client the connection is cut BEFORE PVE answers, so a slow-but-
+        alive agent (Windows, loaded node, PVE 8.4.x) is misreported as
+        'not running'. 30 s lets PVE's own verdict through."""
+        if getattr(self, "_agentc", None) is None:
+            kw = getattr(self, "_conn_kwargs", None)
+            self._agentc = (ProxmoxAPI(self.host, timeout=30, **kw)
+                            if kw else self.api)
+        return self._agentc
 
     def test_connection(self) -> dict:
         """Connection test: queries version info."""
@@ -526,45 +570,71 @@ class ProxmoxCollector:
                         logger.debug("Could not fetch status.current %s/%s: %s", node, vmid, exc)
                     agent_ok = False        # network-get-interfaces answered (IPs came)
                     agent_alive = False     # ANY agent command answered (agent runs)
-                    try:
-                        agent = self.api.nodes(node).qemu(vmid).agent(
-                            "network-get-interfaces").get()
-                        ips = []
-                        for iface in agent.get("result", []):
-                            for addr in iface.get("ip-addresses", []):
-                                ip = addr.get("ip-address", "")
-                                if addr.get("ip-address-type") == "ipv4" and \
-                                        not ip.startswith("127."):
-                                    ips.append(ip)
-                        entry["ip_addresses"] = ",".join(sorted(set(ips)))
-                        agent_ok = True
-                        agent_alive = True
-                    except Exception:
-                        pass
-                    # Old/limited qemu-guest-agent builds (seen more on PVE 8.4.x) may
-                    # reject network-get-interfaces yet still run. Fall back to the
-                    # universal probes: 'info' (GET), then 'ping' (POST). Any answer
-                    # means the agent is alive -> don't report "not installed".
-                    if not agent_alive:
+                    agent_enabled = _agent_enabled_in_config(cfg)
+                    agent_kind = None       # last failure class: 'down' | 'indeterminate'
+                    # Agent option off in the VM config -> every agent call is
+                    # guaranteed to fail; skip the probes (faster sync) and report
+                    # 'not installed' instead of 'not running'.
+                    # Dedicated 30 s client: PVE's own QGA verdict takes ~10 s;
+                    # the default 5 s client cut it off -> false 'Passive'.
+                    qa = self._agent_api().nodes(node).qemu(vmid)
+                    if not agent_enabled:
+                        entry["tools_status"] = "toolsNotInstalled"
+                    else:
                         try:
-                            self.api.nodes(node).qemu(vmid).agent("info").get()
+                            agent = qa.agent("network-get-interfaces").get()
+                            ips = []
+                            for iface in agent.get("result", []):
+                                for addr in iface.get("ip-addresses", []):
+                                    ip = addr.get("ip-address", "")
+                                    if addr.get("ip-address-type") == "ipv4" and \
+                                            not ip.startswith("127."):
+                                        ips.append(ip)
+                            entry["ip_addresses"] = ",".join(sorted(set(ips)))
+                            agent_ok = True
                             agent_alive = True
-                        except Exception:
+                        except Exception as exc:
+                            agent_kind = _agent_err_kind(exc)
+                        # Old/limited qemu-guest-agent builds (seen more on PVE 8.4.x)
+                        # may reject network-get-interfaces yet still run. Fall back to
+                        # the universal probes: 'ping' (POST, lightest, supported by
+                        # every qga build), then 'info' (GET). Any answer = alive.
+                        if not agent_alive:
                             try:
-                                self.api.nodes(node).qemu(vmid).agent.ping.post()
+                                qa.agent.ping.post()
                                 agent_alive = True
-                            except Exception:
-                                pass
-                    entry["tools_status"] = ("guestToolsRunning" if agent_alive
-                                             else "guestToolsNotRunning")
+                            except Exception as exc:
+                                agent_kind = _agent_err_kind(exc)
+                                if agent_kind == "indeterminate":
+                                    try:
+                                        qa.agent("info").get()
+                                        agent_alive = True
+                                    except Exception as exc2:
+                                        agent_kind = _agent_err_kind(exc2)
+                        if agent_alive:
+                            entry["tools_status"] = "guestToolsRunning"
+                        else:
+                            entry["tools_status"] = "guestToolsNotRunning"
+                            if agent_kind == "indeterminate":
+                                # Timeout/connection-class failure while the option IS
+                                # enabled: the agent may be alive but busy (backup
+                                # fsfreeze, boot, 8.4.x channel flap). Flag it so sync
+                                # keeps the previous 'running' state for a few rounds
+                                # instead of flapping Active<->Passive.
+                                entry["agent_indeterminate"] = True
+                                logger.info(
+                                    "Agent state indeterminate %s/%s (enabled in "
+                                    "config, probe failed transiently)", node, vmid)
 
                     # Real OS name from the agent (e.g. "Ubuntu 22.04.3 LTS").
                     # Tried INDEPENDENTLY of the network call: some guests block
-                    # network-get-interfaces but get-osinfo still works.
+                    # network-get-interfaces but get-osinfo still works. Skipped when
+                    # the agent option is off or PVE positively reported it down.
                     os_from_agent = False
                     try:
-                        osinfo = self.api.nodes(node).qemu(vmid).agent(
-                            "get-osinfo").get()
+                        if not agent_enabled or (not agent_alive and agent_kind == "down"):
+                            raise RuntimeError("agent unavailable")
+                        osinfo = qa.agent("get-osinfo").get()
                         result = osinfo.get("result", {}) if isinstance(osinfo, dict) else {}
                         pretty = result.get("pretty-name") or \
                             (str(result.get("name", "")) + " " +
@@ -574,6 +644,7 @@ class ProxmoxCollector:
                             entry["tools_status"] = "guestToolsRunning"
                             agent_alive = True
                             os_from_agent = True
+                            entry.pop("agent_indeterminate", None)  # rescued
                         kern = result.get("kernel-release", "") or \
                             result.get("kernel-version", "")
                         if kern:
@@ -593,8 +664,7 @@ class ProxmoxCollector:
                     # truth (e.g. 80 GB allocated, 40 GB used). Agent-only.
                     if agent_alive:
                         try:
-                            fs = self.api.nodes(node).qemu(vmid).agent(
-                                "get-fsinfo").get()
+                            fs = qa.agent("get-fsinfo").get()
                             used_b = 0
                             seen = False
                             for f in (fs.get("result", []) if isinstance(fs, dict) else []):

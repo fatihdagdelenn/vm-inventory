@@ -40,7 +40,7 @@ TRACKED_HOST_FIELDS = ["name", "mgmt_ip", "cpu_cores", "ram_total_mb", "cluster"
 # the old (good) value on such drops.
 _ENRICH_FIELDS = ("guest_os", "ip_addresses", "dns_servers", "datastore", "vlans", "networks",
                   "mac_addresses", "kernel", "arch", "disk_total_gb", "ram_mb",
-                  "guest_notes", "platform_tags")
+                  "guest_notes", "platform_tags", "tools_status")
 # Generic / vague OS names (from ostype/guestFullName when no agent).
 # NOTE: the Turkish words in the regex are intentional - they match data values
 # the collectors emit (e.g. "Diğer", "eski çekirdek"); translating them breaks matching.
@@ -391,6 +391,7 @@ def sync_platform(platform_id: int):
             enrich_failed = vd.pop("enrich_failed", False)
             os_from_agent = vd.pop("os_from_agent", True)   # default for vCenter/LXC: trust
             ip_from_agent = vd.pop("ip_from_agent", True)
+            agent_indeterminate = vd.pop("agent_indeterminate", False)
             vm = existing_vms.get(vd["external_id"])
             ext_id = vd["external_id"]
             vid = ext_id.split("/", 1)[1] if "/" in ext_id else ext_id
@@ -461,6 +462,17 @@ def sync_platform(platform_id: int):
                     for f in ("ip_addresses", "mac_addresses", "networks"):
                         if f in vd:
                             vd[f] = getattr(vm, f)
+                # Sticky agent state (PVE 8.4.x flap guard): the agent option is on
+                # but the probe failed with a timeout/connection-class error. The
+                # agent may be alive but busy (backup fsfreeze, boot). Keep the
+                # previous 'running' for up to 3 consecutive misses; a PVE-confirmed
+                # 'not running' (agent_indeterminate=False) flips immediately.
+                if agent_indeterminate and vm.tools_status == "guestToolsRunning":
+                    vm.agent_miss_count = (vm.agent_miss_count or 0) + 1
+                    if vm.agent_miss_count <= 3 and "tools_status" in vd:
+                        vd["tools_status"] = vm.tools_status
+                else:
+                    vm.agent_miss_count = 0
                 for f in TRACKED_VM_FIELDS:
                     old, new = getattr(vm, f), vd.get(f)
                     if _preserve_old(f, old, new):   # transient drop -> keep the old value

@@ -73,6 +73,7 @@ class VirtualMachine(Base):
     created_date = Column(DateTime)                 # VM creation date
     last_boot = Column(DateTime)                    # Last boot time
     tools_status = Column(String(64))               # VMware Tools / QEMU Agent durumu
+    agent_miss_count = Column(Integer, default=0)   # Consecutive indeterminate agent probes (sticky-state guard)
     owner = Column(String(128))                     # Manuel: VM sahibi
     notes = Column(Text)                            # Manuel: notlar
     guest_notes = Column(Text)                      # Platformdan: vCenter annotation / Proxmox description
