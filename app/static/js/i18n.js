@@ -204,6 +204,8 @@ const I18N = {
     // Networks page
     'nt.searchPh': 'Search name, VLAN, vSwitch, subnet, MAC or host\u2026',
     'nt.byHost': 'By host', 'nt.pnics': 'Physical NICs',
+    'nt.byNet': 'Networks', 'nt.stat.nets': 'Networks', 'nt.stat.pnics': 'Physical NICs',
+    'nt.showVms': 'Show in VM list', 'nt.linked': 'linked',
     'nt.expandAll': 'Expand all', 'nt.collapseAll': 'Collapse all',
     'nt.noCluster': '(no cluster assigned)', 'nt.noVlan': 'No VLAN / native', 'nt.noHost': '(no host assigned)',
     'nt.nic': 'NIC', 'nt.speed': 'Speed', 'nt.physical': 'Physical',

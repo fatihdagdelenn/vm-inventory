@@ -6,7 +6,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import Network, Host, Platform, User
+from ..models import Network, Host, Platform, User, VirtualMachine
 from ..core.security import get_current_user
 
 router = APIRouter(prefix="/api/networks", tags=["networks"])
@@ -27,6 +27,17 @@ def list_networks(q: str = "", db: Session = Depends(get_db),
     host_cluster = {h.name: h.cluster for h in db.query(Host).all()}
     platform_name = {p.id: p.name for p in db.query(Platform).all()}
 
+    # VM count per network name (per platform): VirtualMachine.networks is a
+    # comma-separated list of bridge/portgroup names attached to the VM.
+    vm_net_count = {}
+    for pid, nets in db.query(VirtualMachine.platform_id,
+                              VirtualMachine.networks).all():
+        for tok in (nets or "").split(","):
+            tok = tok.strip()
+            if tok:
+                key = (pid, tok)
+                vm_net_count[key] = vm_net_count.get(key, 0) + 1
+
     items = []
     for n in query.order_by(Network.vlan, Network.name).all():
         items.append({
@@ -37,5 +48,6 @@ def list_networks(q: str = "", db: Session = Depends(get_db),
             "mac": n.mac, "link_speed": n.link_speed,
             "cluster": host_cluster.get(n.host_name, ""),
             "platform": platform_name.get(n.platform_id, ""),
+            "vm_count": vm_net_count.get((n.platform_id, n.name), 0),
         })
     return {"items": items}

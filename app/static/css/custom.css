@@ -397,6 +397,77 @@ html.theme-dark .popover .popover-arrow::after { border-top-color: #1b2740; bord
 .usage-mini.zero > div { min-width: 0; }
 
 /* ---------- Ağlar: gruplama araç çubuğu + akordeon ---------- */
+/* Top stat strip */
+.net-stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: .8rem;
+}
+.net-stat {
+  display: flex; align-items: center; gap: .8rem; padding: .8rem 1rem;
+}
+.net-stat > i {
+  font-size: 1.35rem; color: var(--accent);
+  background: var(--accent-soft); border-radius: 10px;
+  width: 2.4rem; height: 2.4rem; display: flex;
+  align-items: center; justify-content: center;
+}
+.net-stat-val { font-size: 1.25rem; font-weight: 700; color: var(--ink); line-height: 1.1; }
+.net-stat-label { font-size: .76rem; color: var(--text-muted); font-weight: 600; }
+html.theme-dark .net-stat-val { color: var(--text); }
+
+/* Deduplicated network card grid (default mode) */
+.net-cards {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: .8rem;
+}
+.net-card {
+  padding: .9rem 1rem .75rem; display: flex; flex-direction: column;
+  gap: .55rem; position: relative;
+  transition: transform .15s, box-shadow .15s, border-color .15s;
+}
+.net-card:hover {
+  transform: translateY(-2px); border-color: var(--accent);
+  box-shadow: 0 4px 14px rgba(15,29,46,.08);
+}
+.net-card-head { display: flex; align-items: center; gap: .5rem; min-width: 0; }
+.net-card-name {
+  font-weight: 700; color: var(--ink); font-size: .95rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+html.theme-dark .net-card-name { color: var(--text); }
+.net-card-meta { display: flex; flex-wrap: wrap; gap: .3rem; }
+.net-chip {
+  display: inline-flex; align-items: center; gap: .3rem;
+  border: 1px solid var(--border); background: var(--accent-soft);
+  color: var(--text); border-radius: 999px;
+  font-size: .73rem; font-weight: 600; padding: .12rem .55rem;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.net-chip i { font-size: .7rem; color: var(--text-muted); }
+.net-chip-vlan { background: rgba(47,129,247,.12); color: var(--accent); border-color: rgba(47,129,247,.3); }
+.net-chip-more { background: transparent; color: var(--text-muted); }
+.net-card-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .5rem; margin-top: auto; padding-top: .45rem;
+  border-top: 1px dashed var(--border);
+}
+.net-hosts { display: inline-flex; align-items: center; gap: .3rem; flex-wrap: wrap; min-width: 0; }
+.net-hosts > i { color: var(--text-muted); font-size: .8rem; }
+.net-vms {
+  display: inline-flex; align-items: center; gap: .3rem; white-space: nowrap;
+  font-size: .8rem; font-weight: 700; color: var(--accent); text-decoration: none;
+}
+.net-vms:hover { text-decoration: underline; }
+.net-vms.muted { color: var(--text-muted); font-weight: 600; }
+.net-card-platform {
+  position: absolute; top: .55rem; right: .8rem;
+  font-size: .68rem; color: var(--text-muted); font-weight: 600;
+}
+.net-empty {
+  text-align: center; color: var(--text-muted); padding: 2.5rem 1rem;
+}
+.net-empty i { font-size: 2rem; display: block; margin-bottom: .5rem; opacity: .5; }
+
 .net-toolbar {
   display: flex; align-items: center; gap: .9rem; flex-wrap: wrap;
 }
@@ -423,8 +494,12 @@ html.theme-dark .popover .popover-arrow::after { border-top-color: #1b2740; bord
 }
 .net-group > summary:hover { background: var(--accent-soft); }
 .net-group > summary::-webkit-details-marker { display: none; }
-.net-group-title { display: flex; align-items: center; gap: .55rem; }
+.net-group-title { display: flex; align-items: center; gap: .55rem; min-width: 0; }
 .net-group-title i { color: var(--accent); }
+.net-group-meta {
+  margin-left: auto; font-size: .76rem; font-weight: 600;
+  color: var(--text-muted); white-space: nowrap;
+}
 .net-group-count {
   min-width: 1.7rem; text-align: center; padding: .1rem .5rem;
   border-radius: 999px; background: var(--accent); color: #fff;

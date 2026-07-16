@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
+<div class="net-stats mb-3" id="netStats"></div>
 <div class="net-toolbar mb-3">
   <div class="search-box">
     <i class="bi bi-search"></i>
@@ -7,12 +8,13 @@
            data-i18n-ph="nt.searchPh" placeholder="Ad, VLAN, vSwitch, subnet, MAC veya host ara…">
   </div>
   <div class="btn-group net-modes" role="group" aria-label="Gruplama">
-    <button class="btn btn-sm active" data-mode="host" data-i18n="nt.byHost">Host'a göre</button>
+    <button class="btn btn-sm active" data-mode="net" data-i18n="nt.byNet">Ağlar</button>
+    <button class="btn btn-sm" data-mode="host" data-i18n="nt.byHost">Host'a göre</button>
     <button class="btn btn-sm" data-mode="cluster" data-i18n="vm.byCluster">Cluster'a göre</button>
     <button class="btn btn-sm" data-mode="vlan" data-i18n="vm.byVlan">VLAN'a göre</button>
     <button class="btn btn-sm" data-mode="pnic" data-i18n="nt.pnics">Fiziksel Kartlar</button>
   </div>
-  <div class="net-actions">
+  <div class="net-actions" id="netAcc" hidden>
     <button class="btn btn-sm btn-link" id="netExpandAll" data-i18n="nt.expandAll">Tümünü aç</button>
     <button class="btn btn-sm btn-link" id="netCollapseAll" data-i18n="nt.collapseAll">Tümünü kapat</button>
   </div>
