@@ -429,7 +429,11 @@ const DashGrid = {
 
   /* ---- Durum yükle / kaydet / migrasyon ---- */
   loadRaw() { try { return JSON.parse(localStorage.getItem(LS_KEY2)); } catch (e) { return null; } },
-  save() { try { localStorage.setItem(LS_KEY2, JSON.stringify(DashGrid.state)); } catch (e) {} },
+  save() {
+    const j = JSON.stringify(DashGrid.state);
+    try { localStorage.setItem(LS_KEY2, j); } catch (e) {}
+    App.userSet('dash_layout', j);   // layout follows the ACCOUNT, not the browser
+  },
 
   allWidgetIds() {
     return [...document.querySelectorAll('#dashGrid .dash-widget')].map(w => w.dataset.widget);
@@ -680,6 +684,7 @@ const DashGrid = {
   reset() {
     if (!confirm(t('dash.resetConfirm','Tüm dashboard yerleşimi (sayfalar dahil) sıfırlansın mı?'))) return;
     try { localStorage.removeItem(LS_KEY2); localStorage.removeItem(LS_KEY); } catch (e) {}
+    App.userSet('dash_layout', '');
     location.reload();
   },
 
@@ -920,7 +925,15 @@ const Kiosk = {
   },
 };
 
-DashGrid.init();
+(async () => {
+  // Server-first bootstrap: the account's saved layout (if any) wins so it
+  // follows the user across browsers/devices; the localStorage copy is the
+  // offline fallback and gets migrated up on the first save.
+  const srv = await App.userGet('dash_layout');
+  if (srv) { try { localStorage.setItem(LS_KEY2, srv); } catch (e) {} }
+  DashGrid.init();
+  if (!srv && DashGrid.state) App.userSet('dash_layout', JSON.stringify(DashGrid.state));
+})();
 
 /* ============================ Cluster görünürlük yönetimi ============================ */
 const Clusters = {

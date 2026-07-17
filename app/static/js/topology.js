@@ -268,7 +268,9 @@ const Topo = {
         m[n.id()] = { x: Math.round(p.x), y: Math.round(p.y) };
       });
       this.pos = m;
-      try { localStorage.setItem(this._POS_KEY, JSON.stringify(m)); } catch (e) {}
+      const j = JSON.stringify(m);
+      try { localStorage.setItem(this._POS_KEY, j); } catch (e) {}
+      App.userSet('topo_pos', j);   // positions follow the account
     }, 400);
   },
   /** Yeni eklenen düğümleri host'un yanına yerleştir (global relayout YAPMADAN). */
@@ -578,4 +580,13 @@ const Topo = {
   },
 };
 
-document.addEventListener('DOMContentLoaded', () => Topo.init());
+document.addEventListener('DOMContentLoaded', async () => {
+  // Server-first: the account's saved positions win over this browser's copy.
+  const srv = await App.userGet('topo_pos');
+  if (srv) { try { localStorage.setItem(Topo._POS_KEY, srv); } catch (e) {} }
+  Topo.init();
+  if (!srv) {
+    const local = localStorage.getItem(Topo._POS_KEY);
+    if (local) App.userSet('topo_pos', local);   // one-time migration up
+  }
+});

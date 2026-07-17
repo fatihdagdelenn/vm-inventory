@@ -13,6 +13,25 @@ const App = {
     return m ? decodeURIComponent(m.pop()) : '';
   },
 
+  /* ---- Sunucu tarafı kullanıcı ayarları (düzenler hesabı takip etsin) ---- */
+  /** Kullanıcının sunucuda saklanan ayarını oku (yoksa null). */
+  async userGet(key) {
+    try {
+      const r = await App.api('/api/user-settings/' + encodeURIComponent(key));
+      return (r && r.value) ? r.value : null;
+    } catch (e) { return null; }
+  },
+  /** Ayarı sunucuya yaz (anahtar başına 800 ms debounce; hatalar sessiz). */
+  _usTimers: {},
+  userSet(key, value) {
+    clearTimeout(App._usTimers[key]);
+    App._usTimers[key] = setTimeout(() => {
+      App.api('/api/user-settings/' + encodeURIComponent(key),
+              { method: 'PUT', body: JSON.stringify({ value: value }) })
+         .catch(() => {});
+    }, 800);
+  },
+
   /**
    * API çağrısı sarmalayıcı.
    * GET dışındaki isteklerde X-CSRF-Token header'ı otomatik eklenir.

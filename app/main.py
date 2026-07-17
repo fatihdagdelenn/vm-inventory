@@ -20,7 +20,7 @@ from .core.security import (get_current_user, hash_password,
                             refresh_session_token, set_session_cookie)
 from .core.scheduler import start_scheduler, stop_scheduler
 from .api import (auth, dashboard, vms, hosts, networks, platforms, datastores, snapshots, backups,
-                  reports, admin, clusters, topology)
+                  reports, admin, clusters, topology, user_settings)
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -121,7 +121,7 @@ app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")),
 for router in (auth.router, dashboard.router, vms.router, hosts.router,
                networks.router, platforms.router, reports.router, admin.router,
                clusters.router, datastores.router, snapshots.router, backups.router,
-               topology.router):
+               topology.router, user_settings.router):
     app.include_router(router)
 
 
