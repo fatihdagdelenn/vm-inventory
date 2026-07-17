@@ -468,6 +468,12 @@ html.theme-dark .net-card-name { color: var(--text); }
   text-align: right; margin-top: .15rem;
   font-size: .68rem; color: var(--text-muted); font-weight: 600;
 }
+/* Datastore kartları (networks tasarım dili) */
+.ds-card .res-cell { width: 100%; }
+.ds-card .usage-mini { width: 100%; }
+.ds-card .net-card-foot { padding-top: .5rem; }
+.net-stat-sub { font-size: .72rem; font-weight: 700; color: var(--text-muted); }
+
 .net-empty {
   text-align: center; color: var(--text-muted); padding: 2.5rem 1rem;
 }

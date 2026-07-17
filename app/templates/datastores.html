@@ -1,31 +1,26 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="d-flex mb-3 gap-2">
-  <div class="search-box flex-grow-1" style="max-width:480px">
+<div class="net-stats mb-3" id="dsStats"></div>
+<div class="net-toolbar mb-3">
+  <div class="search-box">
     <i class="bi bi-search"></i>
-    <input type="text" id="dsSearch" class="form-control" data-i18n-ph="ds.searchPh" placeholder="Datastore adı, tip, node veya platform ara…">
+    <input type="text" id="dsSearch" class="form-control" data-i18n-ph="ds.searchPh"
+           placeholder="Datastore adı, tip, node veya platform ara…">
   </div>
-  <button class="btn btn-outline-success btn-sm ms-auto" onclick="location='/api/reports/datastores/export?fmt=xlsx'"><i class="bi bi-file-earmark-excel"></i> Excel</button>
-  <button class="btn btn-outline-secondary btn-sm" onclick="location='/api/reports/datastores/export?fmt=csv'">CSV</button>
-  <button class="btn btn-outline-danger btn-sm" onclick="location='/api/reports/datastores/export?fmt=pdf'">PDF</button>
+  <div class="btn-group net-modes" role="group" aria-label="Görünüm">
+    <button class="btn btn-sm active" data-mode="cards" data-i18n="ds.cards">Kartlar</button>
+    <button class="btn btn-sm" data-mode="type" data-i18n="ds.byType">Tür'e göre</button>
+    <button class="btn btn-sm" data-mode="node" data-i18n="ds.byNode">Node'a göre</button>
+    <button class="btn btn-sm" data-mode="table" data-i18n="ds.table">Tablo</button>
+  </div>
+  <div class="net-actions">
+    <button class="btn btn-outline-success btn-sm" onclick="location='/api/reports/datastores/export?fmt=xlsx'"><i class="bi bi-file-earmark-excel"></i> Excel</button>
+    <button class="btn btn-outline-secondary btn-sm" onclick="location='/api/reports/datastores/export?fmt=csv'">CSV</button>
+    <button class="btn btn-outline-danger btn-sm" onclick="location='/api/reports/datastores/export?fmt=pdf'">PDF</button>
+  </div>
 </div>
-<div class="card panel">
-  <div class="table-responsive">
-    <table class="table table-hover align-middle mb-0" id="dsTable">
-      <thead><tr>
-        <th data-sort="name" class="sortable">Datastore</th>
-        <th data-sort="node" class="sortable">Node</th>
-        <th data-sort="platform" class="sortable">Platform</th>
-        <th data-sort="type" class="sortable" data-i18n="th.type">Tip</th>
-        <th data-sort="capacity_gb" class="sortable" data-i18n="ds.capacity">Kapasite</th>
-        <th data-sort="usage" class="sortable" data-i18n="ds.usage">Doluluk</th>
-        <th data-sort="host_count" class="sortable">Host</th>
-        <th data-sort="vm_count" class="sortable">VM</th>
-        <th data-sort="status" class="sortable" data-i18n="th.status">Durum</th>
-      </tr></thead>
-      <tbody id="dsBody"><tr><td colspan="9" class="text-center text-muted p-4" data-i18n="common.loading">Yükleniyor…</td></tr></tbody>
-    </table>
-  </div>
+<div id="dsGroups">
+  <div class="text-center text-muted p-4" data-i18n="common.loading">Yükleniyor…</div>
 </div>
 <div class="text-muted small mt-2" id="dsCount"></div>
 {% endblock %}

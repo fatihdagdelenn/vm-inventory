@@ -129,6 +129,9 @@ const I18N = {
     'hs.runningOpen': 'running — open VM list', 'hs.coresLower': 'cores',
     // Datastores page
     'ds.searchPh': 'Search datastore name, type, node or platform…',
+    'ds.cards': 'Cards', 'ds.byType': 'By type', 'ds.byNode': 'By node', 'ds.table': 'Table',
+    'ds.stat.total': 'Total Capacity', 'ds.stat.used': 'Used', 'ds.stat.crit': 'Critical (\u2265 90%)',
+    'ds.noType': '(no type)', 'ds.sharedGroup': 'Shared / central',
     'ds.capacity': 'Capacity', 'ds.usage': 'Usage',
     'ds.shared': 'shared', 'ds.sharedHint': 'Shared by multiple hosts/nodes',
     'ds.viewDetails': 'View details',
