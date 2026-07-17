@@ -311,35 +311,37 @@ class ProxmoxCollector:
             entry = {
                 "external_id": name,
                 "name": name,
-                "mgmt_ip": "",
-                "os_version": "Proxmox VE",
-                "cpu_model": "",
                 "cpu_cores": node.get("maxcpu", 0),
                 "ram_total_mb": int(node.get("maxmem", 0) / 1024**2),
                 "ram_used_mb": int(node.get("mem", 0) / 1024**2),
                 "cpu_usage_pct": round(100 * node.get("cpu", 0), 1),
                 "disk_total_gb": round(node.get("maxdisk", 0) / 1024**3, 1),
                 "disk_used_gb": round(node.get("disk", 0) / 1024**3, 1),
-                "cluster": "",
                 "status": "online" if node.get("status") == "online" else "offline",
                 "last_boot": (datetime.utcfromtimestamp(
                     int(datetime.utcnow().timestamp()) - int(node["uptime"]))
                     if node.get("uptime") else None),
             }
-            # Fetch details from online nodes (CPU model, version, IP)
+            # Detail fields (mgmt_ip / cpu_model / os_version) are OMITTED from
+            # the entry unless actually fetched. A failed fetch (403/timeout) or
+            # an offline node used to emit empty strings, which blanked the
+            # stored values and produced endless 'value <-> -' flip records in
+            # the change history. Omitted keys leave the DB values untouched.
             if entry["status"] == "online":
                 try:
                     status = self.api.nodes(name).status.get()
                     cpuinfo = status.get("cpuinfo", {})
                     entry["cpu_model"] = cpuinfo.get("model", "")
                     entry["os_version"] = f"Proxmox VE {status.get('pveversion', '')}"
-                    # Management IP: pick network interfaces DETERMINISTICALLY.
-                    # The API does not guarantee interface order, so multi-NIC
-                    # nodes used to get a different IP on every sync, polluting
-                    # the change history. A fixed priority is applied
-                    # (see _pick_mgmt_ip).
-                    entry["mgmt_ip"] = self._pick_mgmt_ip(
-                        self.api.nodes(name).network.get())
+                    # Management IP: deterministic pick (see _pick_mgmt_ip) PLUS
+                    # the full candidate list. sync_service keeps the stored IP
+                    # as long as it is still present on the node, so pick-order
+                    # instability (bond failover, gateway moves) cannot flap the
+                    # history; a real re-IP is still recorded once.
+                    ifaces = self.api.nodes(name).network.get()
+                    entry["mgmt_ip"] = self._pick_mgmt_ip(ifaces)
+                    entry["mgmt_ip_candidates"] = sorted(
+                        {i["address"] for i in (ifaces or []) if i.get("address")})
                 except Exception as exc:
                     logger.warning("Could not fetch node details %s: %s", name, exc)
                 hw = self._node_hw_model(name)
@@ -347,10 +349,13 @@ class ProxmoxCollector:
                     entry["hw_model"] = hw
             hosts.append(entry)
 
-        # Resolve the cluster name and assign it to all nodes
+        # Resolve the cluster name and assign it to all nodes. When the name
+        # cannot be resolved (403 on /cluster/status, transient error) the key
+        # is OMITTED so the stored cluster is preserved instead of blanked.
         cluster = self._cluster_name()
-        for h in hosts:
-            h["cluster"] = cluster
+        if cluster:
+            for h in hosts:
+                h["cluster"] = cluster
         return hosts
 
     # ---------- VLAN mapping helpers ----------

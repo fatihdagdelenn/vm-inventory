@@ -310,13 +310,27 @@ def sync_platform(platform_id: int):
             collector.disconnect()
 
         # ---------- Host upsert ----------
+        # Visual category per host field (mirrors the VM-side _FIELD_CATEGORY).
+        _HOST_FIELD_CATEGORY = {"mgmt_ip": "network", "cpu_cores": "hardware",
+                                "ram_total_mb": "hardware", "cluster": "other",
+                                "status": "power", "name": "other"}
         existing_hosts = {h.external_id: h for h in
                           db.query(Host).filter_by(platform_id=platform.id)}
         seen_hosts = set()
         host_by_name = {}
         for hd in hosts_data:
+            # mgmt_ip candidate list (not a model column - pop before upsert).
+            # While the STORED IP is still present on the host, a different
+            # deterministic pick (bond failover, vmk order) is NOT a change:
+            # keep the stored value. Only a real re-IP (old address gone from
+            # the host) is recorded - once.
+            mgmt_cands = hd.pop("mgmt_ip_candidates", None)
             seen_hosts.add(hd["external_id"])
             host = existing_hosts.get(hd["external_id"])
+            if host is not None and mgmt_cands and hd.get("mgmt_ip") \
+                    and host.mgmt_ip and hd["mgmt_ip"] != host.mgmt_ip \
+                    and host.mgmt_ip in mgmt_cands:
+                hd["mgmt_ip"] = host.mgmt_ip
             if host is None:
                 host = Host(platform_id=platform.id, **hd)
                 db.add(host)
@@ -326,8 +340,12 @@ def sync_platform(platform_id: int):
             else:
                 for f in TRACKED_HOST_FIELDS:  # write changes into the history
                     if getattr(host, f) != hd.get(f) and hd.get(f) is not None:
+                        ea = _ent_actor("host", host.name)
                         _record_change(db, "host", host.name, platform.id,
-                                       "updated", f, getattr(host, f), hd[f])
+                                       "updated", f, getattr(host, f), hd[f],
+                                       category=_HOST_FIELD_CATEGORY.get(f, "other"),
+                                       cluster=hd.get("cluster") or host.cluster,
+                                       host=host.name, **ea)
                 for k, v in hd.items():
                     setattr(host, k, v)
             host_by_name[hd["name"]] = host

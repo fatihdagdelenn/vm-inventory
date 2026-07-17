@@ -247,12 +247,25 @@ class VMwareCollector:
             try:
                 summary = h.summary
                 hw = summary.hardware
-                # Management IP: first of the vmk interfaces
-                # (config can be None on disconnected hosts)
+                # Management IP: vmk interfaces sorted by device name (vmk0
+                # first) for a DETERMINISTIC pick; the full candidate list lets
+                # sync_service keep the stored IP while it still exists on the
+                # host (no flip records from ordering changes). On fetch
+                # failure the keys are omitted so stored values are preserved.
                 mgmt_ip = ""
+                mgmt_cands = []
                 try:
                     if h.config and h.config.network and h.config.network.vnic:
-                        mgmt_ip = h.config.network.vnic[0].spec.ip.ipAddress or ""
+                        vnics = sorted(h.config.network.vnic,
+                                       key=lambda v: str(getattr(v, "device", "")))
+                        for v in vnics:
+                            try:
+                                ip = v.spec.ip.ipAddress or ""
+                            except Exception:
+                                ip = ""
+                            if ip:
+                                mgmt_cands.append(ip)
+                        mgmt_ip = mgmt_cands[0] if mgmt_cands else ""
                 except Exception:
                     pass
                 cluster = cluster_map.get(h._moId, "")
@@ -266,10 +279,9 @@ class VMwareCollector:
                                     for ds in h.datastore) / 1024**3
                 except Exception:
                     pass
-                hosts.append({
+                entry = {
                     "external_id": h._moId,
                     "name": h.name,
-                    "mgmt_ip": mgmt_ip,
                     "os_version": summary.config.product.fullName if summary.config.product else "",
                     "cpu_model": hw.cpuModel or "",
                     "hw_model": " ".join(x for x in (hw.vendor, hw.model) if x),
@@ -284,7 +296,13 @@ class VMwareCollector:
                     "cluster": cluster,
                     "status": "online" if summary.runtime.connectionState == "connected" else "offline",
                     "last_boot": getattr(summary.runtime, "bootTime", None),
-                })
+                }
+                # Only include mgmt_ip when actually read (disconnected hosts /
+                # None config): an omitted key preserves the stored value.
+                if mgmt_ip:
+                    entry["mgmt_ip"] = mgmt_ip
+                    entry["mgmt_ip_candidates"] = mgmt_cands
+                hosts.append(entry)
             except Exception as exc:
                 logger.warning("Could not read host %s: %s", getattr(h, "name", "?"), exc)
         return hosts
@@ -565,7 +583,31 @@ class VMwareCollector:
             spec.time = vim.event.EventFilterSpec.ByTime()
             spec.time.beginTime = datetime.now(timezone.utc) - timedelta(days=3)
             spec.eventTypeId = wanted
-            events = em.QueryEvents(spec) or []
+            # QueryEvents returns a SINGLE page (~1000 events): on a busy
+            # vCenter the 3-day window easily exceeds that and reconfigure
+            # events silently fall outside the page -> the change loses its
+            # user. An EventHistoryCollector pages through the full window
+            # (newest first, capped at 8000 events as a safety valve).
+            events = []
+            try:
+                coll = em.CreateCollectorForEvents(spec)
+                try:
+                    coll.SetCollectorPageSize(1000)
+                    events = list(coll.latestPage or [])
+                    while len(events) < 8000:
+                        batch = coll.ReadPreviousEvents(1000)
+                        if not batch:
+                            break
+                        events.extend(batch)
+                finally:
+                    try:
+                        coll.DestroyCollector()
+                    except Exception:
+                        pass
+            except Exception as exc:
+                logger.warning("Event collector paging failed (%s); falling "
+                               "back to single-page QueryEvents", exc)
+                events = em.QueryEvents(spec) or []
         except Exception as exc:
             logger.warning("Could not fetch vCenter events: %s", exc)
             return ops

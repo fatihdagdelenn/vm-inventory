@@ -109,7 +109,7 @@ const History = {
     // task types. Shown as a gear badge; the real account stays in the tooltip.
     const sysActor = /^(vpxd|com\.vmware|vcls|vpxuser|dcui|nobody)|vpxd-extension/i.test(r.actor);
     const sysOp = /^(ha[a-z]*|pvesr|replication|aptupdate)$/i.test(r.op_type || '');
-    if (sysActor || sysOp) {
+    if (r.actor_system === true || (r.actor_system === undefined && (sysActor || sysOp))) {
       return '<span class="badge text-bg-secondary" title="' + App.esc(r.actor) +
              (r.op_type ? ' · ' + App.esc(r.op_type) : '') + '">' +
              '<i class="bi bi-gear"></i> ' + t('hi.system', 'sistem') + '</span>';
@@ -126,7 +126,7 @@ const History = {
   },
 
   /** Aktif filtre kutusu: arama terimleri (dahil/dışla) + varlık + kategori. */
-  renderFilters(q, entity, category) {
+  renderFilters(q, entity, category, actorKind) {
     const wrap = document.getElementById('histFilters');
     const chips = [];
     const terms = q.match(/[-!]?"[^"]*"|[-!]?\S+/g) || [];
@@ -143,6 +143,13 @@ const History = {
       const lbl = (History.CATS[category] || {}).l || category;
       chips.push('<span class="filter-badge">' + t('hi.category','Kategori') + ': ' + App.esc(lbl) +
         '<button title="' + t('vm.remove','Kaldır') + '" onclick="History.clearSel(\'histCategory\')"><i class="bi bi-x"></i></button></span>');
+    }
+    if (actorKind) {
+      const al = { user: t('hi.actorUser','Yaln\u0131z Kullan\u0131c\u0131'),
+                   system: t('hi.actorSystem','Yaln\u0131z Sistem (otomatik)'),
+                   none: t('hi.actorNone','Kullan\u0131c\u0131s\u0131z (\u2014)') }[actorKind] || actorKind;
+      chips.push('<span class="filter-badge">' + t('hi.user','Kullan\u0131c\u0131') + ': ' + App.esc(al) +
+        '<button title="' + t('vm.remove','Kald\u0131r') + '" onclick="History.clearSel(\'histActor\')"><i class="bi bi-x"></i></button></span>');
     }
     if (!chips.length) { wrap.classList.add('d-none'); wrap.innerHTML = ''; return; }
     wrap.classList.remove('d-none');
@@ -162,6 +169,7 @@ const History = {
     document.getElementById('histSearch').value = '';
     document.getElementById('histEntity').value = '';
     document.getElementById('histCategory').value = '';
+    document.getElementById('histActor').value = '';
     History.load();
   },
 
@@ -169,12 +177,14 @@ const History = {
     const q = document.getElementById('histSearch').value.trim();
     const entity = document.getElementById('histEntity').value;
     const category = document.getElementById('histCategory').value;
-    History.renderFilters(q, entity, category);
+    const actorKind = document.getElementById('histActor').value;
+    History.renderFilters(q, entity, category, actorKind);
     const body = document.getElementById('histBody');
     let data;
     try {
       data = await App.api('/api/admin/changes?entity=' + encodeURIComponent(entity) +
                            '&category=' + encodeURIComponent(category) +
+                           '&actor_kind=' + encodeURIComponent(actorKind) +
                            '&q=' + encodeURIComponent(q));
     } catch (e) { return; }
     document.getElementById('histCount').textContent =
@@ -201,5 +211,6 @@ const History = {
     .addEventListener('input', App.debounce(History.load, 300));
   document.getElementById('histEntity').addEventListener('change', History.load);
   document.getElementById('histCategory').addEventListener('change', History.load);
+  document.getElementById('histActor').addEventListener('change', History.load);
   History.load();
 })();

@@ -99,14 +99,33 @@ def audit_logs(limit: int = 200, q: str = "", action: str = "",
             "actions": sorted(actions)}
 
 
+# ---- System (platform-initiated) actor classification ----
+# Machine accounts and automation task types on both platforms. Mirrors the
+# gear badge on the history page; kept in the backend so it can also FILTER.
+_SYS_ACTOR_RE = re.compile(
+    r"^(vpxd|com\.vmware|vcls|vpxuser|dcui|nobody|system$)|vpxd-extension", re.I)
+_SYS_OP_RE = re.compile(
+    r"^(ha[a-z]*$|pvesr|replication|aptupdate|pvescheduler|drs)", re.I)
+
+
+def _is_system_actor(actor: str, op_type: str) -> bool:
+    """True when the change was made by the platform itself, not a person."""
+    return bool(_SYS_ACTOR_RE.search(actor or "")) or \
+        bool(_SYS_OP_RE.search(op_type or ""))
+
+
 @router.get("/changes")
 def change_history(entity: str = "", q: str = "", category: str = "",
+                   actor_kind: str = "",
                    limit: int = 200,
                    db: Session = Depends(get_db),
                    user: User = Depends(get_current_user)):
-    """Inventory change history (visible to all roles)."""
+    """Inventory change history (visible to all roles).
+
+    actor_kind: '' all | 'user' human accounts | 'system' machine accounts /
+    automation (vpxd, vCLS, DRS, HA, replication...) | 'none' no actor."""
     query = db.query(ChangeHistory)
-    if entity in ("vm", "host"):
+    if entity in ("vm", "host", "datastore", "network"):
         query = query.filter_by(entity_type=entity)
     if category:
         query = query.filter(ChangeHistory.category == category)
@@ -123,12 +142,21 @@ def change_history(entity: str = "", q: str = "", category: str = "",
                 continue
             any_match = or_(*[func.coalesce(c, "").ilike(f"%{term}%") for c in cols])
             query = query.filter(not_(any_match) if neg else any_match)
-    rows = query.order_by(ChangeHistory.changed_at.desc()).limit(min(limit, 1000)).all()
+    rows = query.order_by(ChangeHistory.changed_at.desc()).limit(1000).all()
+    if actor_kind in ("user", "system", "none"):
+        def _keep(r):
+            if actor_kind == "none":
+                return not r.actor
+            sysrec = bool(r.actor) and _is_system_actor(r.actor, r.op_type)
+            return sysrec if actor_kind == "system" else bool(r.actor) and not sysrec
+        rows = [r for r in rows if _keep(r)]
+    rows = rows[:min(limit, 1000)]
     return {"items": [{"changed_at": to_iso(r.changed_at),
                        "entity_type": r.entity_type, "entity_name": r.entity_name,
                        "change_type": r.change_type, "field": r.field,
                        "old_value": r.old_value, "new_value": r.new_value,
                        "actor": r.actor or "", "category": r.category or "",
+                       "actor_system": bool(r.actor) and _is_system_actor(r.actor, r.op_type),
                        "op_type": r.op_type or "", "platform_type": r.platform_type or "",
                        "cluster": r.cluster or "", "host": r.host or "",
                        "vm_external_id": r.vm_external_id or "",

@@ -23,6 +23,12 @@
       <option value="os" data-i18n="vm.os">İşletim Sistemi</option>
       <option value="console" data-i18n="hi.cat.console">Konsol Erişimi</option>
     </select>
+    <select id="histActor" class="form-select form-select-sm w-auto">
+      <option value="" data-i18n="hi.actorAll">Kullanıcı + Sistem</option>
+      <option value="user" data-i18n="hi.actorUser">Yalnız Kullanıcı</option>
+      <option value="system" data-i18n="hi.actorSystem">Yalnız Sistem (otomatik)</option>
+      <option value="none" data-i18n="hi.actorNone">Kullanıcısız (—)</option>
+    </select>
     <span id="histCount" class="text-muted small ms-auto"></span>
   </div>
   <div id="histFilters" class="active-filters mb-3 d-none"></div>

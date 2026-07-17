@@ -150,6 +150,8 @@ const I18N = {
     'hi.consoleAccess': 'Console access', 'hi.window30': '30 min window',
     'hi.records': 'records', 'hi.noRecords': 'No records found.',
     'hi.system': 'system',
+    'hi.actorAll': 'User + System', 'hi.actorUser': 'Users only',
+    'hi.actorSystem': 'System only (automatic)', 'hi.actorNone': 'No user (\u2014)',
     'fc.cpuTitle': 'CPU (Cores)', 'unit.core': 'cores',
     'dash.oldSnaps': 'Long-Lived Snapshots', 'dash.snapName': 'Snapshot',
     'dash.noOldSnaps': 'No snapshots older than 30 days \ud83c\udf89',
