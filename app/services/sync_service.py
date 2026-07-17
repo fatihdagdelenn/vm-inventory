@@ -564,6 +564,14 @@ def sync_platform(platform_id: int):
                                vm_external_id=ext_id, **_meta(op))
                 _purge_vm_children(db, vm)
                 db.delete(vm)
+        # CRITICAL (autoflush=False): execute the pending VM deletes NOW.
+        # Backup/snapshot archives SURVIVE VM deletion on the storage, so the
+        # rewrite below re-inserts rows for them; without this flush the
+        # vm_id/vmid maps still contain the pending-deleted VM and the fresh
+        # rows reference it -> at commit INSERTs run before the DELETE and
+        # PostgreSQL raises backups_vm_id_fkey. After the flush the maps
+        # reflect reality and orphaned archives are stored with vm_id=NULL.
+        db.flush()
 
         # ---------- Networks and datastores: simple refresh (delete-write) ----------
         # Before rewriting, diff the old rows against the new data and record
