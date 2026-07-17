@@ -132,6 +132,19 @@ def _match_op(ops, categories, direction=None, min_ts=0):
     return None
 
 
+def _purge_vm_children(db, vm):
+    """Delete rows that reference the VM before deleting the VM itself.
+
+    Backup.vm_id and Snapshot.vm_id have NO ON DELETE CASCADE, so deleting a
+    VM that still has backup/snapshot rows raises a ForeignKeyViolation on
+    PostgreSQL (seen in test env; prod had simply never deleted a VM with
+    backups). VmUsageDaily is cascaded at DB level on fresh schemas but is
+    purged explicitly too, to cover databases created before the cascade."""
+    db.query(Backup).filter_by(vm_id=vm.id).delete(synchronize_session=False)
+    db.query(Snapshot).filter_by(vm_id=vm.id).delete(synchronize_session=False)
+    db.query(VmUsageDaily).filter_by(vm_id=vm.id).delete(synchronize_session=False)
+
+
 def _epoch(dt):
     """Naive-UTC datetime (collectors produce via utcfromtimestamp) -> epoch seconds."""
     if not dt:
@@ -537,6 +550,7 @@ def sync_platform(platform_id: int):
         for ext_id, vm in existing_vms.items():
             if ext_id not in seen_vms:
                 if ext_id in migrated_old_exts:
+                    _purge_vm_children(db, vm)
                     db.delete(vm)   # source side of a migration; the 'Migration' row was already written
                     continue
                 vid = ext_id.split("/", 1)[1] if "/" in ext_id else ext_id
@@ -548,6 +562,7 @@ def sync_platform(platform_id: int):
                                cluster=vm.cluster,
                                host=host_name_by_id.get(vm.host_id),
                                vm_external_id=ext_id, **_meta(op))
+                _purge_vm_children(db, vm)
                 db.delete(vm)
 
         # ---------- Networks and datastores: simple refresh (delete-write) ----------
