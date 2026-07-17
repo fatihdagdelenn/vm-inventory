@@ -332,8 +332,10 @@ const App = {
       body.innerHTML = '<div class="text-muted small p-2">Host bulunamadı.</div>';
       return;
     }
-    body.innerHTML = hosts.map(h =>
-      '<button type="button" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" ' +
+    body.innerHTML = hosts.map(h => h.id == null
+      ? '<div class="list-group-item d-flex justify-content-between align-items-center text-muted">' +
+        '<span><i class="bi bi-server"></i> ' + App.esc(h.name) + '</span></div>'
+      : '<button type="button" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" ' +
       'onclick="App.openHostFromList(' + h.id + ')">' +
       '<span><i class="bi bi-server"></i> ' + App.esc(h.name) + '</span>' +
       '<i class="bi bi-chevron-right text-muted"></i></button>').join('');

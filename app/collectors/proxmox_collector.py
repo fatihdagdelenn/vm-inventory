@@ -905,13 +905,19 @@ class ProxmoxCollector:
             key = name if shared else f"{name}@{node}"
             if key in rows:
                 rows[key]["host_count"] += 1
+                if node:
+                    rows[key]["_hn"].append(node)
                 continue
             rows[key] = {"name": name, "type": s.get("plugintype", ""),
                          "node": (cluster if shared else node), "shared": shared,
                          "capacity_gb": round(cap, 1), "used_gb": round(used, 1),
                          "free_gb": round(cap - used, 1), "host_count": 1,
+                         "_hn": [node] if node else [],
                          "status": "active" if active else "inactive"}
-        return list(rows.values())
+        out = list(rows.values())
+        for r in out:
+            r["host_names"] = ",".join(sorted(set(r.pop("_hn", []))))
+        return out
 
     def collect_snapshots(self) -> list[dict]:
         """Snapshot list per qemu/lxc guest, excluding 'current' (the live state)."""

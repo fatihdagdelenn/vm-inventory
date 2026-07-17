@@ -474,6 +474,10 @@ html.theme-dark .net-card-name { color: var(--text); }
 .ds-card .net-card-foot { padding-top: .5rem; }
 .net-stat-sub { font-size: .72rem; font-weight: 700; color: var(--text-muted); }
 
+.host-card .res-cell { width: 100%; }
+.host-card .usage-mini { width: 100%; }
+.host-cards { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+
 .net-empty {
   text-align: center; color: var(--text-muted); padding: 2.5rem 1rem;
 }

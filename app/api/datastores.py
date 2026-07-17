@@ -69,7 +69,7 @@ def datastore_detail(ds_id: int, db: Session = Depends(get_db),
               .filter(VirtualMachine.platform_id == d.platform_id,
                       VirtualMachine.is_template == False,            # noqa: E712
                       VirtualMachine.datastore.ilike(f"%{d.name}%")).all())
-    vms, host_names = [], set()
+    vms, vm_host_names = [], set()
     for vm, hname in rows:
         tokens = [t.strip() for t in (vm.datastore or "").split(",") if t.strip()]
         if d.name not in tokens:
@@ -87,10 +87,20 @@ def datastore_detail(ds_id: int, db: Session = Depends(get_db),
             "host": hname or "",
         })
         if hname:
-            host_names.add(hname)
+            vm_host_names.add(hname)
+    # The host list = hosts the store is MOUNTED on (collected during sync) -
+    # the same population host_count refers to. VM-derived hosts alone
+    # under-reported ("card says 10, modal shows 2"): a store can be mounted
+    # on many hosts while its VMs run on a few. VM-hosts are unioned in as a
+    # safety net and as the only source for rows synced before this fix.
+    mounted = {t.strip() for t in (d.host_names or "").split(",") if t.strip()}
+    names = (mounted | vm_host_names) if mounted else vm_host_names
     hosts = [{"id": h.id, "name": h.name}
              for h in db.query(Host).filter(
                  Host.platform_id == d.platform_id,
-                 Host.name.in_(host_names)).all()] if host_names else []
+                 Host.name.in_(names)).order_by(Host.name).all()] if names else []
+    known = {h["name"] for h in hosts}
+    for n in sorted(names - known):        # mounted but not in inventory (edge)
+        hosts.append({"id": None, "name": n})
     vms.sort(key=lambda v: (v["name"] or "").lower())
     return {"id": d.id, "name": d.name, "vms": vms, "hosts": hosts}

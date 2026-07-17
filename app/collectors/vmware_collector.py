@@ -467,6 +467,14 @@ class VMwareCollector:
                 status = ("maintenance" if maint != "normal"
                           else "active" if getattr(s, "accessible", True) else "inactive")
                 hosts = getattr(ds, "host", []) or []
+                mount_names = []
+                for hm in hosts:
+                    try:
+                        hn = hm.key.name or ""
+                        if hn:
+                            mount_names.append(hn)
+                    except Exception:
+                        pass
                 # Local datastore (single host) -> host name. Shared (multi-host) ->
                 # cluster name if attached hosts share one cluster (blank if several).
                 node = ""
@@ -492,6 +500,7 @@ class VMwareCollector:
                                "used_gb": round(cap - free, 1),
                                "free_gb": round(free, 1),
                                "host_count": len(hosts),
+                               "host_names": ",".join(sorted(set(mount_names))),
                                "status": status})
             except Exception as exc:
                 logger.warning("Could not read datastores: %s", exc)

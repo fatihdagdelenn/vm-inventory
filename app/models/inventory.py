@@ -136,6 +136,7 @@ class Datastore(Base):
     used_gb = Column(Float)
     free_gb = Column(Float)
     host_count = Column(Integer, default=0)         # attached host/node count
+    host_names = Column(Text)                       # attached host/node names (comma-separated)
     vm_count = Column(Integer, default=0)           # VM count using this store
     status = Column(String(32))                     # active | inactive | maintenance
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
