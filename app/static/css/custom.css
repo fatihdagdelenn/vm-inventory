@@ -782,6 +782,15 @@ html.theme-light .dash-premium .mini-stat {
 html.theme-light .dash-premium .mini-stat span { color: var(--ink); }
 html.theme-light .dash-premium .mini-stat small { color: #64748b; }
 html.theme-light .dash-premium .mini-stat i { color: var(--accent); }
+/* faz87 ms-* classes: light-theme counterparts (the .dash-premium defaults
+   paint them white, which is invisible on the light cards). */
+html.theme-light .dash-premium .mini-stat .ms-val,
+html.theme-light .dash-premium .mini-stat .ms-tot b { color: var(--ink); }
+html.theme-light .dash-premium .mini-stat .ms-lbl,
+html.theme-light .dash-premium .mini-stat .ms-tot small { color: #64748b; }
+html.theme-light .dash-premium .mini-stat .ms-tot {
+  background: var(--accent-soft); border-color: #e4e9f0;
+}
 html.theme-light .dash-premium .zombie-savings { background: rgba(232,161,60,.12); border-color: rgba(232,161,60,.3); color: #8a5a12; }
 html.theme-light .dash-premium .zombie-savings i { color: #e8a13c; }
 html.theme-light .dash-premium .forecast-row { border-bottom-color: #eef1f6; }
