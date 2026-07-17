@@ -261,16 +261,10 @@ const Hosts = {
   const input = document.getElementById('hostSearch');
   input.addEventListener('input', App.debounce(() => Hosts.load(input.value.trim()), 300));
 
-  // Sıralanabilir başlıklar — yüklenen kümede istemci taraflı sıralama
-  document.querySelectorAll('#hostGroups th.sortable').forEach(th => {
-    th.style.cursor = 'pointer';
-    th.addEventListener('click', () => {
-      const col = th.dataset.sort;
-      if (Hosts.sort === col) Hosts.order = Hosts.order === 'asc' ? 'desc' : 'asc';
-      else { Hosts.sort = col; Hosts.order = 'asc'; }
-      Hosts.render();
-    });
-  });
+  // Görünüm modu düğmeleri (Kartlar / Cluster'a göre / Tablo). Tablo
+  // başlıklarının sıralama dinleyicileri renderTable içinde bağlanır.
+  document.querySelectorAll('.net-modes button').forEach(b =>
+    b.addEventListener('click', () => Hosts.setMode(b.dataset.mode)));
 
   Hosts.load();
 })();

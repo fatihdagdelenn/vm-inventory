@@ -458,6 +458,18 @@ class VMwareCollector:
     def collect_datastores(self) -> list[dict]:
         result = []
         cluster_map = self._cluster_map()   # host MoRef -> cluster name
+        # One-pass host MoId -> name map: resolving each mount via hm.key.name
+        # does a lazy property fetch PER MOUNT and can silently fail/slow down;
+        # the map is a single traversal and far more reliable.
+        host_name_map = {}
+        try:
+            for hh in self._get_objects([vim.HostSystem]):
+                try:
+                    host_name_map[hh._moId] = hh.name or ""
+                except Exception:
+                    pass
+        except Exception:
+            pass
         for ds in self._get_objects([vim.Datastore]):
             try:
                 s = ds.summary
@@ -470,11 +482,14 @@ class VMwareCollector:
                 mount_names = []
                 for hm in hosts:
                     try:
-                        hn = hm.key.name or ""
+                        hn = host_name_map.get(hm.key._moId) or hm.key.name or ""
                         if hn:
                             mount_names.append(hn)
                     except Exception:
                         pass
+                if hosts and not mount_names:
+                    logger.info("Datastore %s: could not resolve mount host "
+                                "names (%d mounts)", s.name, len(hosts))
                 # Local datastore (single host) -> host name. Shared (multi-host) ->
                 # cluster name if attached hosts share one cluster (blank if several).
                 node = ""
