@@ -155,29 +155,27 @@ html.theme-light .app-version { color: rgba(226,232,240,.5); }
 .stat-label { font-size: .8rem; color: var(--text-muted); font-weight: 500; }
 
 /* Mini istatistik şeridi (vCPU, RAM, disk) */
-/* Compact enough to FIT the fixed-height grid cell: the total pill + ratio
-   bar used to overflow and get clipped at the card top in dark theme. */
 .mini-stat {
-  display: flex; align-items: center; gap: .6rem;
+  display: flex; align-items: center; gap: .8rem;
   background: var(--panel); border: 1px solid var(--border);
-  border-radius: 12px; padding: .5rem .85rem; box-shadow: var(--shadow-sm);
+  border-radius: 12px; padding: .65rem 1rem; box-shadow: var(--shadow-sm);
   min-height: 0; overflow: hidden;
 }
-.mini-stat i { font-size: 1.05rem; color: var(--accent); flex-shrink: 0; }
+.mini-stat i { font-size: 1.15rem; color: var(--accent); flex-shrink: 0; }
 .mini-stat .ms-body { min-width: 0; }
-.mini-stat .ms-val { font-weight: 700; font-size: 1rem; color: var(--ink); display: block; line-height: 1.12; }
-.mini-stat .ms-lbl { color: var(--text-muted); font-size: .7rem; display: block; white-space: nowrap;
+.mini-stat .ms-val { font-weight: 700; font-size: 1.06rem; color: var(--ink); display: block; line-height: 1.15; }
+.mini-stat .ms-lbl { color: var(--text-muted); font-size: .72rem; display: block; white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis; }
 .mini-stat .ms-tot {
-  margin-left: auto; text-align: right; padding: .2rem .5rem; min-width: 72px;
+  margin-left: auto; text-align: right; padding: .3rem .6rem; min-width: 86px;
   max-width: 46%; flex-shrink: 0;
-  background: var(--accent-soft); border: 1px solid var(--border); border-radius: 9px;
+  background: var(--accent-soft); border: 1px solid var(--border); border-radius: 10px;
 }
-.mini-stat .ms-tot small { display: block; font-size: .56rem; letter-spacing: .04em;
-  text-transform: uppercase; color: var(--text-muted); line-height: 1.25; }
-.mini-stat .ms-tot b { font-size: .78rem; font-weight: 700; color: var(--ink); line-height: 1.15;
+.mini-stat .ms-tot small { display: block; font-size: .62rem; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--text-muted); }
+.mini-stat .ms-tot b { font-size: .84rem; font-weight: 700; color: var(--ink); line-height: 1.2;
   display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mini-stat .ms-ratio { height: 3px; border-radius: 2px; margin-top: 3px;
+.mini-stat .ms-ratio { height: 4px; border-radius: 2px; margin-top: 4px;
   background: color-mix(in srgb, var(--text-muted) 22%, transparent); overflow: hidden; }
 .mini-stat .ms-ratio i { display: block; height: 100%; border-radius: 2px;
   background: linear-gradient(90deg, var(--accent), #4a93f8); transition: width .5s; }
@@ -185,7 +183,7 @@ html.theme-light .app-version { color: rgba(226,232,240,.5); }
 .snap-table { table-layout: fixed; }
 .snap-table td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .snap-age-chips .btn { --bs-btn-padding-y: 0; --bs-btn-padding-x: .45rem; font-size: .68rem; }
-.mini-stat span { font-weight: 700; font-size: .95rem; color: var(--ink); display: block; line-height: 1.2; }
+.mini-stat span { font-weight: 700; font-size: 1.02rem; color: var(--ink); display: block; line-height: 1.2; }
 .mini-stat small { color: var(--text-muted); font-size: .76rem; }
 
 /* Dikkat listesi */
@@ -642,6 +640,18 @@ tr.row-focus > td { animation: rowFocusPulse 2.6s ease-out; }
 .dash-premium .mini-stat span { color: #fff; }
 .dash-premium .mini-stat small { color: #8aa0bd; }
 .dash-premium .mini-stat i { color: #6db1ff; }
+/* faz87 mini-card classes use var(--ink) (dark navy) - INVISIBLE on the dark
+   premium cards. Explicit light colors for every text piece in the card. */
+.dash-premium .mini-stat .ms-val,
+.dash-premium .mini-stat .ms-tot b,
+html.theme-dark .mini-stat .ms-val,
+html.theme-dark .mini-stat .ms-tot b { color: #fff; }
+.dash-premium .mini-stat .ms-lbl,
+.dash-premium .mini-stat .ms-tot small,
+html.theme-dark .mini-stat .ms-lbl,
+html.theme-dark .mini-stat .ms-tot small { color: #8aa0bd; }
+html.theme-dark .mini-stat span { color: #eaf1fb; }
+html.theme-dark .mini-stat .ms-tot { background: rgba(59,155,255,.12); border-color: rgba(148,163,184,.2); }
 
 /* Sparkline arka planı (Toplam VM kartı) */
 .stat-card-spark { isolation: isolate; }
