@@ -50,6 +50,13 @@ const Networks = {
     return [n.platform, n.name, n.vlan || '', n.vswitch || '', n.kind].join('|');
   },
 
+  /** Deep-link to the VM list using the FIELD syntax the VM search actually
+   *  supports: network:"<name>" (quoted - portgroup names may contain spaces).
+   *  Plain q=<name> only scans name/ip/os columns, not the networks column. */
+  _vmsUrl(name) {
+    return '/vms?q=' + encodeURIComponent('network:"' + String(name || '').replace(/"/g, '') + '"');
+  },
+
   /** Grouping (key fn, empty label, pnic rows?) for the accordion modes. */
   _grouping() {
     switch (Networks.mode) {
@@ -132,7 +139,7 @@ const Networks = {
         (more > 0 ? '<span class="net-chip net-chip-more" title="' +
           App.esc(hosts.slice(3).join(', ')) + '">+' + more + '</span>' : '');
       const vmLink = c.vm_count
-        ? '<a class="net-vms" href="/vms?q=' + encodeURIComponent(c.name) + '" title="' +
+        ? '<a class="net-vms" href="' + Networks._vmsUrl(c.name) + '" title="' +
             t('nt.showVms', 'VM listesinde göster') + '">' +
             '<i class="bi bi-display"></i> ' + c.vm_count + ' VM</a>'
         : '<span class="net-vms muted"><i class="bi bi-display"></i> 0 VM</span>';
@@ -192,7 +199,7 @@ const Networks = {
       '<td>' + App.esc(n.vswitch || '—') + '</td>' +
       '<td class="mono small">' + App.esc(n.subnet || '—') + '</td>' +
       '<td>' + (n.vm_count
-          ? '<a class="net-vms" href="/vms?q=' + encodeURIComponent(n.name) + '">' + n.vm_count + '</a>'
+          ? '<a class="net-vms" href="' + Networks._vmsUrl(n.name) + '">' + n.vm_count + '</a>'
           : '<span class="text-muted">0</span>') + '</td>' +
       (showHost ? '<td class="small">' + App.esc(n.host_name || '—') + '</td>' : '') +
       '<td class="small text-muted">' + App.esc(n.platform || '—') + '</td></tr>').join('');

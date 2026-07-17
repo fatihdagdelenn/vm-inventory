@@ -231,6 +231,8 @@ def apply_vm_search(query: Query, q: str) -> Query:
             _like(VirtualMachine.pool, like),
             _like(VirtualMachine.folder, like),
             _like(VirtualMachine.owner, like),
+            _like(VirtualMachine.networks, like),
+            _like(VirtualMachine.vlans, like),
         )
         query = query.filter(not_(cond) if negative else cond)
     return query
