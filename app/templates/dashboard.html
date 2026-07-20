@@ -192,7 +192,8 @@
     <!-- ===== Datastore ===== -->
     <div class="dash-widget" data-widget="chartDatastore" data-w="12" data-title="Datastore Doluluk">
       <div class="card panel h-100"><div class="card-header d-flex align-items-center"><i class="bi bi-hdd-stack"></i> <span data-i18n="dash.datastoreUsage">Datastore Doluluk (%)</span>
-          <a href="/datastores" class="ms-auto small"><span data-i18n="common.all">Tümü</span> <i class="bi bi-arrow-right"></i></a></div>
+          <button type="button" class="ds-local-eye ms-auto" id="dsLocalEye" title="Yerel diskleri gizle"><i class="bi bi-eye"></i></button>
+          <a href="/datastores" class="ms-2 small"><span data-i18n="common.all">Tümü</span> <i class="bi bi-arrow-right"></i></a></div>
         <div class="card-body chart-box"><canvas id="chartDatastore"></canvas></div></div>
     </div>
 

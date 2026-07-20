@@ -223,6 +223,21 @@ function barGrad(chart, base, horizontal) {
        return `${c.vcpu} vCPU · ${c.ram_gb} GB RAM · ${c.vms} VM`; }}},
      onClick: clickHandler(l => l === '—' ? 'cluster:yok' : (/\s/.test(l) ? 'cluster:"'+l+'"' : 'cluster:'+l))});
 
+  // 'Yerel diskleri gizle' gözü — cluster gizlemedeki göz deseniyle aynı yer:
+  // widget başlığında. Filtre TÜM disk göstergelerini (mini kart tavanı,
+  // depolama donut'ı, bu liste, öngörünün disk satırı) birlikte etkiler.
+  const eye = document.getElementById('dsLocalEye');
+  if (eye) {
+    const on = localStorage.getItem('vmi-dash-nolocal') === '1';
+    eye.classList.toggle('active', on);
+    eye.querySelector('i').className = on ? 'bi bi-eye-slash' : 'bi bi-eye';
+    eye.title = on ? t('dash.noLocalOn','Yerel diskler gizli — göstermek için tıkla')
+                   : t('dash.noLocalHint','Yerel diskleri (local/local-lvm) tüm disk göstergelerinden gizle');
+    eye.addEventListener('click', () => {
+      localStorage.setItem('vmi-dash-nolocal', on ? '0' : '1');
+      location.reload();
+    });
+  }
   const dsf = d.datastore_fill || [];
   bar('chartDatastore', dsf.map(s => s.name), dsf.map(s => s.usage_pct),
     {base: BLUE, thick: 22, colorFn: i => critColor(dsf[i].usage_pct),
@@ -612,12 +627,6 @@ const DashGrid = {
     }).join('');
     if (DashGrid.editing)
       html += `<button class="dash-tab dash-tab-add" id="dashAddPage" title="${t('dash.addPageT','Sayfa ekle')}"><i class="bi bi-plus-lg"></i> ${t('dash.pageWord','Sayfa')}</button>`;
-    if (!DashGrid.editing) {
-      const nl = localStorage.getItem('vmi-dash-nolocal') === '1';
-      html += `<button class="dash-tab dash-nolocal${nl ? ' active' : ''}" id="dashNoLocal" ` +
-        `title="${t('dash.noLocalHint','Disk göstergelerinde node-yerel diskleri (local/local-lvm) hariç tut — gerçek paylaşımlı kapasite')}">` +
-        `<i class="bi bi-hdd"></i> ${t('dash.noLocal','Yerel diskler hariç')}</button>`;
-    }
     // Cycle (monitoring/kiosk) control: only meaningful with multiple pages
     // and while not editing the layout.
     if (!DashGrid.editing && st.pages.length > 1) {
@@ -822,12 +831,6 @@ const DashGrid = {
     bar.addEventListener('click', e => {
       if (e.target.closest('#dashAddPage')) { DashGrid.addPage(); return; }
       if (e.target.closest('#dashCycle')) { Kiosk.toggle(); return; }
-      if (e.target.closest('#dashNoLocal')) {
-        const on = localStorage.getItem('vmi-dash-nolocal') === '1';
-        localStorage.setItem('vmi-dash-nolocal', on ? '0' : '1');
-        location.reload();   // tüm disk göstergeleri (mini kart, donut, forecast) tek seferde tazelensin
-        return;
-      }
       const ren = e.target.closest('[data-ren]'); if (ren) { e.stopPropagation(); DashGrid.renamePage(ren.dataset.ren); return; }
       const del = e.target.closest('[data-del]'); if (del) { e.stopPropagation(); DashGrid.deletePage(del.dataset.del); return; }
       const tab = e.target.closest('.dash-tab[data-page]');
