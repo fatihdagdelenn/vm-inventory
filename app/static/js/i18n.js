@@ -133,6 +133,7 @@ const I18N = {
     'ds.cards': 'Cards', 'ds.byType': 'By type', 'ds.byNode': 'By node', 'ds.table': 'Table',
     'ds.stat.total': 'Total Capacity', 'ds.stat.used': 'Used', 'ds.stat.crit': 'Critical (\u2265 90%)',
     'ds.noType': '(no type)', 'ds.sharedGroup': 'Shared / central',
+    'ds.hideLocal': 'Hide local disks', 'ds.local': 'local',
     'ds.capacity': 'Capacity', 'ds.usage': 'Usage',
     'ds.shared': 'shared', 'ds.sharedHint': 'Shared by multiple hosts/nodes',
     'ds.viewDetails': 'View details',

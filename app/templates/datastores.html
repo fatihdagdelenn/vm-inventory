@@ -9,10 +9,13 @@
   </div>
   <div class="btn-group net-modes" role="group" aria-label="Görünüm">
     <button class="btn btn-sm active" data-mode="cards" data-i18n="ds.cards">Kartlar</button>
+    <button class="btn btn-sm" data-mode="cluster" data-i18n="vm.byCluster">Cluster'a göre</button>
     <button class="btn btn-sm" data-mode="type" data-i18n="ds.byType">Tür'e göre</button>
     <button class="btn btn-sm" data-mode="node" data-i18n="ds.byNode">Node'a göre</button>
     <button class="btn btn-sm" data-mode="table" data-i18n="ds.table">Tablo</button>
   </div>
+  <button type="button" class="btn btn-sm net-filter-btn" id="dsHideLocal"
+          data-i18n="ds.hideLocal" title="local / local-lvm gibi node-yerel diskleri gizle">Yerel diskleri gizle</button>
   <div class="net-actions">
     <button class="btn btn-outline-success btn-sm" onclick="location='/api/reports/datastores/export?fmt=xlsx'"><i class="bi bi-file-earmark-excel"></i> Excel</button>
     <button class="btn btn-outline-secondary btn-sm" onclick="location='/api/reports/datastores/export?fmt=csv'">CSV</button>

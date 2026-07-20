@@ -7,6 +7,21 @@
 const DS = {
   items: [],
   mode: 'cards',
+  hideLocal: localStorage.getItem('vmi-ds-hidelocal') === '1',
+
+  /** Aktif filtre uygulanmış küme: 'Yerel diskleri gizle' açıksa yalnız
+   *  paylaşımlı depolar (node-yerel local/local-lvm kalabalığı elenir). */
+  filtered() {
+    return DS.hideLocal ? DS.items.filter(d => d.shared) : DS.items;
+  },
+
+  toggleLocal() {
+    DS.hideLocal = !DS.hideLocal;
+    localStorage.setItem('vmi-ds-hidelocal', DS.hideLocal ? '1' : '0');
+    document.getElementById('dsHideLocal').classList.toggle('active', DS.hideLocal);
+    DS.renderStats();
+    DS.render();
+  },
   sort: 'name',
   order: 'asc',
 
@@ -29,7 +44,7 @@ const DS = {
 
   /* ---------- Stat strip ---------- */
   renderStats() {
-    const it = DS.items;
+    const it = DS.filtered();
     const cap = it.reduce((s, d) => s + (d.capacity_gb || 0), 0);
     const used = it.reduce((s, d) => s + (d.used_gb || 0), 0);
     const crit = it.filter(d => (d.usage_pct || 0) >= 90).length;
@@ -49,16 +64,17 @@ const DS = {
 
   render() {
     const wrap = document.getElementById('dsGroups');
-    if (!DS.items.length) {
+    if (!DS.filtered().length) {
       wrap.innerHTML = '<div class="net-empty panel"><i class="bi bi-hdd-stack"></i>' +
         '<div>' + t('vm.noResults', 'Sonuç bulunamadı.') + '</div></div>';
       document.getElementById('dsCount').textContent = '';
       return;
     }
     if (DS.mode === 'cards') DS.renderCards(wrap);
+    else if (DS.mode === 'cluster') DS.renderClusterGroups(wrap);
     else if (DS.mode === 'table') DS.renderTable(wrap);
     else DS.renderGroups(wrap);
-    document.getElementById('dsCount').textContent = DS.items.length + ' datastore';
+    document.getElementById('dsCount').textContent = DS.filtered().length + ' datastore';
   },
 
   /* ---------- Shared cell builders ---------- */
@@ -99,7 +115,7 @@ const DS = {
 
   /* ---------- Cards (default) ---------- */
   renderCards(wrap) {
-    const cards = DS.items.slice().sort((a, b) =>
+    const cards = DS.filtered().slice().sort((a, b) =>
       (b.usage_pct || 0) - (a.usage_pct || 0) || (a.name || '').localeCompare(b.name || '', 'tr'));
     wrap.innerHTML = '<div class="net-cards">' + cards.map(d =>
       '<div class="net-card panel ds-card">' +
@@ -110,7 +126,9 @@ const DS = {
         '<div class="net-card-meta">' +
           '<span class="net-chip">' + DS._pIcon(d) + ' ' + App.esc(d.platform || '—') + '</span>' +
           (d.type ? '<span class="net-chip">' + App.esc(d.type) + '</span>' : '') +
-          (d.node ? '<span class="net-chip"><i class="bi bi-hdd-rack"></i> ' + App.esc(d.node) + '</span>' : '') +
+          DS._clChips(d) +
+          (!d.shared && d.node ? '<span class="net-chip"><i class="bi bi-hdd-rack"></i> ' + App.esc(d.node) + '</span>' : '') +
+          (!d.shared ? '<span class="net-chip net-chip-local">' + t('ds.local','yerel') + '</span>' : '') +
           (d.shared ? '<span class="net-chip">' + t('ds.shared','paylaşımlı') + '</span>' : '') +
         '</div>' +
         DS._usageBar(d) +
@@ -121,13 +139,44 @@ const DS = {
       '</div>').join('') + '</div>';
   },
 
+  _clChips(d) {
+    return (d.clusters || []).map(c =>
+      '<span class="net-chip"><i class="bi bi-diagram-3"></i> ' + App.esc(c) + '</span>').join('');
+  },
+
+  /* ---------- Cluster akordeonu: çok-cluster'lı paylaşımlı depo her
+     cluster'ının altında görünür (kapsama net olsun) ---------- */
+  renderClusterGroups(wrap) {
+    const groups = {};
+    DS.filtered().forEach(d => {
+      const cls = (d.clusters && d.clusters.length) ? d.clusters : [t('nt.noCluster','(cluster atanmamış)')];
+      cls.forEach(c => { (groups[c] = groups[c] || []).push(d); });
+    });
+    const keys = Object.keys(groups).sort((a, b) => a.localeCompare(b, 'tr'));
+    const open = keys.length === 1 ? ' open' : '';
+    wrap.innerHTML = keys.map(k => {
+      const list = groups[k];
+      const cap = list.reduce((s2, d) => s2 + (d.capacity_gb || 0), 0);
+      const used = list.reduce((s2, d) => s2 + (d.used_gb || 0), 0);
+      const pct = cap ? Math.round(100 * used / cap) : 0;
+      return '<details class="net-group panel"' + open + '>' +
+        '<summary>' +
+          '<span class="net-group-title"><i class="bi bi-diagram-3"></i> ' + App.esc(k) + '</span>' +
+          '<span class="net-group-meta">' + App.fmtGb(cap) + ' · %' + pct + '</span>' +
+          '<span class="net-group-count">' + list.length + '</span>' +
+        '</summary>' +
+        '<div class="table-responsive">' + DS._table(list, false) + '</div>' +
+      '</details>';
+    }).join('');
+  },
+
   /* ---------- Accordion groups (type / node) ---------- */
   renderGroups(wrap) {
     const keyFn = DS.mode === 'type'
       ? (d => (d.type || '').trim() || t('ds.noType','(tip yok)'))
       : (d => (d.node || '').trim() || t('ds.sharedGroup','Paylaşımlı / merkezi'));
     const groups = {};
-    DS.items.forEach(d => { const k = keyFn(d); (groups[k] = groups[k] || []).push(d); });
+    DS.filtered().forEach(d => { const k = keyFn(d); (groups[k] = groups[k] || []).push(d); });
     const keys = Object.keys(groups).sort((a, b) => a.localeCompare(b, 'tr'));
     const open = keys.length === 1 ? ' open' : '';
     wrap.innerHTML = keys.map(k => {
@@ -152,8 +201,9 @@ const DS = {
     const dir = DS.order === 'asc' ? 1 : -1;
     const key = DS.sort;
     const val = d => key === 'usage' ? (d.usage_pct || 0)
+      : key === 'clusters' ? (d.clusters || []).join(',').toLocaleLowerCase('tr')
       : (typeof d[key] === 'number' ? d[key] : String(d[key] || '').toLocaleLowerCase('tr'));
-    const rows = DS.items.slice().sort((a, b) => {
+    const rows = DS.filtered().slice().sort((a, b) => {
       const x = val(a), y = val(b);
       return (x < y ? -1 : x > y ? 1 : 0) * dir;
     });
@@ -169,13 +219,14 @@ const DS = {
         (DS.sort === key ? (DS.order === 'asc' ? ' sorted-asc' : ' sorted-desc') : '') + '">' + label + '</th>'
       : '<th>' + label + '</th>';
     return '<table class="table table-hover align-middle mb-0"><thead><tr>' +
-      th('Datastore', 'name') + th('Node', 'node') + th('Platform', 'platform') +
+      th('Datastore', 'name') + th('Cluster', 'clusters') + th('Node', 'node') + th('Platform', 'platform') +
       th(t('th.type','Tip'), 'type') + th(t('ds.capacity','Kapasite'), 'capacity_gb') +
       th(t('ds.usage','Doluluk'), 'usage') + th('Host', 'host_count') +
       th('VM', 'vm_count') + th(t('th.status','Durum'), 'status') +
       '</tr></thead><tbody>' +
       list.map(d => '<tr>' +
         '<td><strong>' + App.esc(d.name) + '</strong>' + DS._sharedBadge(d) + '</td>' +
+        '<td class="small">' + ((d.clusters || []).map(App.esc).join(', ') || '—') + '</td>' +
         '<td class="small text-muted">' + App.esc(d.node || '—') + '</td>' +
         '<td>' + DS._pIcon(d) + ' <span class="small">' + App.esc(d.platform) + '</span></td>' +
         '<td class="small">' + App.esc(d.type || '—') + '</td>' +
@@ -206,5 +257,8 @@ const DS = {
   document.getElementById('dsSearch').addEventListener('input', App.debounce(() => DS.load(), 300));
   document.querySelectorAll('.net-modes button').forEach(b =>
     b.addEventListener('click', () => DS.setMode(b.dataset.mode)));
+  const hl = document.getElementById('dsHideLocal');
+  hl.classList.toggle('active', DS.hideLocal);
+  hl.addEventListener('click', DS.toggleLocal);
   DS.load();
 })();

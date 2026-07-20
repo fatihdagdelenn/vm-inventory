@@ -478,6 +478,15 @@ html.theme-dark .net-card-name { color: var(--text); }
 .host-card .usage-mini { width: 100%; }
 .host-cards { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
 
+.net-filter-btn {
+  border: 1px solid var(--border); background: var(--panel); color: var(--text-muted);
+  font-weight: 600; border-radius: 9px;
+}
+.net-filter-btn.active {
+  background: var(--accent-soft); color: var(--accent); border-color: var(--accent);
+}
+.net-chip-local { background: rgba(148,163,184,.14); color: var(--text-muted); }
+
 .net-empty {
   text-align: center; color: var(--text-muted); padding: 2.5rem 1rem;
 }

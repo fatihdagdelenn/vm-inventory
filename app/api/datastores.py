@@ -21,7 +21,7 @@ SORTABLE = {
 CASE_INSENSITIVE = {"name", "type", "node", "status", "platform"}
 
 
-def _to_dict(d: Datastore, pname: str, ptype: str) -> dict:
+def _to_dict(d: Datastore, pname: str, ptype: str, clusters=None) -> dict:
     return {
         "id": d.id, "name": d.name, "type": d.type or "", "node": d.node or "",
         "shared": bool(d.shared),
@@ -34,7 +34,26 @@ def _to_dict(d: Datastore, pname: str, ptype: str) -> dict:
         "status": d.status or "",
         "platform": pname or "",
         "platform_type": ptype or "",
+        "clusters": clusters or [],
     }
+
+
+def _resolve_clusters(d: Datastore, host_cluster: dict) -> list:
+    """Clusters a datastore belongs to, resolved from its MOUNTED hosts
+    (host_names, faz105). A shared store spanning several clusters returns
+    them all. Fallbacks for rows synced before host_names existed: for
+    shared stores 'node' already holds the cluster name; for local stores
+    the owning node's cluster is looked up."""
+    names = [t.strip() for t in (d.host_names or "").split(",") if t.strip()]
+    cl = {host_cluster.get((d.platform_id, n), "") for n in names}
+    cl.discard("")
+    if not cl:
+        if d.shared and d.node:
+            cl = {d.node}
+        elif d.node:
+            c = host_cluster.get((d.platform_id, d.node), "")
+            cl = {c} if c else set()
+    return sorted(cl)
 
 
 @router.get("")
@@ -52,7 +71,10 @@ def list_datastores(q: str = "", sort: str = "name", order: str = "asc",
     if sort in CASE_INSENSITIVE:
         col = func.lower(col)
     query = query.order_by(col.desc() if order == "desc" else col.asc())
-    return {"items": [_to_dict(d, pn, pt) for d, pn, pt in query.all()]}
+    host_cluster = {(h.platform_id, h.name): (h.cluster or "")
+                    for h in db.query(Host).all()}
+    return {"items": [_to_dict(d, pn, pt, _resolve_clusters(d, host_cluster))
+                      for d, pn, pt in query.all()]}
 
 
 @router.get("/{ds_id}")
