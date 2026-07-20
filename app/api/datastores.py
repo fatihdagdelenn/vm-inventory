@@ -5,8 +5,9 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import Datastore, Platform, VirtualMachine, Host
+from ..models import Datastore, Platform, VirtualMachine, Host, Backup
 from ..core.security import get_current_user
+from ..core.timezone import to_iso
 
 router = APIRouter(prefix="/api/datastores", tags=["datastores"])
 
@@ -73,8 +74,19 @@ def list_datastores(q: str = "", sort: str = "name", order: str = "asc",
     query = query.order_by(col.desc() if order == "desc" else col.asc())
     host_cluster = {(h.platform_id, h.name): (h.cluster or "")
                     for h in db.query(Host).all()}
-    return {"items": [_to_dict(d, pn, pt, _resolve_clusters(d, host_cluster))
-                      for d, pn, pt in query.all()]}
+    # Last backup time per storage (Proxmox only; vCenter has no backup API).
+    # Storage name == datastore name, so the map keys on (platform_id, name).
+    last_backup = {(pid, st): ts for pid, st, ts in
+                   db.query(Backup.platform_id, Backup.storage,
+                            func.max(Backup.created_at))
+                     .group_by(Backup.platform_id, Backup.storage).all()}
+    items = []
+    for d, pn, pt in query.all():
+        it = _to_dict(d, pn, pt, _resolve_clusters(d, host_cluster))
+        ts = last_backup.get((d.platform_id, d.name))
+        it["last_backup"] = to_iso(ts) if ts else None
+        items.append(it)
+    return {"items": items}
 
 
 @router.get("/{ds_id}")

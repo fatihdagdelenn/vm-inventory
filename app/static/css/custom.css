@@ -487,6 +487,13 @@ html.theme-dark .net-card-name { color: var(--text); }
 }
 .net-chip-local { background: rgba(148,163,184,.14); color: var(--text-muted); }
 
+.ds-bk.bk-ok { color: var(--bs-success, #2ea77f); border-color: currentColor; background: transparent; }
+.ds-bk.bk-warn { color: #b8860b; border-color: currentColor; background: transparent; }
+.ds-bk.bk-old { color: var(--bs-danger, #e06a4f); border-color: currentColor; background: transparent; }
+html.theme-dark .ds-bk.bk-warn { color: #e0b74f; }
+.ds-overlap { color: #b8860b; border-color: currentColor; background: transparent; }
+html.theme-dark .ds-overlap { color: #e0b74f; }
+
 .net-empty {
   text-align: center; color: var(--text-muted); padding: 2.5rem 1rem;
 }

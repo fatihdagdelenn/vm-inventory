@@ -129,6 +129,7 @@ const DS = {
           DS._clChips(d) +
           (!d.shared && d.node ? '<span class="net-chip"><i class="bi bi-hdd-rack"></i> ' + App.esc(d.node) + '</span>' : '') +
           (!d.shared ? '<span class="net-chip net-chip-local">' + t('ds.local','yerel') + '</span>' : '') +
+          DS._backupChip(d) +
           (d.shared ? '<span class="net-chip">' + t('ds.shared','paylaşımlı') + '</span>' : '') +
         '</div>' +
         DS._usageBar(d) +
@@ -137,6 +138,18 @@ const DS = {
           '<span class="small text-muted">VM ' + DS._cnt(d, d.vm_count, 'vm') + '</span>' +
         '</div>' +
       '</div>').join('') + '</div>';
+  },
+
+  /** Son yedek yaşı rozeti (yalnız Proxmox — vCenter'da yedek API'si yok).
+   *  <=2 gün yeşil, <=7 gün sarı, daha eski kırmızı; hiç yedek yoksa çip yok. */
+  _backupChip(d) {
+    if (!d.last_backup) return '';
+    const days = Math.floor((Date.now() - new Date(d.last_backup).getTime()) / 86400000);
+    const cls = days <= 2 ? 'bk-ok' : days <= 7 ? 'bk-warn' : 'bk-old';
+    const label = days <= 0 ? t('ds.bkToday','bugün') : days + t('ds.bkDays','g');
+    return '<span class="net-chip ds-bk ' + cls + '" title="' +
+      t('ds.lastBackup','Son yedek') + ': ' + new Date(d.last_backup).toLocaleString() + '">' +
+      '<i class="bi bi-shield-check"></i> ' + label + '</span>';
   },
 
   _clChips(d) {
@@ -159,10 +172,21 @@ const DS = {
       const cap = list.reduce((s2, d) => s2 + (d.capacity_gb || 0), 0);
       const used = list.reduce((s2, d) => s2 + (d.used_gb || 0), 0);
       const pct = cap ? Math.round(100 * used / cap) : 0;
+      // Birden çok cluster'a yayılan paylaşımlı depolar HER grubun toplamına
+      // girer; grupları toplarken bu kısım çift sayılır. Şeffaf olsun diye
+      // ortak kapasite ayrıca gösterilir ve uyarı çipi çıkar.
+      const multi = list.filter(d => (d.clusters || []).length > 1);
+      const mcap = multi.reduce((s2, d) => s2 + (d.capacity_gb || 0), 0);
+      const warn = mcap
+        ? ' <span class="net-chip ds-overlap" title="' +
+          t('ds.overlapHint','Bu toplamın ortak kısmı diğer cluster gruplarında da sayılır; cluster toplamlarını toplarken çift sayım yapmayın.') + '">' +
+          '<i class="bi bi-exclamation-triangle"></i> ' + App.fmtGb(mcap) + ' ' +
+          t('ds.overlapShared','ortak') + '</span>'
+        : '';
       return '<details class="net-group panel"' + open + '>' +
         '<summary>' +
           '<span class="net-group-title"><i class="bi bi-diagram-3"></i> ' + App.esc(k) + '</span>' +
-          '<span class="net-group-meta">' + App.fmtGb(cap) + ' · %' + pct + '</span>' +
+          '<span class="net-group-meta">' + App.fmtGb(cap) + ' · %' + pct + warn + '</span>' +
           '<span class="net-group-count">' + list.length + '</span>' +
         '</summary>' +
         '<div class="table-responsive">' + DS._table(list, false) + '</div>' +
@@ -202,6 +226,7 @@ const DS = {
     const key = DS.sort;
     const val = d => key === 'usage' ? (d.usage_pct || 0)
       : key === 'clusters' ? (d.clusters || []).join(',').toLocaleLowerCase('tr')
+      : key === 'last_backup' ? (d.last_backup || '0000')
       : (typeof d[key] === 'number' ? d[key] : String(d[key] || '').toLocaleLowerCase('tr'));
     const rows = DS.filtered().slice().sort((a, b) => {
       const x = val(a), y = val(b);
@@ -221,7 +246,8 @@ const DS = {
     return '<table class="table table-hover align-middle mb-0"><thead><tr>' +
       th('Datastore', 'name') + th('Cluster', 'clusters') + th('Node', 'node') + th('Platform', 'platform') +
       th(t('th.type','Tip'), 'type') + th(t('ds.capacity','Kapasite'), 'capacity_gb') +
-      th(t('ds.usage','Doluluk'), 'usage') + th('Host', 'host_count') +
+      th(t('ds.usage','Doluluk'), 'usage') + th(t('ds.lastBackup','Son Yedek'), 'last_backup') +
+      th('Host', 'host_count') +
       th('VM', 'vm_count') + th(t('th.status','Durum'), 'status') +
       '</tr></thead><tbody>' +
       list.map(d => '<tr>' +
@@ -232,6 +258,7 @@ const DS = {
         '<td class="small">' + App.esc(d.type || '—') + '</td>' +
         '<td class="text-nowrap">' + App.fmtGb(d.capacity_gb) + '</td>' +
         '<td style="min-width:170px">' + DS._usageBar(d) + '</td>' +
+        '<td>' + (DS._backupChip(d) || '<span class="text-muted small">\u2014</span>') + '</td>' +
         '<td>' + DS._cnt(d, d.host_count, 'host') + '</td>' +
         '<td>' + DS._cnt(d, d.vm_count, 'vm') + '</td>' +
         '<td>' + DS._stBadge(d) + '</td>' +
