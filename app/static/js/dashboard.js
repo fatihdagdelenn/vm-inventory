@@ -63,7 +63,8 @@ function barGrad(chart, base, horizontal) {
 /* ============================ Premium grafikler + akıllı paneller ============ */
 (async function () {
   let d;
-  try { d = await App.api('/api/dashboard/summary'); } catch (e) { return; }
+  const NL_Q = localStorage.getItem('vmi-dash-nolocal') === '1' ? '?no_local=1' : '';
+  try { d = await App.api('/api/dashboard/summary' + NL_Q); } catch (e) { return; }
 
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v ?? 0; };
   set('st-vcenter', d.vcenter_count);  set('st-proxmox', d.proxmox_count);
@@ -263,7 +264,8 @@ function barGrad(chart, base, horizontal) {
 
   /* ============== Akıllı paneller (insights) ============== */
   let ins;
-  try { ins = await App.api('/api/dashboard/insights'); } catch (e) { ins = null; }
+  const NL_Q2 = localStorage.getItem('vmi-dash-nolocal') === '1' ? '?no_local=1' : '';
+  try { ins = await App.api('/api/dashboard/insights' + NL_Q2); } catch (e) { ins = null; }
   if (ins) renderInsights(ins);
 
   /** Kapasite öngörüsü + zombi + canlılık + sparkline render. */
@@ -610,6 +612,12 @@ const DashGrid = {
     }).join('');
     if (DashGrid.editing)
       html += `<button class="dash-tab dash-tab-add" id="dashAddPage" title="${t('dash.addPageT','Sayfa ekle')}"><i class="bi bi-plus-lg"></i> ${t('dash.pageWord','Sayfa')}</button>`;
+    if (!DashGrid.editing) {
+      const nl = localStorage.getItem('vmi-dash-nolocal') === '1';
+      html += `<button class="dash-tab dash-nolocal${nl ? ' active' : ''}" id="dashNoLocal" ` +
+        `title="${t('dash.noLocalHint','Disk göstergelerinde node-yerel diskleri (local/local-lvm) hariç tut — gerçek paylaşımlı kapasite')}">` +
+        `<i class="bi bi-hdd"></i> ${t('dash.noLocal','Yerel diskler hariç')}</button>`;
+    }
     // Cycle (monitoring/kiosk) control: only meaningful with multiple pages
     // and while not editing the layout.
     if (!DashGrid.editing && st.pages.length > 1) {
@@ -814,6 +822,12 @@ const DashGrid = {
     bar.addEventListener('click', e => {
       if (e.target.closest('#dashAddPage')) { DashGrid.addPage(); return; }
       if (e.target.closest('#dashCycle')) { Kiosk.toggle(); return; }
+      if (e.target.closest('#dashNoLocal')) {
+        const on = localStorage.getItem('vmi-dash-nolocal') === '1';
+        localStorage.setItem('vmi-dash-nolocal', on ? '0' : '1');
+        location.reload();   // tüm disk göstergeleri (mini kart, donut, forecast) tek seferde tazelensin
+        return;
+      }
       const ren = e.target.closest('[data-ren]'); if (ren) { e.stopPropagation(); DashGrid.renamePage(ren.dataset.ren); return; }
       const del = e.target.closest('[data-del]'); if (del) { e.stopPropagation(); DashGrid.deletePage(del.dataset.del); return; }
       const tab = e.target.closest('.dash-tab[data-page]');

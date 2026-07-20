@@ -13,7 +13,8 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
 @router.get("/summary")
-def summary(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def summary(no_local: int = 0, db: Session = Depends(get_db),
+            user: User = Depends(get_current_user)):
     """
         All summary data for the main-screen cards and charts.
         VMs and hosts in HIDDEN clusters are EXCLUDED from counts/charts.
@@ -47,8 +48,12 @@ def summary(db: Session = Depends(get_db), user: User = Depends(get_current_user
                                     max(1, h.ram_total_mb or 1), 1)} for h in hosts]
 
     # Datastore usage
+    # no_local=1: node-local disks (local/local-lvm...) are excluded from the
+    # disk gauges so the numbers reflect the REAL shared/central capacity.
+    _ds_pred = [Datastore.shared == True] if no_local else []  # noqa: E712
     datastores = db.query(Datastore.name, Datastore.capacity_gb,
-                          Datastore.used_gb).order_by(Datastore.capacity_gb.desc()).limit(15).all()
+                          Datastore.used_gb).filter(*_ds_pred)\
+                   .order_by(Datastore.capacity_gb.desc()).limit(15).all()
     storage = [{"name": d.name, "capacity_gb": d.capacity_gb or 0,
                 "used_gb": d.used_gb or 0} for d in datastores]
 
@@ -175,7 +180,7 @@ def summary(db: Session = Depends(get_db), user: User = Depends(get_current_user
     datastore_fill = [{"name": d.name + (f" ({d.node})" if d.node else ""),
                        "usage_pct": d.usage_pct, "used_gb": round(d.used_gb or 0, 1),
                        "capacity_gb": round(d.capacity_gb or 0, 1)}
-                      for d in db.query(Datastore)
+                      for d in db.query(Datastore).filter(*_ds_pred)
                       .order_by((Datastore.used_gb /
                                  func.nullif(Datastore.capacity_gb, 0)).desc().nullslast())
                       .limit(12).all()]
@@ -193,7 +198,8 @@ def summary(db: Session = Depends(get_db), user: User = Depends(get_current_user
     # Physical ceilings (allocated vs total on the mini cards)
     _hc = host_q().with_entities(func.coalesce(func.sum(Host.cpu_cores), 0),
                                  func.coalesce(func.sum(Host.ram_total_mb), 0)).one()
-    _dc = db.query(func.coalesce(func.sum(Datastore.capacity_gb), 0)).scalar() or 0
+    _dc = db.query(func.coalesce(func.sum(Datastore.capacity_gb), 0))\
+             .filter(*_ds_pred).scalar() or 0
     phys = {"cores": int(_hc[0] or 0),
             "ram_gb": round(float(_hc[1] or 0) / 1024, 1),
             "disk_tb": round(float(_dc) / 1024, 2)}
@@ -247,7 +253,8 @@ def _to_float(v):
 
 
 @router.get("/insights")
-def insights(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def insights(no_local: int = 0, db: Session = Depends(get_db),
+             user: User = Depends(get_current_user)):
     """
         Premium 'smart' metrics: capacity forecast, zombie (idle) VMs, small trend
         series (sparklines) and liveness/sync info.
@@ -296,8 +303,10 @@ def insights(db: Session = Depends(get_db), user: User = Depends(get_current_use
     used_cpu_cores = round(_w / 100.0, 1) if cpu_cores_total else 0.0
     alloc_vcpu_total = int(db.query(func.coalesce(func.sum(VirtualMachine.cpu_count), 0))
                            .filter(VirtualMachine.is_template == False).scalar() or 0)  # noqa: E712
+    _ds_pred = [Datastore.shared == True] if no_local else []  # noqa: E712
     ds = db.query(func.coalesce(func.sum(Datastore.capacity_gb), 0),
-                  func.coalesce(func.sum(Datastore.used_gb), 0)).one()
+                  func.coalesce(func.sum(Datastore.used_gb), 0))\
+           .filter(*_ds_pred).one()
     disk_cap_gb = round(float(ds[0] or 0), 1)
     used_disk_gb = round(float(ds[1] or 0), 1)             # real datastore fill
 
