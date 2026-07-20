@@ -340,6 +340,7 @@ def sync_platform(platform_id: int):
         # record was missed, we do not attribute it to a leftover OLD setup
         # operation (wrong person); it stays '-'. last_sync still holds the old value here.
         prev_sync_ts = _epoch(platform.last_sync) if platform.last_sync else 0
+        config_noop_logged = 0   # bounded diagnosis lines per sync (see below)
         if hasattr(collector, "disconnect"):
             collector.disconnect()
 
@@ -539,6 +540,18 @@ def sync_platform(platform_id: int):
                         #  not to whoever created the VM). A 5-minute margin is left.
                         op = _match_op(ops, cats, direction,
                                        min_ts=max(0, prev_sync_ts - 300))
+                        # Targeted diagnosis: a config-category change with NO
+                        # matching op means the actor source (cluster log /
+                        # tasks) did not cover it - log WHY-material, bounded.
+                        if op is None and "config" in cats and config_noop_logged < 5:
+                            config_noop_logged += 1
+                            logger.info(
+                                "Config actor not found vmid=%s field=%s "
+                                "(ops in window=%d, categories=%s)",
+                                vid, f,
+                                len([o for o in ops if (o.get("ts") or 0)
+                                     >= max(0, prev_sync_ts - 300)]),
+                                sorted({str(o.get("category")) for o in ops}))
                         # The visual category comes from the FIELD (the op category is only
                         # for matching; e.g. a RAM change op may be 'qmconfig'/'config' but
                         # is shown to the user as 'Hardware').

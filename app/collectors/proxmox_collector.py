@@ -1340,7 +1340,10 @@ class ProxmoxCollector:
         log_scanned = 0
         log_err = False
         try:
-            logs = self.api.cluster.log.get(max=1500) or []
+            # Busy clusters (many nodes/VMs) can push a config line out of a
+            # small window BEFORE the next sync reads it -> the RAM/CPU change
+            # loses its user. 5000 covers even large clusters between syncs.
+            logs = self.api.cluster.log.get(max=5000) or []
         except Exception as exc:
             log_err = True
             logger.warning("Could not fetch cluster log: %s", exc)
@@ -1398,9 +1401,15 @@ class ProxmoxCollector:
         for lst in ops.values():
             lst.sort(key=lambda o: o.get("ts") or 0, reverse=True)
 
+        try:
+            _times = [e.get("time") or 0 for e in logs if e.get("time")]
+            _span_min = int((max(_times) - min(_times)) / 60) if _times else 0
+        except Exception:
+            _span_min = 0
         logger.info("Proxmox actors: %d VMs mapped "
-                    "(%d tasks + %d log lines + %d clones resolved)",
-                    len(ops), scanned, log_scanned, clone_resolved)
+                    "(%d tasks + %d log lines + %d clones resolved; "
+                    "log span %d min)",
+                    len(ops), scanned, log_scanned, clone_resolved, _span_min)
         return ops
 
     # Cluster-log message pattern for storage / SDN entity changes.
