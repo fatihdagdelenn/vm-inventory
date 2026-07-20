@@ -5,6 +5,88 @@ Sürümleme [Semantic Versioning](https://semver.org/lang/tr/) yaklaşımını i
 
 ---
 
+## [v1.2.0] — 2026-07-16
+
+**v1.1.0'dan bu yana 18 geliştirme adımı (faz94–faz110).** Bu sürümün odağı:
+Proxmox agent tespitinin güvenilir hale getirilmesi, Değişiklik Geçmişi'nin
+gürültüden arındırılması ve Ağlar / Datastore'lar / Host'lar sayfalarının ortak
+modern tasarım diline taşınması. Tüm şema değişiklikleri **otomatik** uygulanır
+(`ensure_schema`) — manuel migration gerekmez.
+
+### 🩺 Proxmox Agent Tespiti — Güvenilirlik Paketi (faz94, 96)
+- Agent çağrıları için **ayrı 30 sn'lik istemci**: PVE'nin kendi QGA kararı ~10 sn
+  sürerken varsayılan 5 sn'lik istemci bağlantıyı kesip canlı agent'ı "Pasif"
+  gösteriyordu (özellikle PVE 8.4.x ve Windows misafirlerde).
+- **Hata sınıflandırması**: "not running" (kesin kapalı) ≠ timeout (belirsiz) ≠
+  **403 izin hatası**. Belirsiz hatalarda eski "Aktif" durumu 3 senkron korunur
+  (`agent_miss_count`) — Aktif↔Pasif çırpınması biter; kesin hüküm anında düşer.
+- VM config'inde `agent` seçeneği kapalıysa problar tamamen atlanır → durum
+  "Yok" + belirgin senkron hızlanması.
+- **VM.Monitor izin teşhisi**: agent uçları 403 verirse VM başına log seli yerine
+  senkron başına tek, çözüm komutlu WARNING; durum dürüstçe "bilinmiyor" yazılır.
+- `enrich_failed` durumunda `tools_status` artık korunur (geçici config hatası
+  Agent kolonunu "Yok"a düşürmez).
+
+### 🧾 Değişiklik Geçmişi — Gürültü Temizliği (faz98)
+- **Host alan çırpınmaları bitti**: node detay çekimi başarısız olunca (403/
+  timeout/offline) alanlar boş yazılıp `değer ↔ —` kayıt selleri oluşuyordu;
+  artık başarısızlıkta alanlar **atlanır**, DB'deki değer korunur.
+- **mgmt_ip aday koruması**: kayıtlı IP node'da hâlâ mevcutsa farklı bir
+  deterministik seçim (bond failover, vmk sırası) değişiklik SAYILMAZ; yalnız
+  gerçek re-IP tek sefer kaydedilir. vCenter vmk'ları ada göre sıralı.
+- **vCenter olay sayfalaması**: `QueryEvents` tek sayfa (~1000 olay) döndürür ve
+  yoğun ortamda reconfigure olayları sayfa dışında kalıp "kim yaptı" kayboluyordu;
+  `EventHistoryCollector` ile tam pencere taranır (8000 olay tavanı + fallback).
+- **Kaynak türü filtresi**: Kullanıcı + Sistem / Yalnız Kullanıcı / Yalnız Sistem
+  (DRS/HA/pvesr/vCLS otomasyonu) / Kullanıcısız. Sınıflandırma backend'de,
+  ⚙ sistem rozetiyle tutarlı.
+- Varlık filtresi düzeltmesi: Datastore/Ağ seçimi artık backend'de de uygulanır;
+  host güncellemeleri kategori + aktör metasıyla yazılır.
+
+### 🗄️ Veri Bütünlüğü (faz99, 99b)
+- **FK-güvenli VM silme**: VM silinmeden önce Backup/Snapshot/VmUsageDaily
+  satırları temizlenir (PostgreSQL `backups_vm_id_fkey` ihlali ve senkron
+  rollback'i giderildi).
+- **Yetim arşiv desteği**: VM silindikten sonra depoda yaşayan vzdump/PBS
+  arşivleri `vm_id=NULL` ile korunur; silme sonrası `flush` ile aynı senkron
+  içindeki yeniden-ekleme çakışması önlendi.
+
+### 🎨 Ortak Tasarım Dili — Ağlar, Datastore'lar, Host'lar (faz95, 97, 104–108)
+- **Ağlar**: tekilleştirilmiş kart gridi (aynı ağ N node'da = tek kart), üst stat
+  şeridi, kapalı akordeonlar, ağ başına **VM sayısı** ve `network:"ad"` alan
+  sözdizimiyle VM listesine deep-link; `networks`/`vlans` serbest metin aramada.
+- **Datastore'lar**: stat şeridi (kapasite/kullanım/kritik), Kartlar / Cluster'a
+  göre / Tür'e göre / Node'a göre / Tablo modları, **"Yerel diskleri gizle"**
+  filtresi, kartlarda cluster çipleri, **son yedek yaşı rozeti** (≤2g yeşil,
+  ≤7g sarı) ve çok-cluster paylaşımlı depolarda **çift sayım uyarısı**.
+- **Host'lar**: stat şeridi, Kartlar / Cluster'a göre / Tablo modları; 12 kolonlu
+  sıralanabilir tablo ve VM modalları aynen korunarak.
+- **Datastore↔Host eşleşmesi düzeltildi**: kartta 10, modalda 2 host uyuşmazlığı —
+  bağlı (mount) host adları artık toplanıyor (`host_names`) ve modal bu listeyi
+  gösteriyor; vCenter mount adları tek geçişli MoId haritasıyla çözülür.
+
+### 👤 Hesap-Bazlı Arayüz Ayarları (faz100)
+- Yeni `user_settings` tablosu + `GET/PUT /api/user-settings/{key}`: **dashboard
+  düzeni ve topoloji konumları artık hesabı takip eder** — tarayıcı/cihaz
+  değişse, temizlense veya yeniden kurulsa da düzen kaybolmaz (yerel kopya
+  çevrimdışı yedek olarak durur, ilk kayıtta sunucuya taşınır).
+
+### 📊 Dashboard İyileştirmeleri (faz101–103, 109, 110)
+- Dark/light temada mini kart yazı renkleri düzeltildi (her iki temada okunur);
+  Ağlar kartında rozet/etiket çakışması giderildi.
+- **"Yerel diskleri gizle" gözü** Datastore Doluluk widget'ında: tek tıkla mini
+  kart tavanı, depolama donut'ı, doluluk listesi ve kapasite öngörüsünün disk
+  satırı yalnız paylaşımlı/merkezi depolarla ("gerçek" kapasite) hesaplanır.
+
+### ℹ️ Notlar
+- Proxmox token rolü gereksinimlerine **`VM.Monitor`** eklendi (agent durumu /
+  misafir IP / disk kullanımı için): `pveum role add EnvanterVMMon -privs
+  VM.Monitor; pveum aclmod / -token '…' -role EnvanterVMMon`.
+- Değişiklik Geçmişi kayıtları süresiz saklanır (PostgreSQL `change_history`);
+  arayüzdeki 200, yalnız görüntüleme limitidir.
+
+---
+
 ## [v1.1.0] — 2026-07-05
 
 **v1.0.3'ten bu yana 66 geliştirme adımı.** Bu sürüm; iki dilli arayüz, akıllı
