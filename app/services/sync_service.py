@@ -117,19 +117,40 @@ def _match_op(ops, categories, direction=None, min_ts=0):
 
     With direction given, direction+category is tried first, then category only.
     With min_ts, ops OLDER than that are dropped (prevents crediting a fresh
-    change to an old setup operation). None when nothing fits."""
+    change to an old setup operation). None when nothing fits.
+
+    ACTOR PREFERENCE (vCenter 'Shut Down Guest' fix): vSphere emits
+    VmGuestShutdownEvent (userName SET) immediately followed by
+    VmPoweredOffEvent (userName EMPTY, guest-initiated). Picking strictly the
+    newest match returned the empty-actor op and the user showed as '-'.
+    Now, if the newest match has no actor, a slightly older matching op WITH
+    an actor (within 15 min of the newest match) is preferred. The window
+    guard prevents crediting today's cron-triggered shutdown to an admin who
+    powered off two days ago."""
     if not ops or not categories:
         return None
     cand = [o for o in ops if (o.get("ts") or 0) >= min_ts] if min_ts else ops
-    for op in cand:
-        if op.get("category") in categories and \
-                (direction is None or op.get("direction") == direction):
-            return op
-    if direction is not None:
-        for op in cand:
-            if op.get("category") in categories:
+
+    def _pick(pool):
+        if not pool:
+            return None
+        newest = pool[0]
+        if newest.get("actor"):
+            return newest
+        floor = (newest.get("ts") or 0) - 900
+        for op in pool[1:]:
+            if (op.get("ts") or 0) < floor:
+                break
+            if op.get("actor"):
                 return op
-    return None
+        return newest
+
+    if direction is not None:
+        hit = _pick([o for o in cand if o.get("category") in categories
+                     and o.get("direction") == direction])
+        if hit is not None:
+            return hit
+    return _pick([o for o in cand if o.get("category") in categories])
 
 
 def _purge_vm_children(db, vm):

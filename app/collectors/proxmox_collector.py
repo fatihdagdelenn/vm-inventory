@@ -1195,7 +1195,13 @@ class ProxmoxCollector:
         "vzmigrate": ("migrate", "migrate"), "pctmigrate": ("migrate", "migrate"),
         "qmconfig": ("config", None), "vzconfig": ("config", None),
         "pctconfig": ("config", None),
-        "qmresize": ("disk", None),
+        # Disk grow: the REAL PVE task type is 'resize' (CT: 'vzresize');
+        # 'qmresize' matched nothing -> disk-size changes lost their user.
+        # Some storage backends resize synchronously with NO task at all;
+        # those are covered by the cluster-log 'update VM' config line.
+        "resize": ("disk", None), "qmresize": ("disk", None),
+        "vzresize": ("disk", None),
+        "qmmove": ("disk", "move"), "move_volume": ("disk", "move"),
         "qmsnapshot": ("snapshot", "create"), "vzsnapshot": ("snapshot", "create"),
         "qmdelsnapshot": ("snapshot", "delete"), "vzdelsnapshot": ("snapshot", "delete"),
         "qmrollback": ("snapshot", "rollback"), "vzrollback": ("snapshot", "rollback"),
