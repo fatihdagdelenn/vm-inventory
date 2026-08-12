@@ -57,6 +57,20 @@ VM_COLUMNS = [
     ("Platform Notu", "guest_notes"),
 ]
 
+# Physical inventory columns. device_type/status resolve to Turkish labels
+# via _row_values (the values stored in DB are codes).
+PHYSICAL_DTYPE_LABELS = {"server": "Fiziksel Sunucu", "storage": "Storage",
+                         "san_switch": "SAN Switch", "backup": "Yedekleme Ünitesi"}
+PHYSICAL_STATUS_LABELS = {"active": "Aktif", "passive": "Pasif", "faulty": "Arızalı",
+                          "retired": "Emekli", "spare": "Yedek"}
+PHYSICAL_COLUMNS = [
+    ("Tip", "device_type"), ("Ad", "name"), ("Lokasyon", "location"),
+    ("Durum", "status"), ("Yönetim IP", "mgmt_ip"), ("iLO/BMC IP", "ilo_ip"),
+    ("Marka", "brand"), ("Model", "model"), ("Seri No", "serial_no"),
+    ("CPU", "cpu"), ("RAM (GB)", "ram_gb"), ("İşletim Sistemi", "os"),
+    ("Not", "notes"),
+]
+
 HOST_COLUMNS = [
     ("Host Adı", "name"), ("Yönetim IP", "mgmt_ip"), ("İşletim Sistemi", "os_version"),
     ("CPU Modeli", "cpu_model"), ("Çekirdek", "cpu_cores"),
@@ -90,6 +104,12 @@ def _row_values(obj, columns):
     for _, field in columns:
         if field == "host_name":  # VM -> related host name
             values.append(obj.host_ref.name if getattr(obj, "host_ref", None) else "")
+        elif field == "device_type":
+            values.append(PHYSICAL_DTYPE_LABELS.get(getattr(obj, field, ""),
+                                                    getattr(obj, field, "") or ""))
+        elif field == "status" and obj.__class__.__name__ == "PhysicalDevice":
+            values.append(PHYSICAL_STATUS_LABELS.get(getattr(obj, field, ""),
+                                                     getattr(obj, field, "") or ""))
         else:
             v = getattr(obj, field, "")
             values.append("" if v is None else v)

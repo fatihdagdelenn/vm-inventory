@@ -4,7 +4,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import Platform, Host, VirtualMachine, Datastore, User
+from ..models import PhysicalDevice, Platform, Host, VirtualMachine, Datastore, User
 from ..core.timezone import to_iso
 from ..core.security import get_current_user
 from ..core.os_family import distribution as os_family_distribution
@@ -230,6 +230,7 @@ def summary(no_local: int = 0, db: Session = Depends(get_db),
             "total_ram_gb": round(totals[1] / 1024, 1),
             "total_disk_tb": round(totals[2] / 1024, 2),
             "phys": phys, "old_snapshot_items": old_snapshot_items,
+            "physical_count": db.query(PhysicalDevice).count(),
             "attention": {"no_ip": no_ip, "no_tools": no_tools, "no_owner": no_owner,
                           "old_snapshots": old_snapshots, "no_backup": no_backup},
             "env_distribution": env_dist, "cluster_distribution": cluster_dist,

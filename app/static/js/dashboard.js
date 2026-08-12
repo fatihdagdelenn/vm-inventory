@@ -69,6 +69,7 @@ function barGrad(chart, base, horizontal) {
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v ?? 0; };
   set('st-vcenter', d.vcenter_count);  set('st-proxmox', d.proxmox_count);
   set('st-host', d.host_count);        set('st-vm', d.vm_total);
+  set('st-physical', d.physical_count);
   set('st-running', d.vm_running);     set('st-stopped', d.vm_stopped);
   set('st-suspended', d.vm_suspended);
   const P = d.phys || {};

@@ -4,3 +4,4 @@ from .inventory import (Host, VirtualMachine, Network, Datastore, Snapshot, Back
                         vm_tags, ChangeHistory, ClusterSetting, AppSetting, ScheduledReport,
                         CapacitySnapshot, VmUsageDaily)
 from .audit import AuditLog
+from .physical import PhysicalDevice, PhysicalDeviceHistory

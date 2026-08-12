@@ -19,7 +19,7 @@ from .models import User
 from .core.security import (get_current_user, hash_password,
                             refresh_session_token, set_session_cookie)
 from .core.scheduler import start_scheduler, stop_scheduler
-from .api import (auth, dashboard, vms, hosts, networks, platforms, datastores, snapshots, backups,
+from .api import (auth, dashboard, vms, hosts, networks, platforms, physical, datastores, snapshots, backups,
                   reports, admin, clusters, topology, user_settings)
 
 logging.basicConfig(level=logging.INFO,
@@ -121,7 +121,7 @@ app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")),
 for router in (auth.router, dashboard.router, vms.router, hosts.router,
                networks.router, platforms.router, reports.router, admin.router,
                clusters.router, datastores.router, snapshots.router, backups.router,
-               topology.router, user_settings.router):
+               topology.router, user_settings.router, physical.router):
     app.include_router(router)
 
 
@@ -138,6 +138,7 @@ PAGES = {
     "/reports": ("reports.html", "Raporlar"),
     "/history": ("history.html", "Değişiklik Geçmişi"),
     "/topology": ("topology.html", "Topoloji"),
+    "/physical": ("physical.html", "Fiziksel Envanter"),
     "/settings": ("settings.html", "Yönetim"),
 }
 
