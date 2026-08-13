@@ -57,18 +57,20 @@ VM_COLUMNS = [
     ("Platform Notu", "guest_notes"),
 ]
 
-# Physical inventory columns. device_type/status resolve to Turkish labels
-# via _row_values (the values stored in DB are codes).
+# Physical inventory columns. device_type/status/role resolve to Turkish
+# labels via _row_values (the values stored in DB are codes).
 PHYSICAL_DTYPE_LABELS = {"server": "Fiziksel Sunucu", "storage": "Storage",
                          "san_switch": "SAN Switch", "backup": "Yedekleme Ünitesi"}
 PHYSICAL_STATUS_LABELS = {"active": "Aktif", "passive": "Pasif", "faulty": "Arızalı",
                           "retired": "Emekli", "spare": "Yedek"}
+PHYSICAL_ROLE_LABELS = {"hypervisor": "Hypervisor", "windows": "Windows",
+                        "linux": "Linux", "other": "Diğer"}
 PHYSICAL_COLUMNS = [
-    ("Tip", "device_type"), ("Ad", "name"), ("Lokasyon", "location"),
-    ("Durum", "status"), ("Yönetim IP", "mgmt_ip"), ("iLO/BMC IP", "ilo_ip"),
-    ("Marka", "brand"), ("Model", "model"), ("Seri No", "serial_no"),
-    ("CPU", "cpu"), ("RAM (GB)", "ram_gb"), ("İşletim Sistemi", "os"),
-    ("Not", "notes"),
+    ("Tip", "device_type"), ("Ad", "name"), ("Rol", "role"),
+    ("Lokasyon", "location"), ("Durum", "status"), ("Yönetim IP", "mgmt_ip"),
+    ("iLO/BMC IP", "ilo_ip"), ("Marka", "brand"), ("Model", "model"),
+    ("Seri No", "serial_no"), ("CPU", "cpu"), ("RAM (GB)", "ram_gb"),
+    ("İşletim Sistemi", "os"), ("Not", "notes"),
 ]
 
 HOST_COLUMNS = [
@@ -99,19 +101,26 @@ BACKUP_COLUMNS = [
 
 
 def _row_values(obj, columns):
-    """Extract values from a model object in column order."""
+    """Extract values from a model object OR a dict, in column order.
+
+    Physical host projections are passed as dicts; manual devices and other
+    inventory are ORM objects. device_type/status/role codes -> TR labels.
+    """
+    is_dict = isinstance(obj, dict)
+    get = (lambda f: obj.get(f)) if is_dict else (lambda f: getattr(obj, f, ""))
+    is_physical = is_dict or obj.__class__.__name__ == "PhysicalDevice"
     values = []
     for _, field in columns:
         if field == "host_name":  # VM -> related host name
             values.append(obj.host_ref.name if getattr(obj, "host_ref", None) else "")
         elif field == "device_type":
-            values.append(PHYSICAL_DTYPE_LABELS.get(getattr(obj, field, ""),
-                                                    getattr(obj, field, "") or ""))
-        elif field == "status" and obj.__class__.__name__ == "PhysicalDevice":
-            values.append(PHYSICAL_STATUS_LABELS.get(getattr(obj, field, ""),
-                                                     getattr(obj, field, "") or ""))
+            values.append(PHYSICAL_DTYPE_LABELS.get(get(field), get(field) or ""))
+        elif field == "status" and is_physical:
+            values.append(PHYSICAL_STATUS_LABELS.get(get(field), get(field) or ""))
+        elif field == "role" and is_physical:
+            values.append(PHYSICAL_ROLE_LABELS.get(get(field), get(field) or ""))
         else:
-            v = getattr(obj, field, "")
+            v = get(field)
             values.append("" if v is None else v)
     return values
 

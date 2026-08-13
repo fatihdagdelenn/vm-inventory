@@ -11,6 +11,13 @@
   <select id="phLocFilter" class="form-select form-select-sm" style="max-width:200px">
     <option value="" data-i18n="ph.allLocations">Tüm lokasyonlar</option>
   </select>
+  <select id="phRoleFilter" class="form-select form-select-sm" style="max-width:170px">
+    <option value="" data-i18n="ph.allRoles">Tüm roller</option>
+    <option value="hypervisor" data-i18n="ph.r.hypervisor">Hypervisor</option>
+    <option value="windows" data-i18n="ph.r.windows">Windows</option>
+    <option value="linux" data-i18n="ph.r.linux">Linux</option>
+    <option value="other" data-i18n="ph.r.other">Diğer</option>
+  </select>
   <div class="btn-group btn-group-sm net-modes" role="group" id="phTypeFilter">
     <button class="btn active" data-type="" data-i18n="ph.all">Tümü</button>
     <button class="btn" data-type="server" data-i18n="ph.t.server">Fiziksel Sunucu</button>
@@ -35,17 +42,19 @@
       <thead><tr>
         <th class="ph-sort" data-sort="device_type" data-i18n="ph.type">Tip</th>
         <th class="ph-sort" data-sort="name" data-i18n="ph.name">Ad</th>
+        <th class="ph-sort" data-sort="role" data-i18n="ph.role">Rol</th>
         <th class="ph-sort" data-sort="location" data-i18n="ph.location">Lokasyon</th>
         <th class="ph-sort" data-sort="status" data-i18n="ph.status">Durum</th>
         <th class="ph-sort" data-sort="mgmt_ip" data-i18n="ph.mgmtIp">Yönetim IP</th>
         <th class="ph-sort" data-sort="ilo_ip" data-i18n="ph.iloIp">iLO/BMC IP</th>
         <th class="ph-sort" data-sort="brand" data-i18n="ph.brand">Marka</th>
         <th class="ph-sort" data-sort="model" data-i18n="ph.model">Model</th>
-        <th class="ph-sort" data-sort="specs" data-i18n="ph.specs">CPU / RAM</th>
+        <th class="ph-sort" data-sort="cpu" data-i18n="ph.cpu">CPU</th>
+        <th class="ph-sort" data-sort="ram_gb" data-i18n="ph.ram">RAM</th>
         <th class="text-end"></th>
       </tr></thead>
       <tbody id="phBody">
-        <tr><td colspan="10" class="text-center text-muted p-4" data-i18n="common.loading">Yükleniyor…</td></tr>
+        <tr><td colspan="11" class="text-center text-muted p-4" data-i18n="common.loading">Yükleniyor…</td></tr>
       </tbody>
     </table>
   </div>
@@ -99,9 +108,17 @@
     <div id="phServerFields" class="mt-3 pt-3" style="border-top:1px solid var(--border)">
       <div class="small text-muted mb-2"><i class="bi bi-cpu"></i> <span data-i18n="ph.serverOnly">Sunucuya özel donanım bilgileri</span></div>
       <div class="row g-3">
-        <div class="col-md-6"><label class="form-label" data-i18n="ph.cpu">CPU</label><input type="text" class="form-control" id="f_cpu" data-i18n-ph="ph.cpuPh" placeholder="2x Xeon Gold 6338 (64c)"></div>
-        <div class="col-md-3"><label class="form-label" data-i18n="ph.ram">RAM (GB)</label><input type="number" class="form-control" id="f_ram_gb" min="0"></div>
-        <div class="col-md-3"><label class="form-label" data-i18n="ph.os">İşletim Sistemi</label><input type="text" class="form-control" id="f_os" data-i18n-ph="ph.osPh" placeholder="ESXi 8.0"></div>
+        <div class="col-md-4"><label class="form-label" data-i18n="ph.role">Rol</label>
+          <select class="form-select" id="f_role">
+            <option value="" data-i18n="ph.roleNone">— Seçiniz —</option>
+            <option value="hypervisor" data-i18n="ph.r.hypervisor">Hypervisor</option>
+            <option value="windows" data-i18n="ph.r.windows">Windows</option>
+            <option value="linux" data-i18n="ph.r.linux">Linux</option>
+            <option value="other" data-i18n="ph.r.other">Diğer</option>
+          </select></div>
+        <div class="col-md-8"><label class="form-label" data-i18n="ph.cpu">CPU</label><input type="text" class="form-control" id="f_cpu" data-i18n-ph="ph.cpuPh" placeholder="2x Xeon Gold 6338 (64c)"></div>
+        <div class="col-md-6"><label class="form-label" data-i18n="ph.ram">RAM (GB)</label><input type="number" class="form-control" id="f_ram_gb" min="0"></div>
+        <div class="col-md-6"><label class="form-label" data-i18n="ph.os">İşletim Sistemi</label><input type="text" class="form-control" id="f_os" data-i18n-ph="ph.osPh" placeholder="ESXi 8.0"></div>
       </div>
     </div>
 
@@ -110,6 +127,39 @@
   <div class="modal-footer">
     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="action.cancel">İptal</button>
     <button type="button" class="btn btn-primary" onclick="Physical.save()"><i class="bi bi-check-lg"></i> <span data-i18n="action.save">Kaydet</span></button>
+  </div>
+</div></div></div>
+
+<!-- Host supplement modal (manual extras for a read-only platform host) -->
+<div class="modal fade" id="phHostModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+  <div class="modal-header">
+    <h5 class="modal-title"><i class="bi bi-link-45deg"></i> <span data-i18n="ph.hostExtra">Host Ek Bilgileri</span></h5>
+    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+  </div>
+  <div class="modal-body">
+    <p class="text-muted small"><i class="bi bi-info-circle"></i> <span id="phHostName" class="fw-semibold"></span> — <span data-i18n="ph.hostExtraDesc">bu host sanallaştırma platformundan otomatik gelir; aşağıdaki alanları elle tamamlayabilirsiniz.</span></p>
+    <input type="hidden" id="fh_host_id">
+    <div class="row g-3">
+      <div class="col-md-6"><label class="form-label" data-i18n="ph.role">Rol</label>
+        <select class="form-select" id="fh_role">
+          <option value="hypervisor" data-i18n="ph.r.hypervisor">Hypervisor</option>
+          <option value="windows" data-i18n="ph.r.windows">Windows</option>
+          <option value="linux" data-i18n="ph.r.linux">Linux</option>
+          <option value="other" data-i18n="ph.r.other">Diğer</option>
+        </select></div>
+      <div class="col-md-6"><label class="form-label" data-i18n="ph.location">Lokasyon</label>
+        <input type="text" class="form-control" id="fh_location" list="phLocList"></div>
+      <div class="col-md-6"><label class="form-label" data-i18n="ph.iloIp">iLO / iDRAC / BMC IP</label>
+        <input type="text" class="form-control" id="fh_ilo_ip"></div>
+      <div class="col-md-6"><label class="form-label" data-i18n="ph.serialNo">Seri No</label>
+        <input type="text" class="form-control" id="fh_serial_no"></div>
+      <div class="col-12"><label class="form-label" data-i18n="ph.notes">Not</label>
+        <textarea class="form-control" id="fh_notes" rows="2"></textarea></div>
+    </div>
+  </div>
+  <div class="modal-footer">
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="action.cancel">İptal</button>
+    <button type="button" class="btn btn-primary" onclick="Physical.saveHost()"><i class="bi bi-check-lg"></i> <span data-i18n="action.save">Kaydet</span></button>
   </div>
 </div></div></div>
 

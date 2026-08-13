@@ -4,6 +4,7 @@ const Physical = {
   items: [],
   filterType: '',
   filterLoc: '',
+  filterRole: '',
   q: '',
   sortKey: 'name',
   sortDir: 1,   // 1 asc, -1 desc
@@ -21,9 +22,16 @@ const Physical = {
     spare:   { c: 'text-bg-info',           k: 'ph.s.spare' },
     retired: { c: 'text-bg-dark',           k: 'ph.s.retired' },
   },
+  ROLES: {
+    hypervisor: { c: 'text-bg-primary',   k: 'ph.r.hypervisor' },
+    windows:    { c: 'text-bg-info',      k: 'ph.r.windows' },
+    linux:      { c: 'text-bg-warning',   k: 'ph.r.linux' },
+    other:      { c: 'text-bg-secondary', k: 'ph.r.other' },
+  },
 
   typeLabel(t2) { const m = Physical.TYPES[t2]; return m ? window.t(m.k, t2) : t2; },
   statusLabel(s) { const m = Physical.STATUS[s]; return m ? window.t(m.k, s) : s; },
+  roleLabel(r) { const m = Physical.ROLES[r]; return m ? window.t(m.k, r) : (r || ''); },
 
   async load() {
     let data;
@@ -31,6 +39,7 @@ const Physical = {
     if (Physical.q) qs.set('q', Physical.q);
     if (Physical.filterType) qs.set('device_type', Physical.filterType);
     if (Physical.filterLoc) qs.set('location', Physical.filterLoc);
+    if (Physical.filterRole) qs.set('role', Physical.filterRole);
     try { data = await App.api('/api/physical?' + qs.toString()); } catch (e) { return; }
     Physical.items = data.items || [];
     Physical.fillLocations(data.locations || []);
@@ -66,9 +75,11 @@ const Physical = {
   },
 
   sortVal(d, key) {
-    if (key === 'specs') return (d.device_type === 'server' ? (d.ram_gb || 0) : -1);
+    if (key === 'ram_gb') return d.ram_gb || 0;
+    if (key === 'cpu') return (d.cpu || '').toLowerCase();
     if (key === 'device_type') return Physical.typeLabel(d.device_type);
     if (key === 'status') return Physical.statusLabel(d.status);
+    if (key === 'role') return Physical.roleLabel(d.role);
     const v = d[key];
     return v == null ? '' : v;
   },
@@ -86,7 +97,7 @@ const Physical = {
   renderTable() {
     const body = document.getElementById('phBody');
     if (!Physical.items.length) {
-      body.innerHTML = '<tr><td colspan="10" class="text-center text-muted p-4">' +
+      body.innerHTML = '<tr><td colspan="11" class="text-center text-muted p-4">' +
         window.t('ph.empty', 'Kayıt yok. "Cihaz Ekle" ile başlayın.') + '</td></tr>';
       Physical.markSort();
       return;
@@ -96,25 +107,40 @@ const Physical = {
     body.innerHTML = Physical.items.map(d => {
       const tm = Physical.TYPES[d.device_type] || {};
       const sm = Physical.STATUS[d.status] || {};
-      const specs = d.device_type === 'server'
-        ? [(d.cpu || ''), (d.ram_gb ? d.ram_gb + ' GB' : '')].filter(Boolean).join(' · ') || '—'
+      const isHost = d.source === 'platform';
+      // Name cell: platform hosts get a "🔗 auto" badge
+      const nameCell = App.esc(d.name) +
+        (isHost ? ' <span class="badge text-bg-light border text-muted" title="' +
+          window.t('ph.fromPlatform', 'Sanallaştırma platformundan otomatik') + '">' +
+          '<i class="bi bi-link-45deg"></i> ' + window.t('ph.auto', 'otomatik') + '</span>' : '');
+      // Role cell (servers only)
+      const roleCell = d.role
+        ? '<span class="badge ' + (Physical.ROLES[d.role] || {}).c + '">' + App.esc(Physical.roleLabel(d.role)) + '</span>'
         : '—';
-      const actions = canEdit
-        ? '<button class="btn btn-sm btn-link p-0 me-2" title="' + window.t('action.edit', 'Düzenle') +
+      // Actions: manual -> edit/delete; host -> "complete extras"
+      let actions = '';
+      if (canEdit && isHost) {
+        actions = '<button class="btn btn-sm btn-link p-0" title="' +
+          window.t('ph.completeExtras', 'Ek bilgileri tamamla') +
+          '" onclick=\'Physical.openHost(' + d.host_id + ')\'><i class="bi bi-pencil-square"></i></button>';
+      } else if (canEdit) {
+        actions = '<button class="btn btn-sm btn-link p-0 me-2" title="' + window.t('action.edit', 'Düzenle') +
             '" onclick=\'Physical.openForm(' + d.id + ')\'><i class="bi bi-pencil"></i></button>' +
           '<button class="btn btn-sm btn-link p-0 text-danger" title="' + window.t('action.delete', 'Sil') +
-            '" onclick="Physical.remove(' + d.id + ')"><i class="bi bi-trash"></i></button>'
-        : '';
-      return '<tr>' +
+            '" onclick="Physical.remove(' + d.id + ')"><i class="bi bi-trash"></i></button>';
+      }
+      return '<tr' + (isHost ? ' class="ph-host-row"' : '') + '>' +
         '<td><span class="badge ' + (tm.c || 'text-bg-secondary') + '"><i class="bi bi-' + (tm.i || 'box') + '"></i> ' + App.esc(Physical.typeLabel(d.device_type)) + '</span></td>' +
-        '<td class="fw-semibold">' + App.esc(d.name) + '</td>' +
+        '<td class="fw-semibold">' + nameCell + '</td>' +
+        '<td>' + roleCell + '</td>' +
         '<td>' + App.esc(d.location || '—') + '</td>' +
         '<td><span class="badge ' + (sm.c || 'text-bg-secondary') + '">' + App.esc(Physical.statusLabel(d.status)) + '</span></td>' +
         '<td>' + App.esc(d.mgmt_ip || '—') + '</td>' +
         '<td>' + App.esc(d.ilo_ip || '—') + '</td>' +
         '<td>' + App.esc(d.brand || '—') + '</td>' +
         '<td>' + App.esc(d.model || '—') + '</td>' +
-        '<td class="small text-muted">' + App.esc(specs) + '</td>' +
+        '<td class="small text-muted">' + App.esc(d.cpu || '—') + '</td>' +
+        '<td class="small text-muted text-nowrap">' + (d.ram_gb ? d.ram_gb + ' GB' : '—') + '</td>' +
         '<td class="text-end text-nowrap">' + actions + '</td>' +
         '</tr>';
     }).join('');
@@ -150,6 +176,7 @@ const Physical = {
     set('serial_no', d && d.serial_no); set('cpu', d && d.cpu);
     set('ram_gb', d && d.ram_gb); set('os', d && d.os); set('notes', d && d.notes);
     document.getElementById('f_status').value = (d && d.status) || 'active';
+    document.getElementById('f_role').value = (d && d.role) || '';
     Physical.toggleServerFields();
     bootstrap.Modal.getOrCreateInstance(document.getElementById('phModal')).show();
   },
@@ -159,6 +186,7 @@ const Physical = {
     const payload = {
       device_type: document.querySelector('input[name="phType"]:checked').value,
       name: val('name'), location: val('location'), status: document.getElementById('f_status').value,
+      role: document.getElementById('f_role').value,
       mgmt_ip: val('mgmt_ip'), ilo_ip: val('ilo_ip'), brand: val('brand'),
       model: val('model'), serial_no: val('serial_no'), cpu: val('cpu'),
       ram_gb: val('ram_gb'), os: val('os'), notes: val('notes'),
@@ -170,6 +198,36 @@ const Physical = {
                     { method: id ? 'PUT' : 'POST', body: payload });
     } catch (e) { return; }
     bootstrap.Modal.getInstance(document.getElementById('phModal')).hide();
+    App.toast(window.t('ph.saved', 'Kaydedildi'), 'success');
+    Physical.load();
+  },
+
+  // Open the supplement modal for a read-only platform host
+  openHost(hostId) {
+    const d = Physical.items.find(x => x.source === 'platform' && x.host_id === hostId);
+    if (!d) return;
+    document.getElementById('fh_host_id').value = hostId;
+    document.getElementById('phHostName').textContent = d.name;
+    document.getElementById('fh_role').value = d.role || 'hypervisor';
+    document.getElementById('fh_location').value = d.location || '';
+    document.getElementById('fh_ilo_ip').value = d.ilo_ip || '';
+    document.getElementById('fh_serial_no').value = d.serial_no || '';
+    document.getElementById('fh_notes').value = d.notes || '';
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('phHostModal')).show();
+  },
+
+  async saveHost() {
+    const hostId = document.getElementById('fh_host_id').value;
+    const val = f => document.getElementById('fh_' + f).value.trim();
+    const payload = {
+      role: document.getElementById('fh_role').value,
+      location: val('location'), ilo_ip: val('ilo_ip'),
+      serial_no: val('serial_no'), notes: val('notes'),
+    };
+    try {
+      await App.api('/api/physical/host/' + hostId, { method: 'PUT', body: payload });
+    } catch (e) { return; }
+    bootstrap.Modal.getInstance(document.getElementById('phHostModal')).hide();
     App.toast(window.t('ph.saved', 'Kaydedildi'), 'success');
     Physical.load();
   },
@@ -213,6 +271,7 @@ const Physical = {
     if (Physical.q) qs.set('q', Physical.q);
     if (Physical.filterType) qs.set('device_type', Physical.filterType);
     if (Physical.filterLoc) qs.set('location', Physical.filterLoc);
+    if (Physical.filterRole) qs.set('role', Physical.filterRole);
     location = '/api/physical/export?' + qs.toString();
   },
 
@@ -232,6 +291,10 @@ const Physical = {
     const loc = document.getElementById('phLocFilter');
     if (loc) loc.addEventListener('change', e => {
       Physical.filterLoc = e.target.value; Physical.load();
+    });
+    const rf = document.getElementById('phRoleFilter');
+    if (rf) rf.addEventListener('change', e => {
+      Physical.filterRole = e.target.value; Physical.load();
     });
     // Sortable columns: click toggles asc/desc; re-render locally (no refetch)
     document.querySelectorAll('#phTable th.ph-sort').forEach(th =>

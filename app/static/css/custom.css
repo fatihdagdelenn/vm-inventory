@@ -262,6 +262,8 @@ th.ph-sort:hover { color: var(--accent); }
 th.ph-sort.sorted { color: var(--accent); }
 th.ph-sort .sort-ic { font-size: .7rem; opacity: .5; }
 th.ph-sort.sorted .sort-ic { opacity: 1; }
+tr.ph-host-row > td:first-child { border-left: 2px solid var(--accent); }
+tr.ph-host-row { background: color-mix(in srgb, var(--accent) 4%, transparent); }
 th.sorted-asc::after  { content: " ▲"; color: var(--accent); font-size: .65rem; }
 th.sorted-desc::after { content: " ▼"; color: var(--accent); font-size: .65rem; }
 

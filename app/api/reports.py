@@ -76,9 +76,8 @@ def export_datastores(fmt: str = "xlsx", db: Session = Depends(get_db),
 @router.get("/physical/export")
 def export_physical(fmt: str = "xlsx", db: Session = Depends(get_db),
                     user: User = Depends(get_current_user)):
-    from ..models import PhysicalDevice
-    items = db.query(PhysicalDevice).order_by(
-        PhysicalDevice.device_type, PhysicalDevice.name).all()
+    from .physical import physical_export_rows
+    items = physical_export_rows(db)
     log_audit(db, user, "export", target=f"physical ({fmt})", detail=f"count={len(items)}")
     db.commit()
     return _export(items, rs.PHYSICAL_COLUMNS, fmt, "Fiziksel Envanter")
@@ -89,14 +88,14 @@ def export_all(fmt: str = "xlsx", q: str = "", db: Session = Depends(get_db),
                user: User = Depends(get_current_user)):
     """Combined report: VMs + hosts + datastores + physical inventory in ONE
     file (Excel -> separate sheets; CSV/PDF -> stacked sections)."""
-    from ..models import Datastore, PhysicalDevice
+    from ..models import Datastore
+    from .physical import physical_export_rows
     vms = apply_vm_search(
         db.query(VirtualMachine).options(joinedload(VirtualMachine.host_ref))
           .filter_by(is_template=False), q).order_by(VirtualMachine.name).all()
     hosts = db.query(Host).order_by(Host.name).all()
     dstores = db.query(Datastore).order_by(Datastore.name).all()
-    phys = db.query(PhysicalDevice).order_by(
-        PhysicalDevice.device_type, PhysicalDevice.name).all()
+    phys = physical_export_rows(db)
     sections = [
         ("Sanal Makineler", vms, rs.VM_COLUMNS),
         ("Host'lar", hosts, rs.HOST_COLUMNS),
@@ -160,16 +159,15 @@ def _build_items(db: Session, target: str, q: str):
     Returns (items, columns, label) for single-target reports, or
     (sections, None, label) for the combined 'all' target.
     """
-    from ..models import Datastore, PhysicalDevice
+    from ..models import Datastore
+    from .physical import physical_export_rows
     if target == "hosts":
         return db.query(Host).order_by(Host.name).all(), rs.HOST_COLUMNS, "Host"
     if target == "datastores":
         return (db.query(Datastore).order_by(Datastore.name).all(),
                 rs.DATASTORE_COLUMNS, "Datastore")
     if target == "physical":
-        return (db.query(PhysicalDevice).order_by(
-                    PhysicalDevice.device_type, PhysicalDevice.name).all(),
-                rs.PHYSICAL_COLUMNS, "Fiziksel")
+        return physical_export_rows(db), rs.PHYSICAL_COLUMNS, "Fiziksel"
     if target == "all":
         vms = apply_vm_search(db.query(VirtualMachine).options(
             joinedload(VirtualMachine.host_ref)).filter_by(is_template=False),
@@ -179,9 +177,7 @@ def _build_items(db: Session, target: str, q: str):
             ("Host'lar", db.query(Host).order_by(Host.name).all(), rs.HOST_COLUMNS),
             ("Datastore'lar", db.query(Datastore).order_by(Datastore.name).all(),
              rs.DATASTORE_COLUMNS),
-            ("Fiziksel Envanter", db.query(PhysicalDevice).order_by(
-                PhysicalDevice.device_type, PhysicalDevice.name).all(),
-             rs.PHYSICAL_COLUMNS),
+            ("Fiziksel Envanter", physical_export_rows(db), rs.PHYSICAL_COLUMNS),
         ]
         return sections, None, "Tüm Envanter"
     query = db.query(VirtualMachine).options(
