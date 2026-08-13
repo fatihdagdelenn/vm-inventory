@@ -9,21 +9,28 @@
         <div class="mb-3">
           <label class="form-label" data-i18n="rp.filterOpt">Filtre (opsiyonel)</label>
           <input type="text" id="repQuery" class="form-control" placeholder="örn: os:windows vlan:100">
+          <div class="form-text" id="repFilterNote" data-i18n="rp.filterVmOnly">Filtre yalnızca Sanal Makineler kapsamına uygulanır.</div>
         </div>
-        <div class="d-flex gap-2 flex-wrap">
-          <button class="btn btn-success" onclick="Reports.export('vms','xlsx')"><i class="bi bi-file-earmark-excel"></i> VM Excel</button>
-          <button class="btn btn-secondary" onclick="Reports.export('vms','csv')">VM CSV</button>
-          <button class="btn btn-danger" onclick="Reports.export('vms','pdf')">VM PDF</button>
-          <button class="btn btn-outline-success" onclick="Reports.export('hosts','xlsx')">Host Excel</button>
-          <button class="btn btn-outline-info" onclick="Reports.export('physical','xlsx')"><i class="bi bi-hdd-network"></i> <span data-i18n="rp.physical">Fiziksel</span> Excel</button>
+
+        <label class="form-label" data-i18n="rp.scope">Kapsam</label>
+        <div class="btn-group btn-group-sm net-modes d-flex flex-wrap mb-3" role="group" id="repScope">
+          <button class="btn active" data-scope="vms"><i class="bi bi-pc-display"></i> <span data-i18n="nav.vms">Sanal Makineler</span></button>
+          <button class="btn" data-scope="hosts"><i class="bi bi-server"></i> <span data-i18n="nav.hosts">Host'lar</span></button>
+          <button class="btn" data-scope="datastores"><i class="bi bi-hdd-stack"></i> <span data-i18n="nav.datastores">Datastore'lar</span></button>
+          <button class="btn" data-scope="physical"><i class="bi bi-hdd-network"></i> <span data-i18n="nav.physical">Fiziksel Envanter</span></button>
+          <button class="btn" data-scope="all"><i class="bi bi-collection"></i> <span data-i18n="rp.allExport">Tüm Envanter</span></button>
         </div>
-        <hr class="my-3">
-        <p class="text-muted small mb-2"><i class="bi bi-collection"></i> <span data-i18n="rp.allDesc">Tüm envanter tek dosyada (VM + Host + Datastore + Fiziksel). Excel'de ayrı sayfalar, CSV/PDF'de ardışık bölümler.</span></p>
-        <div class="d-flex gap-2 flex-wrap">
-          <button class="btn btn-primary" onclick="Reports.export('all','xlsx')"><i class="bi bi-file-earmark-excel"></i> <span data-i18n="rp.allExport">Tüm Envanter</span> Excel</button>
-          <button class="btn btn-outline-primary" onclick="Reports.export('all','csv')"><span data-i18n="rp.allExport">Tüm Envanter</span> CSV</button>
-          <button class="btn btn-outline-primary" onclick="Reports.export('all','pdf')"><span data-i18n="rp.allExport">Tüm Envanter</span> PDF</button>
+
+        <label class="form-label" data-i18n="rp.format">Format</label>
+        <div class="d-flex gap-2">
+          <button class="btn btn-success flex-fill" onclick="Reports.exportScope('xlsx')"><i class="bi bi-file-earmark-excel"></i> Excel</button>
+          <button class="btn btn-outline-secondary flex-fill" onclick="Reports.exportScope('csv')"><i class="bi bi-filetype-csv"></i> CSV</button>
+          <button class="btn btn-outline-danger flex-fill" onclick="Reports.exportScope('pdf')"><i class="bi bi-file-earmark-pdf"></i> PDF</button>
         </div>
+
+        <p class="text-muted small mb-0 mt-3" id="repScopeNote">
+          <i class="bi bi-info-circle"></i> <span data-i18n="rp.scopeVms">Sanal makine envanteri dışa aktarılır.</span>
+        </p>
       </div>
     </div>
 

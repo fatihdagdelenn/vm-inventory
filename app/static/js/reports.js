@@ -3,6 +3,48 @@
  * Zamanlanmış raporlar artık DB'de saklanır; saatler uygulama zaman dilimine göredir.
  */
 const Reports = {
+  scope: 'vms',
+
+  // Which scope accepts the free-text filter, and its description note.
+  SCOPES: {
+    vms:        { filter: true,  note: 'rp.scopeVms' },
+    hosts:      { filter: false, note: 'rp.scopeHosts' },
+    datastores: { filter: false, note: 'rp.scopeDs' },
+    physical:   { filter: false, note: 'rp.scopePhysical' },
+    all:        { filter: true,  note: 'rp.scopeAll' },
+  },
+  NOTE_TR: {
+    'rp.scopeVms': 'Sanal makine envanteri dışa aktarılır.',
+    'rp.scopeHosts': "Host envanteri dışa aktarılır.",
+    'rp.scopeDs': "Datastore envanteri dışa aktarılır.",
+    'rp.scopePhysical': 'Fiziksel envanter (sunucu, storage, SAN switch, yedekleme) dışa aktarılır.',
+    'rp.scopeAll': 'Tüm envanter tek dosyada: VM + Host + Datastore + Fiziksel. Excel\'de ayrı sayfalar, CSV/PDF\'de ardışık bölümler.',
+  },
+
+  setScope(scope) {
+    Reports.scope = scope;
+    document.querySelectorAll('#repScope [data-scope]').forEach(b =>
+      b.classList.toggle('active', b.dataset.scope === scope));
+    const meta = Reports.SCOPES[scope] || Reports.SCOPES.vms;
+    // Free-text filter only meaningful for VM-backed scopes
+    const inp = document.getElementById('repQuery');
+    const note = document.getElementById('repFilterNote');
+    if (inp) { inp.disabled = !meta.filter; inp.classList.toggle('opacity-50', !meta.filter); }
+    if (note) note.style.display = meta.filter ? '' : 'none';
+    // Scope description line
+    const sn = document.getElementById('repScopeNote');
+    if (sn) sn.querySelector('span').textContent =
+      window.t(meta.note, Reports.NOTE_TR[meta.note] || '');
+  },
+
+  /** Export the currently selected scope in the given format. */
+  exportScope(fmt) {
+    const meta = Reports.SCOPES[Reports.scope] || {};
+    const q = meta.filter ? document.getElementById('repQuery').value.trim() : '';
+    location.href = '/api/reports/' + Reports.scope + '/export?fmt=' + fmt +
+                    (q ? '&q=' + encodeURIComponent(q) : '');
+  },
+
   /** Anlık dışa aktarma — entity: 'vms' | 'hosts', fmt: xlsx | csv | pdf */
   export(entity, fmt) {
     const q = document.getElementById('repQuery').value.trim();
@@ -105,5 +147,8 @@ const Reports = {
   },
 };
 
+document.querySelectorAll('#repScope [data-scope]').forEach(b =>
+  b.addEventListener('click', () => Reports.setScope(b.dataset.scope)));
+Reports.setScope('vms');
 Reports.loadSchedules();
 Reports.loadFiles();
