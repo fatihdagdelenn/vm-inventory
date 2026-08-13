@@ -10,23 +10,23 @@ const Physical = {
   sortDir: 1,   // 1 asc, -1 desc
 
   TYPES: {
-    server:     { i: 'server',     c: 'text-bg-primary',   k: 'ph.t.server' },
-    storage:    { i: 'hdd-stack',  c: 'text-bg-info',      k: 'ph.t.storage' },
-    san_switch: { i: 'diagram-3',  c: 'text-bg-warning',   k: 'ph.t.san_switch' },
-    backup:     { i: 'archive',    c: 'text-bg-secondary', k: 'ph.t.backup' },
+    server:     { i: 'server',     c: 'ph-badge ph-badge-blue',  k: 'ph.t.server' },
+    storage:    { i: 'hdd-stack',  c: 'ph-badge ph-badge-cyan',  k: 'ph.t.storage' },
+    san_switch: { i: 'diagram-3',  c: 'ph-badge ph-badge-amber', k: 'ph.t.san_switch' },
+    backup:     { i: 'archive',    c: 'ph-badge ph-badge-gray',  k: 'ph.t.backup' },
   },
   STATUS: {
-    active:  { c: 'text-bg-success',        k: 'ph.s.active' },
-    passive: { c: 'text-bg-secondary',      k: 'ph.s.passive' },
-    faulty:  { c: 'text-bg-danger',         k: 'ph.s.faulty' },
-    spare:   { c: 'text-bg-info',           k: 'ph.s.spare' },
-    retired: { c: 'text-bg-dark',           k: 'ph.s.retired' },
+    active:  { c: 'ph-badge ph-badge-green', k: 'ph.s.active' },
+    passive: { c: 'ph-badge ph-badge-gray',  k: 'ph.s.passive' },
+    faulty:  { c: 'ph-badge ph-badge-red',   k: 'ph.s.faulty' },
+    spare:   { c: 'ph-badge ph-badge-cyan',  k: 'ph.s.spare' },
+    retired: { c: 'ph-badge ph-badge-gray',  k: 'ph.s.retired' },
   },
   ROLES: {
-    hypervisor: { c: 'text-bg-primary',   k: 'ph.r.hypervisor' },
-    windows:    { c: 'text-bg-info',      k: 'ph.r.windows' },
-    linux:      { c: 'text-bg-warning',   k: 'ph.r.linux' },
-    other:      { c: 'text-bg-secondary', k: 'ph.r.other' },
+    hypervisor: { c: 'ph-badge ph-badge-blue',  k: 'ph.r.hypervisor' },
+    windows:    { c: 'ph-badge ph-badge-cyan',  k: 'ph.r.windows' },
+    linux:      { c: 'ph-badge ph-badge-amber', k: 'ph.r.linux' },
+    other:      { c: 'ph-badge ph-badge-gray',  k: 'ph.r.other' },
   },
 
   typeLabel(t2) { const m = Physical.TYPES[t2]; return m ? window.t(m.k, t2) : t2; },
@@ -110,7 +110,7 @@ const Physical = {
       const isHost = d.source === 'platform';
       // Name cell: platform hosts get a "🔗 auto" badge
       const nameCell = App.esc(d.name) +
-        (isHost ? ' <span class="badge text-bg-light border text-muted" title="' +
+        (isHost ? ' <span class="ph-badge ph-badge-auto" title="' +
           window.t('ph.fromPlatform', 'Sanallaştırma platformundan otomatik') + '">' +
           '<i class="bi bi-link-45deg"></i> ' + window.t('ph.auto', 'otomatik') + '</span>' : '');
       // Role cell (servers only)
@@ -212,6 +212,16 @@ const Physical = {
     document.getElementById('fh_location').value = d.location || '';
     document.getElementById('fh_ilo_ip').value = d.ilo_ip || '';
     document.getElementById('fh_serial_no').value = d.serial_no || '';
+    // Brand/model overrides: prefill only when the user has already overridden;
+    // otherwise leave blank and show the auto-detected value as a hint.
+    document.getElementById('fh_brand').value = d.hw_overridden ? (d.brand || '') : '';
+    document.getElementById('fh_model').value = d.hw_overridden ? (d.model || '') : '';
+    const hint = document.getElementById('fh_hwAuto');
+    hint.innerHTML = d.hw_auto
+      ? '<span class="text-muted">' + window.t('ph.autoDetected', 'Otomatik algılanan') +
+        ': <code>' + App.esc(d.hw_auto) + '</code>' +
+        (d.hw_overridden ? ' — ' + window.t('ph.overridden', 'elle değiştirildi') : '') + '</span>'
+      : '';
     document.getElementById('fh_notes').value = d.notes || '';
     bootstrap.Modal.getOrCreateInstance(document.getElementById('phHostModal')).show();
   },
@@ -222,7 +232,8 @@ const Physical = {
     const payload = {
       role: document.getElementById('fh_role').value,
       location: val('location'), ilo_ip: val('ilo_ip'),
-      serial_no: val('serial_no'), notes: val('notes'),
+      serial_no: val('serial_no'), brand: val('brand'), model: val('model'),
+      notes: val('notes'),
     };
     try {
       await App.api('/api/physical/host/' + hostId, { method: 'PUT', body: payload });

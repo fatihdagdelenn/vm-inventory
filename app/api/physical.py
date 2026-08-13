@@ -54,6 +54,12 @@ def _host_to_dict(h: Host, sup: HostSupplement = None) -> dict:
     brand, model = "", (h.hw_model or "")
     if h.hw_model and " " in h.hw_model:
         brand, model = h.hw_model.split(" ", 1)
+    # Manual override wins (Proxmox often reports a generic/wrong chassis)
+    hw_overridden = False
+    if sup and (sup.brand or sup.model):
+        brand = sup.brand or brand
+        model = sup.model or model
+        hw_overridden = True
     return {
         "id": None, "source": "platform", "host_id": h.id,
         "device_type": "server", "name": h.name,
@@ -61,7 +67,8 @@ def _host_to_dict(h: Host, sup: HostSupplement = None) -> dict:
         "status": "active" if (h.status == "online") else (h.status or "active"),
         "role": (sup.role if sup and sup.role else "hypervisor"),
         "mgmt_ip": h.mgmt_ip, "ilo_ip": (sup.ilo_ip if sup else None),
-        "brand": brand, "model": model,
+        "brand": brand, "model": model, "hw_overridden": hw_overridden,
+        "hw_auto": (h.hw_model or ""),
         "serial_no": (sup.serial_no if sup else None),
         "cpu": cpu, "ram_gb": ram_gb, "os": h.os_version,
         "notes": (sup.notes if sup else None),
@@ -187,6 +194,8 @@ def upsert_host_supplement(host_id: int, request: Request,
     sup.ilo_ip = (payload.get("ilo_ip") or "").strip() or None
     sup.serial_no = (payload.get("serial_no") or "").strip() or None
     sup.role = role if role in SERVER_ROLES else "hypervisor"
+    sup.brand = (payload.get("brand") or "").strip() or None
+    sup.model = (payload.get("model") or "").strip() or None
     sup.notes = (payload.get("notes") or "").strip() or None
     log_audit(db, user, "update", target=f"host-supplement:{h.name}", request=request)
     db.commit()

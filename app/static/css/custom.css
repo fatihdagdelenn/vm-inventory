@@ -264,6 +264,26 @@ th.ph-sort .sort-ic { font-size: .7rem; opacity: .5; }
 th.ph-sort.sorted .sort-ic { opacity: 1; }
 tr.ph-host-row > td:first-child { border-left: 2px solid var(--accent); }
 tr.ph-host-row { background: color-mix(in srgb, var(--accent) 4%, transparent); }
+
+/* Soft badges — muted background + colored text, easier on the eyes than
+   Bootstrap's solid text-bg-* fills. Used across the physical inventory. */
+.ph-badge {
+  font-weight: 600; font-size: .72rem; padding: .28em .6em;
+  border-radius: 6px; border: 1px solid transparent;
+  display: inline-flex; align-items: center; gap: .3em;
+}
+.ph-badge-blue   { background: color-mix(in srgb, #3b9bff 15%, transparent); color: #2f81f7; border-color: color-mix(in srgb, #3b9bff 25%, transparent); }
+.ph-badge-cyan   { background: color-mix(in srgb, #26a3b8 16%, transparent); color: #1a94a8; border-color: color-mix(in srgb, #26a3b8 26%, transparent); }
+.ph-badge-amber  { background: color-mix(in srgb, #d6a12e 18%, transparent); color: #b9821a; border-color: color-mix(in srgb, #d6a12e 28%, transparent); }
+.ph-badge-green  { background: color-mix(in srgb, #2ea77f 16%, transparent); color: #1f8f6a; border-color: color-mix(in srgb, #2ea77f 26%, transparent); }
+.ph-badge-red    { background: color-mix(in srgb, #e06a4f 16%, transparent); color: #d05339; border-color: color-mix(in srgb, #e06a4f 26%, transparent); }
+.ph-badge-gray   { background: color-mix(in srgb, var(--text-muted) 16%, transparent); color: var(--text-muted); border-color: color-mix(in srgb, var(--text-muted) 26%, transparent); }
+.ph-badge-auto   { background: transparent; color: var(--text-muted); border-color: var(--border); font-weight: 500; }
+html.theme-dark .ph-badge-blue  { color: #6cb4ff; }
+html.theme-dark .ph-badge-cyan  { color: #4fc3d6; }
+html.theme-dark .ph-badge-amber { color: #e0b559; }
+html.theme-dark .ph-badge-green { color: #5cc9a3; }
+html.theme-dark .ph-badge-red   { color: #f08b72; }
 th.sorted-asc::after  { content: " ▲"; color: var(--accent); font-size: .65rem; }
 th.sorted-desc::after { content: " ▼"; color: var(--accent); font-size: .65rem; }
 

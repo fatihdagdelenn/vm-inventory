@@ -47,7 +47,10 @@ class PhysicalDevice(Base):
 
 class HostSupplement(Base):
     """Manual extra fields for a platform hypervisor host shown in the physical
-    inventory (the host row itself stays read-only, sourced from sync)."""
+    inventory (the host row itself stays read-only, sourced from sync).
+
+    brand/model here OVERRIDE the auto-derived hardware model when set — useful
+    when Proxmox reports a generic/wrong chassis (e.g. 'PowerEdge Rx5xx')."""
     __tablename__ = "host_supplements"
 
     id = Column(Integer, primary_key=True)
@@ -56,6 +59,8 @@ class HostSupplement(Base):
     ilo_ip = Column(String(64))
     serial_no = Column(String(128))
     role = Column(String(24), default="hypervisor")      # usually hypervisor
+    brand = Column(String(64))                           # manual override of auto model
+    model = Column(String(128))                          # manual override of auto model
     notes = Column(Text)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

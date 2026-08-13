@@ -24,6 +24,8 @@ const I18N = {
     'ph.r.hypervisor': 'Hypervisor', 'ph.r.windows': 'Windows', 'ph.r.linux': 'Linux', 'ph.r.other': 'Other',
     'ph.auto': 'auto', 'ph.fromPlatform': 'Auto-synced from the virtualization platform',
     'ph.completeExtras': 'Complete extra fields', 'ph.hostExtra': 'Host Extra Fields',
+    'ph.hwOverride': 'Brand/Model correction', 'ph.autoDetected': 'Auto-detected',
+    'ph.overridden': 'manually overridden',
     'ph.hostExtraDesc': 'this host is synced automatically from the platform; you can fill in the fields below by hand.',
     'ph.empty': 'No records. Start with "Add Device".', 'ph.noHistory': 'No history yet.',
     'ph.saved': 'Saved', 'ph.deleted': 'Deleted', 'ph.nameRequired': 'Name is required',
