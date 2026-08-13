@@ -35,9 +35,20 @@
     </div>
 
     <div class="card panel mt-3">
-      <div class="card-header"><i class="bi bi-folder2-open"></i> <span data-i18n="rp.files">Üretilmiş Dosyalar</span></div>
+      <div class="card-header d-flex align-items-center">
+        <i class="bi bi-folder2-open"></i> <span data-i18n="rp.files">Üretilmiş Dosyalar</span>
+        <span class="badge text-bg-secondary ms-2" id="fileCount" style="display:none"></span>
+        {% if user.role != 'viewer' %}
+        <button class="btn btn-sm btn-outline-danger ms-auto" onclick="Reports.cleanupFiles()" title="Eski dosyaları temizle">
+          <i class="bi bi-trash"></i> <span data-i18n="rp.cleanup">Temizle</span>
+        </button>
+        {% endif %}
+      </div>
       <div class="card-body p-0">
         <ul class="list-group list-group-flush" id="fileList"></ul>
+        <div class="p-2 text-center" id="fileMore" style="display:none">
+          <span class="text-muted small" id="fileMoreText"></span>
+        </div>
       </div>
     </div>
   </div>
@@ -47,23 +58,33 @@
       <div class="card-header"><i class="bi bi-calendar-event"></i> <span data-i18n="rp.scheduled">Zamanlanmış Raporlar</span></div>
       <div class="card-body">
         {% if user.role != 'viewer' %}
-        <div id="schForm" class="row g-2 align-items-end mb-3">
-          <div class="col-6"><label class="form-label small" data-i18n="rp.nameOpt">Ad (opsiyonel)</label>
-            <input type="text" id="schName" class="form-control" placeholder="örn: Günlük prod"></div>
-          <div class="col-6"><label class="form-label small" data-i18n="rp.target">Hedef</label>
-            <select id="schTarget" class="form-select"><option value="vms">VM</option><option value="hosts">Host</option></select></div>
-          <div class="col-4"><label class="form-label small" data-i18n="rp.hour">Saat</label>
-            <input type="number" id="schHour" class="form-control" min="0" max="23" value="7"></div>
-          <div class="col-4"><label class="form-label small" data-i18n="rp.minute">Dakika</label>
-            <input type="number" id="schMin" class="form-control" min="0" max="59" value="0"></div>
-          <div class="col-4"><label class="form-label small">Format</label>
-            <select id="schFmt" class="form-select"><option>xlsx</option><option>csv</option><option>pdf</option></select></div>
-          <div class="col-12"><label class="form-label small" data-i18n="rp.filterOpt">Filtre (opsiyonel)</label>
-            <input type="text" id="schQuery" class="form-control" placeholder="örn: env:production"></div>
-          <div class="col-12"><button class="btn btn-primary w-100" onclick="Reports.schedule()"><i class="bi bi-plus-lg"></i> <span data-i18n="rp.create">Oluştur</span></button></div>
+        <div id="schForm" class="mb-3">
+          <div class="row g-2 mb-2">
+            <div class="col-md-7"><label class="form-label small" data-i18n="rp.nameOpt">Ad (opsiyonel)</label>
+              <input type="text" id="schName" class="form-control form-control-sm" data-i18n-ph="rp.namePh" placeholder="örn: Günlük prod raporu"></div>
+            <div class="col-md-5"><label class="form-label small" data-i18n="rp.dailyAt">Her gün saat</label>
+              <input type="time" id="schTime" class="form-control form-control-sm" value="07:00"></div>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-md-8"><label class="form-label small" data-i18n="rp.target">Rapor kapsamı</label>
+              <select id="schTarget" class="form-select form-select-sm">
+                <option value="vms" data-i18n="nav.vms">Sanal Makineler</option>
+                <option value="hosts" data-i18n="nav.hosts">Host'lar</option>
+                <option value="datastores" data-i18n="nav.datastores">Datastore'lar</option>
+                <option value="physical" data-i18n="nav.physical">Fiziksel Envanter</option>
+                <option value="all" data-i18n="rp.allExport">Tüm Envanter</option>
+              </select></div>
+            <div class="col-md-4"><label class="form-label small" data-i18n="rp.format">Format</label>
+              <select id="schFmt" class="form-select form-select-sm"><option>xlsx</option><option>csv</option><option>pdf</option></select></div>
+          </div>
+          <div class="mb-2" id="schQueryWrap"><label class="form-label small" data-i18n="rp.filterOpt">Filtre (opsiyonel)</label>
+            <input type="text" id="schQuery" class="form-control form-control-sm" data-i18n-ph="rp.schFilterPh" placeholder="örn: env:production status:running">
+            <div class="form-text small" data-i18n="rp.filterVmScopes">Filtre yalnızca Sanal Makineler ve Tüm Envanter kapsamlarında geçerlidir.</div>
+          </div>
+          <button class="btn btn-primary btn-sm w-100" onclick="Reports.schedule()"><i class="bi bi-plus-lg"></i> <span data-i18n="rp.create">Zamanlanmış Rapor Oluştur</span></button>
         </div>
         {% endif %}
-        <p class="text-muted small mb-2" data-i18n="rp.schedDesc">Raporlar her gün belirtilen yerel saatte sunucuda üretilir; oluşan dosyalar soldaki listeden indirilebilir. ▶ ile hemen çalıştırabilirsiniz.</p>
+        <p class="text-muted small mb-2" data-i18n="rp.schedDesc">Raporlar her gün belirtilen yerel saatte otomatik üretilir. ▶ ile hemen çalıştırabilir, oluşan dosyayı soldaki listeden indirebilirsiniz.</p>
         <ul class="list-group list-group-flush" id="schList"></ul>
       </div>
     </div>

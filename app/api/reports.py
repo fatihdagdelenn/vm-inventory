@@ -155,9 +155,35 @@ def _report_dir() -> str:
 
 
 def _build_items(db: Session, target: str, q: str):
-    """Build report rows and the column set for the target."""
+    """Build report rows and the column set for the target.
+
+    Returns (items, columns, label) for single-target reports, or
+    (sections, None, label) for the combined 'all' target.
+    """
+    from ..models import Datastore, PhysicalDevice
     if target == "hosts":
         return db.query(Host).order_by(Host.name).all(), rs.HOST_COLUMNS, "Host"
+    if target == "datastores":
+        return (db.query(Datastore).order_by(Datastore.name).all(),
+                rs.DATASTORE_COLUMNS, "Datastore")
+    if target == "physical":
+        return (db.query(PhysicalDevice).order_by(
+                    PhysicalDevice.device_type, PhysicalDevice.name).all(),
+                rs.PHYSICAL_COLUMNS, "Fiziksel")
+    if target == "all":
+        vms = apply_vm_search(db.query(VirtualMachine).options(
+            joinedload(VirtualMachine.host_ref)).filter_by(is_template=False),
+            q).order_by(VirtualMachine.name).all()
+        sections = [
+            ("Sanal Makineler", vms, rs.VM_COLUMNS),
+            ("Host'lar", db.query(Host).order_by(Host.name).all(), rs.HOST_COLUMNS),
+            ("Datastore'lar", db.query(Datastore).order_by(Datastore.name).all(),
+             rs.DATASTORE_COLUMNS),
+            ("Fiziksel Envanter", db.query(PhysicalDevice).order_by(
+                PhysicalDevice.device_type, PhysicalDevice.name).all(),
+             rs.PHYSICAL_COLUMNS),
+        ]
+        return sections, None, "Tüm Envanter"
     query = db.query(VirtualMachine).options(
         joinedload(VirtualMachine.host_ref)).filter_by(is_template=False)
     items = apply_vm_search(query, q).order_by(VirtualMachine.name).all()
@@ -175,9 +201,14 @@ def run_scheduled_report(report_id: int):
         try:
             items, columns, label = _build_items(db, rep.target, rep.query or "")
             title = f"Zamanlanmış {label} Raporu"
-            content = (rs.export_excel(items, columns, title) if rep.fmt == "xlsx"
-                       else rs.export_csv(items, columns) if rep.fmt == "csv"
-                       else rs.export_pdf(items, columns, title))
+            if rep.target == "all":                # items is a list of sections
+                content = (rs.export_excel_multi(items, title) if rep.fmt == "xlsx"
+                           else rs.export_csv_multi(items) if rep.fmt == "csv"
+                           else rs.export_pdf_multi(items, title))
+            else:
+                content = (rs.export_excel(items, columns, title) if rep.fmt == "xlsx"
+                           else rs.export_csv(items, columns) if rep.fmt == "csv"
+                           else rs.export_pdf(items, columns, title))
             fname = f"{rep.target}_raporu_{now_local():%Y%m%d_%H%M}.{rep.fmt}"
             path = os.path.join(_report_dir(), fname)
             with open(path, "wb") as f:
@@ -241,8 +272,8 @@ def schedule_report(request: Request, payload: dict = Body(...),
     if fmt not in MEDIA:
         raise HTTPException(400, "Format xlsx, csv veya pdf olmalı")
     target = payload.get("target", "vms")
-    if target not in ("vms", "hosts"):
-        raise HTTPException(400, "Hedef vms veya hosts olmalı")
+    if target not in ("vms", "hosts", "datastores", "physical", "all"):
+        raise HTTPException(400, "Geçersiz hedef")
     rep = ScheduledReport(
         name=payload.get("name", ""), target=target, fmt=fmt,
         query=payload.get("q", ""),
@@ -300,17 +331,56 @@ def delete_scheduled(report_id: int, request: Request,
 
 # ---------- Generated report files ----------
 @router.get("/files")
-def list_report_files(user: User = Depends(get_current_user)):
-    """List generated report files in REPORT_DIR."""
+def list_report_files(limit: int = 20, user: User = Depends(get_current_user)):
+    """List generated report files (newest first, capped at `limit`)."""
     d = _report_dir()
-    out = []
-    for name in sorted(os.listdir(d), reverse=True):
+    files = []
+    for name in os.listdir(d):
         p = os.path.join(d, name)
         if os.path.isfile(p):
             st = os.stat(p)
-            out.append({"name": name, "size_kb": round(st.st_size / 1024, 1),
-                        "modified": to_iso(datetime.utcfromtimestamp(st.st_mtime))})
-    return {"items": out}
+            files.append((st.st_mtime, name, st.st_size))
+    files.sort(reverse=True)                        # newest first
+    total = len(files)
+    limit = max(1, min(200, limit))
+    out = [{"name": n, "size_kb": round(sz / 1024, 1),
+            "modified": to_iso(datetime.utcfromtimestamp(mt))}
+           for mt, n, sz in files[:limit]]
+    return {"items": out, "total": total, "shown": len(out)}
+
+
+@router.delete("/files/{name}")
+def delete_report_file(name: str, request: Request,
+                       user: User = Depends(require_role("operator"))):
+    """Delete one generated report file (path-traversal safe)."""
+    if "/" in name or "\\" in name or ".." in name:
+        raise HTTPException(400, "Geçersiz dosya adı")
+    path = os.path.join(_report_dir(), name)
+    if not os.path.isfile(path):
+        raise HTTPException(404, "Dosya bulunamadı")
+    os.remove(path)
+    return {"ok": True}
+
+
+@router.post("/files/cleanup")
+def cleanup_report_files(request: Request, payload: dict = Body(default={}),
+                         user: User = Depends(require_role("operator"))):
+    """Keep the newest N files (default 20); delete the rest."""
+    keep = max(0, min(500, int(payload.get("keep", 20)))) if payload else 20
+    d = _report_dir()
+    files = []
+    for name in os.listdir(d):
+        p = os.path.join(d, name)
+        if os.path.isfile(p):
+            files.append((os.stat(p).st_mtime, name))
+    files.sort(reverse=True)
+    removed = 0
+    for _, name in files[keep:]:
+        try:
+            os.remove(os.path.join(d, name)); removed += 1
+        except OSError:
+            pass
+    return {"ok": True, "removed": removed}
 
 
 @router.get("/files/{name}")
