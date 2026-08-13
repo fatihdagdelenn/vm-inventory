@@ -146,6 +146,39 @@ def export_excel(items, columns, title="Envanter Raporu") -> bytes:
     return buf.getvalue()
 
 
+def export_excel_multi(sections, title="Envanter Raporu") -> bytes:
+    """Multi-sheet Excel: one worksheet per (sheet_name, items, columns) section.
+
+    Used for the combined "all inventory" report so VMs, hosts, datastores and
+    physical devices land in a single workbook on separate tabs.
+    """
+    wb = Workbook()
+    wb.remove(wb.active)
+    header_fill = PatternFill("solid", fgColor="1B3A57")
+    header_font = Font(color="FFFFFF", bold=True)
+    for sheet_name, items, columns in sections:
+        ws = wb.create_sheet(title=sheet_name[:31])
+        for col, (header, _) in enumerate(columns, 1):
+            cell = ws.cell(row=1, column=col, value=header)
+            cell.fill, cell.font = header_fill, header_font
+            cell.alignment = Alignment(horizontal="center")
+        for row, item in enumerate(items, 2):
+            for col, value in enumerate(_row_values(item, columns), 1):
+                ws.cell(row=row, column=col, value=value)
+        for col in range(1, len(columns) + 1):
+            max_len = max((len(str(ws.cell(row=r, column=col).value or ""))
+                           for r in range(1, min(ws.max_row, 200) + 1)), default=10)
+            ws.column_dimensions[get_column_letter(col)].width = min(max_len + 3, 45)
+        ws.freeze_panes = "A2"
+        if ws.max_row >= 1:
+            ws.auto_filter.ref = ws.dimensions
+    if not wb.sheetnames:            # no sections -> keep a valid empty book
+        wb.create_sheet(title="Bos")
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 def export_csv(items, columns) -> bytes:
     """CSV with a UTF-8 BOM (Turkish character compatibility in Excel)."""
     buf = io.StringIO()
@@ -213,3 +246,59 @@ def _pdf_escape(value) -> str:
     """Safe text for Paragraph: None->'', escape XML special characters."""
     s = "" if value is None else str(value)
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def export_csv_multi(sections) -> bytes:
+    """Combined CSV: each section prefixed with a '# <name>' banner row."""
+    buf = io.StringIO()
+    writer = csv.writer(buf, delimiter=";")
+    for i, (name, items, columns) in enumerate(sections):
+        if i:
+            writer.writerow([])
+        writer.writerow([f"# {name}"])
+        writer.writerow([h for h, _ in columns])
+        for item in items:
+            writer.writerow(_row_values(item, columns))
+    return ("\ufeff" + buf.getvalue()).encode("utf-8")
+
+
+def export_pdf_multi(sections, title="Tüm Envanter") -> bytes:
+    """Combined PDF: one titled table per section, stacked on landscape A4."""
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=landscape(A4),
+                            leftMargin=8*mm, rightMargin=8*mm,
+                            topMargin=12*mm, bottomMargin=12*mm)
+    base = getSampleStyleSheet()
+    title_style = ParagraphStyle("mTitle", parent=base["Title"],
+                                 fontName=PDF_FONT_BOLD)
+    sect_style = ParagraphStyle("mSect", parent=base["Heading2"],
+                                fontName=PDF_FONT_BOLD, fontSize=12, spaceBefore=10)
+    cell_style = ParagraphStyle("mCell", parent=base["Normal"],
+                                fontName=PDF_FONT, fontSize=6, leading=7)
+    head_style = ParagraphStyle("mHead", parent=base["Normal"],
+                                fontName=PDF_FONT_BOLD, fontSize=6, leading=7,
+                                textColor=colors.white)
+    elements = [Paragraph(_pdf_escape(title), title_style), Spacer(1, 6)]
+    for name, items, columns in sections:
+        elements.append(Paragraph(f"{_pdf_escape(name)} ({len(items)})", sect_style))
+        data = [[Paragraph(str(h), head_style) for h, _ in columns]]
+        for item in items:
+            data.append([Paragraph(_pdf_escape(v), cell_style)
+                         for v in _row_values(item, columns)])
+        n = len(columns)
+        col_w = (doc.width / n) if n else doc.width
+        table = Table(data, colWidths=[col_w] * n, repeatRows=1)
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1B3A57")),
+            ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F2F5F8")]),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 2),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+            ("TOPPADDING", (0, 0), (-1, -1), 1.5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
+        ]))
+        elements.append(table)
+        elements.append(Spacer(1, 8))
+    doc.build(elements)
+    return buf.getvalue()

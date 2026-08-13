@@ -15,6 +15,14 @@
           <button class="btn btn-secondary" onclick="Reports.export('vms','csv')">VM CSV</button>
           <button class="btn btn-danger" onclick="Reports.export('vms','pdf')">VM PDF</button>
           <button class="btn btn-outline-success" onclick="Reports.export('hosts','xlsx')">Host Excel</button>
+          <button class="btn btn-outline-info" onclick="Reports.export('physical','xlsx')"><i class="bi bi-hdd-network"></i> <span data-i18n="rp.physical">Fiziksel</span> Excel</button>
+        </div>
+        <hr class="my-3">
+        <p class="text-muted small mb-2"><i class="bi bi-collection"></i> <span data-i18n="rp.allDesc">Tüm envanter tek dosyada (VM + Host + Datastore + Fiziksel). Excel'de ayrı sayfalar, CSV/PDF'de ardışık bölümler.</span></p>
+        <div class="d-flex gap-2 flex-wrap">
+          <button class="btn btn-primary" onclick="Reports.export('all','xlsx')"><i class="bi bi-file-earmark-excel"></i> <span data-i18n="rp.allExport">Tüm Envanter</span> Excel</button>
+          <button class="btn btn-outline-primary" onclick="Reports.export('all','csv')"><span data-i18n="rp.allExport">Tüm Envanter</span> CSV</button>
+          <button class="btn btn-outline-primary" onclick="Reports.export('all','pdf')"><span data-i18n="rp.allExport">Tüm Envanter</span> PDF</button>
         </div>
       </div>
     </div>

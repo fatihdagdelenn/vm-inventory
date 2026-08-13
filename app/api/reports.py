@@ -73,6 +73,53 @@ def export_datastores(fmt: str = "xlsx", db: Session = Depends(get_db),
     return _export(items, rs.DATASTORE_COLUMNS, fmt, "Datastore Envanteri")
 
 
+@router.get("/physical/export")
+def export_physical(fmt: str = "xlsx", db: Session = Depends(get_db),
+                    user: User = Depends(get_current_user)):
+    from ..models import PhysicalDevice
+    items = db.query(PhysicalDevice).order_by(
+        PhysicalDevice.device_type, PhysicalDevice.name).all()
+    log_audit(db, user, "export", target=f"physical ({fmt})", detail=f"count={len(items)}")
+    db.commit()
+    return _export(items, rs.PHYSICAL_COLUMNS, fmt, "Fiziksel Envanter")
+
+
+@router.get("/all/export")
+def export_all(fmt: str = "xlsx", q: str = "", db: Session = Depends(get_db),
+               user: User = Depends(get_current_user)):
+    """Combined report: VMs + hosts + datastores + physical inventory in ONE
+    file (Excel -> separate sheets; CSV/PDF -> stacked sections)."""
+    from ..models import Datastore, PhysicalDevice
+    vms = apply_vm_search(
+        db.query(VirtualMachine).options(joinedload(VirtualMachine.host_ref))
+          .filter_by(is_template=False), q).order_by(VirtualMachine.name).all()
+    hosts = db.query(Host).order_by(Host.name).all()
+    dstores = db.query(Datastore).order_by(Datastore.name).all()
+    phys = db.query(PhysicalDevice).order_by(
+        PhysicalDevice.device_type, PhysicalDevice.name).all()
+    sections = [
+        ("Sanal Makineler", vms, rs.VM_COLUMNS),
+        ("Host'lar", hosts, rs.HOST_COLUMNS),
+        ("Datastore'lar", dstores, rs.DATASTORE_COLUMNS),
+        ("Fiziksel Envanter", phys, rs.PHYSICAL_COLUMNS),
+    ]
+    log_audit(db, user, "export", target=f"all ({fmt})",
+              detail=f"vms={len(vms)} hosts={len(hosts)} ds={len(dstores)} phys={len(phys)}")
+    db.commit()
+    if fmt not in MEDIA:
+        raise HTTPException(400, "Format xlsx, csv veya pdf olmalı")
+    if fmt == "xlsx":
+        content = rs.export_excel_multi(sections, "Tüm Envanter")
+    elif fmt == "csv":
+        content = rs.export_csv_multi(sections)
+    else:
+        content = rs.export_pdf_multi(sections, "Tüm Envanter")
+    media, ext = MEDIA[fmt]
+    filename = f"tum_envanter_{now_local():%Y%m%d_%H%M}.{ext}"
+    return Response(content, media_type=media, headers={
+        "Content-Disposition": f'attachment; filename="{filename}"'})
+
+
 @router.get("/snapshots/export")
 def export_snapshots(fmt: str = "xlsx", db: Session = Depends(get_db),
                      user: User = Depends(get_current_user)):

@@ -256,6 +256,12 @@ html.theme-light .app-version { color: rgba(226,232,240,.5); }
 .vm-row { cursor: pointer; transition: background .12s; }
 th.sortable { user-select: none; }
 th.sortable:hover { color: var(--accent); }
+/* Physical inventory sortable headers */
+th.ph-sort { cursor: pointer; user-select: none; white-space: nowrap; }
+th.ph-sort:hover { color: var(--accent); }
+th.ph-sort.sorted { color: var(--accent); }
+th.ph-sort .sort-ic { font-size: .7rem; opacity: .5; }
+th.ph-sort.sorted .sort-ic { opacity: 1; }
 th.sorted-asc::after  { content: " ▲"; color: var(--accent); font-size: .65rem; }
 th.sorted-desc::after { content: " ▼"; color: var(--accent); font-size: .65rem; }
 

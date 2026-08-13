@@ -73,6 +73,7 @@ def _record(db, device, action, actor, changes=None):
 
 @router.get("")
 def list_devices(q: str = "", device_type: str = "", status: str = "",
+                 location: str = "",
                  db: Session = Depends(get_db),
                  user: User = Depends(get_current_user)):
     """All physical devices (filterable). Visible to every role."""
@@ -81,6 +82,8 @@ def list_devices(q: str = "", device_type: str = "", status: str = "",
         query = query.filter(PhysicalDevice.device_type == device_type)
     if status:
         query = query.filter(PhysicalDevice.status == status)
+    if location:
+        query = query.filter(PhysicalDevice.location == location)
     if q:
         like = f"%{q.strip()}%"
         query = query.filter(or_(
@@ -93,8 +96,12 @@ def list_devices(q: str = "", device_type: str = "", status: str = "",
     counts = {t: 0 for t in DEVICE_TYPES}
     for d in db.query(PhysicalDevice.device_type).all():
         counts[d[0]] = counts.get(d[0], 0) + 1
+    # distinct, sorted locations for the filter dropdown + form datalist
+    locations = sorted({r[0] for r in
+                        db.query(PhysicalDevice.location).distinct().all()
+                        if r[0] and r[0].strip()})
     return {"items": [_to_dict(d) for d in items], "counts": counts,
-            "total": sum(counts.values())}
+            "total": sum(counts.values()), "locations": locations}
 
 
 @router.post("")
@@ -170,12 +177,15 @@ def device_history(device_id: int = 0, limit: int = 200,
 
 @router.get("/export")
 def export_devices(fmt: str = "xlsx", q: str = "", device_type: str = "",
+                   location: str = "",
                    db: Session = Depends(get_db),
                    user: User = Depends(get_current_user)):
     """Export filtered physical inventory (Excel / CSV / PDF)."""
     query = db.query(PhysicalDevice)
     if device_type in DEVICE_TYPES:
         query = query.filter(PhysicalDevice.device_type == device_type)
+    if location:
+        query = query.filter(PhysicalDevice.location == location)
     if q:
         like = f"%{q.strip()}%"
         query = query.filter(or_(

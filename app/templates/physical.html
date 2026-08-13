@@ -8,7 +8,10 @@
     <input type="text" id="phSearch" class="form-control" data-i18n-ph="ph.searchPh"
            placeholder="Ad, IP, marka, model veya seri no ara…">
   </div>
-  <div class="btn-group btn-group-sm" role="group" id="phTypeFilter">
+  <select id="phLocFilter" class="form-select form-select-sm" style="max-width:200px">
+    <option value="" data-i18n="ph.allLocations">Tüm lokasyonlar</option>
+  </select>
+  <div class="btn-group btn-group-sm net-modes" role="group" id="phTypeFilter">
     <button class="btn active" data-type="" data-i18n="ph.all">Tümü</button>
     <button class="btn" data-type="server" data-i18n="ph.t.server">Fiziksel Sunucu</button>
     <button class="btn" data-type="storage" data-i18n="ph.t.storage">Storage</button>
@@ -30,18 +33,19 @@
   <div class="table-responsive">
     <table class="table table-hover align-middle mb-0" id="phTable">
       <thead><tr>
-        <th data-i18n="ph.type">Tip</th>
-        <th data-i18n="ph.name">Ad</th>
-        <th data-i18n="ph.location">Lokasyon</th>
-        <th data-i18n="ph.status">Durum</th>
-        <th data-i18n="ph.mgmtIp">Yönetim IP</th>
-        <th data-i18n="ph.iloIp">iLO/BMC IP</th>
-        <th data-i18n="ph.brandModel">Marka / Model</th>
-        <th data-i18n="ph.specs">CPU / RAM</th>
+        <th class="ph-sort" data-sort="device_type" data-i18n="ph.type">Tip</th>
+        <th class="ph-sort" data-sort="name" data-i18n="ph.name">Ad</th>
+        <th class="ph-sort" data-sort="location" data-i18n="ph.location">Lokasyon</th>
+        <th class="ph-sort" data-sort="status" data-i18n="ph.status">Durum</th>
+        <th class="ph-sort" data-sort="mgmt_ip" data-i18n="ph.mgmtIp">Yönetim IP</th>
+        <th class="ph-sort" data-sort="ilo_ip" data-i18n="ph.iloIp">iLO/BMC IP</th>
+        <th class="ph-sort" data-sort="brand" data-i18n="ph.brand">Marka</th>
+        <th class="ph-sort" data-sort="model" data-i18n="ph.model">Model</th>
+        <th class="ph-sort" data-sort="specs" data-i18n="ph.specs">CPU / RAM</th>
         <th class="text-end"></th>
       </tr></thead>
       <tbody id="phBody">
-        <tr><td colspan="9" class="text-center text-muted p-4" data-i18n="common.loading">Yükleniyor…</td></tr>
+        <tr><td colspan="10" class="text-center text-muted p-4" data-i18n="common.loading">Yükleniyor…</td></tr>
       </tbody>
     </table>
   </div>
@@ -71,7 +75,10 @@
 
     <div class="row g-3">
       <div class="col-md-6"><label class="form-label" data-i18n="ph.name">Ad</label><input type="text" class="form-control" id="f_name"></div>
-      <div class="col-md-6"><label class="form-label" data-i18n="ph.location">Lokasyon</label><input type="text" class="form-control" id="f_location" data-i18n-ph="ph.locationPh" placeholder="örn: Ankara DC / Rack A12"></div>
+      <div class="col-md-6"><label class="form-label" data-i18n="ph.location">Lokasyon</label>
+        <input type="text" class="form-control" id="f_location" list="phLocList" data-i18n-ph="ph.locationPh" placeholder="örn: Ankara DC / Rack A12">
+        <datalist id="phLocList"></datalist>
+      </div>
       <div class="col-md-6"><label class="form-label" data-i18n="ph.mgmtIp">Yönetim IP</label><input type="text" class="form-control" id="f_mgmt_ip"></div>
       <div class="col-md-6"><label class="form-label" data-i18n="ph.iloIp">iLO / iDRAC / BMC IP</label><input type="text" class="form-control" id="f_ilo_ip"></div>
       <div class="col-md-4"><label class="form-label" data-i18n="ph.brand">Marka</label><input type="text" class="form-control" id="f_brand" data-i18n-ph="ph.brandPh" placeholder="Dell, HPE, NetApp…"></div>
