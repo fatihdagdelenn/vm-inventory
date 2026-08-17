@@ -97,8 +97,15 @@ const Physical = {
   renderTable() {
     const body = document.getElementById('phBody');
     if (!Physical.items.length) {
-      body.innerHTML = '<tr><td colspan="11" class="text-center text-muted p-4">' +
-        window.t('ph.empty', 'Kayıt yok. "Cihaz Ekle" ile başlayın.') + '</td></tr>';
+      const hasFilter = Physical.filterType || Physical.filterLoc ||
+                        Physical.filterRole || Physical.q;
+      const msg = hasFilter
+        ? '<div class="text-muted mb-2">' +
+            window.t('ph.emptyFiltered', 'Bu filtreyle eşleşen cihaz yok. Aradığınız cihaz başka bir tipte eklenmiş olabilir.') +
+          '</div><button class="btn btn-sm btn-outline-secondary" onclick="Physical.clearFilters()">' +
+            '<i class="bi bi-x-circle"></i> ' + window.t('ph.clearFilters', 'Filtreleri temizle') + '</button>'
+        : window.t('ph.empty', 'Kayıt yok. "Cihaz Ekle" ile başlayın.');
+      body.innerHTML = '<tr><td colspan="11" class="text-center text-muted p-4">' + msg + '</td></tr>';
       Physical.markSort();
       return;
     }
@@ -157,8 +164,20 @@ const Physical = {
     });
   },
 
+  clearFilters() {
+    Physical.filterType = ''; Physical.filterLoc = '';
+    Physical.filterRole = ''; Physical.q = '';
+    const s = document.getElementById('phSearch'); if (s) s.value = '';
+    const lf = document.getElementById('phLocFilter'); if (lf) lf.value = '';
+    const rf = document.getElementById('phRoleFilter'); if (rf) rf.value = '';
+    document.querySelectorAll('#phTypeFilter [data-type]').forEach(x =>
+      x.classList.toggle('active', x.dataset.type === ''));
+    Physical.load();
+  },
+
   toggleServerFields() {
-    const type = document.querySelector('input[name="phType"]:checked').value;
+    const sel = document.querySelector('input[name="phType"]:checked');
+    const type = sel ? sel.value : '';
     document.getElementById('phServerFields').style.display = type === 'server' ? '' : 'none';
   },
 
@@ -167,8 +186,11 @@ const Physical = {
     document.getElementById('phId').value = d ? d.id : '';
     document.getElementById('phModalTitle').textContent =
       d ? window.t('ph.edit', 'Cihaz Düzenle') : window.t('ph.add', 'Cihaz Ekle');
-    const type = d ? d.device_type : 'server';
-    document.getElementById('pt_' + type).checked = true;
+    // Editing: preselect the device's type. Adding: NO preselection, so the
+    // user must consciously choose (prevents accidental "server" default).
+    document.querySelectorAll('input[name="phType"]').forEach(r => { r.checked = false; });
+    if (d) document.getElementById('pt_' + d.device_type).checked = true;
+    document.getElementById('phTypeErr').style.display = 'none';
     const set = (f, v) => { document.getElementById('f_' + f).value = v == null ? '' : v; };
     set('name', d && d.name); set('location', d && d.location);
     set('mgmt_ip', d && d.mgmt_ip); set('ilo_ip', d && d.ilo_ip);
@@ -183,8 +205,16 @@ const Physical = {
 
   async save() {
     const val = f => document.getElementById('f_' + f).value.trim();
+    const typeEl = document.querySelector('input[name="phType"]:checked');
+    // Type is mandatory — no silent default. Highlight if missing.
+    if (!typeEl) {
+      document.getElementById('phTypeErr').style.display = '';
+      document.getElementById('phFormType').scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return;
+    }
+    document.getElementById('phTypeErr').style.display = 'none';
     const payload = {
-      device_type: document.querySelector('input[name="phType"]:checked').value,
+      device_type: typeEl.value,
       name: val('name'), location: val('location'), status: document.getElementById('f_status').value,
       role: document.getElementById('f_role').value,
       mgmt_ip: val('mgmt_ip'), ilo_ip: val('ilo_ip'), brand: val('brand'),
@@ -198,7 +228,12 @@ const Physical = {
                     { method: id ? 'PUT' : 'POST', body: payload });
     } catch (e) { return; }
     bootstrap.Modal.getInstance(document.getElementById('phModal')).hide();
-    App.toast(window.t('ph.saved', 'Kaydedildi'), 'success');
+    // Confirmation names the type, so a wrong choice is caught immediately.
+    const tl = Physical.typeLabel(payload.device_type);
+    App.toast(id ? window.t('ph.saved', 'Kaydedildi')
+                 : window.t('ph.addedAs', '{ad}, {tip} olarak eklendi')
+                     .replace('{ad}', payload.name).replace('{tip}', tl),
+              'success');
     Physical.load();
   },
 

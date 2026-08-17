@@ -284,6 +284,26 @@ html.theme-dark .ph-badge-cyan  { color: #4fc3d6; }
 html.theme-dark .ph-badge-amber { color: #e0b559; }
 html.theme-dark .ph-badge-green { color: #5cc9a3; }
 html.theme-dark .ph-badge-red   { color: #f08b72; }
+
+/* Device-type selection cards (add/edit form) */
+.ph-type-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.ph-type-card {
+  display: flex; align-items: center; gap: 10px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface-1);
+  border-radius: 10px; padding: 12px 14px; margin: 0; transition: all .12s;
+}
+.ph-type-card > .bi:first-child { font-size: 1.4rem; color: var(--text-muted); }
+.ph-type-name { font-size: .9rem; font-weight: 600; line-height: 1.2; }
+.ph-type-desc { font-size: .72rem; color: var(--text-muted); }
+.ph-type-check { margin-left: auto; color: var(--accent); opacity: 0; font-size: 1.1rem; }
+.ph-type-card:hover { border-color: var(--accent); }
+.btn-check:checked + .ph-type-card {
+  border-color: var(--accent); border-width: 2px; padding: 11px 13px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.btn-check:checked + .ph-type-card > .bi:first-child,
+.btn-check:checked + .ph-type-card .ph-type-name { color: var(--accent); }
+.btn-check:checked + .ph-type-card .ph-type-check { opacity: 1; }
 th.sorted-asc::after  { content: " ▲"; color: var(--accent); font-size: .65rem; }
 th.sorted-desc::after { content: " ▼"; color: var(--accent); font-size: .65rem; }
 

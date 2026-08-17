@@ -69,17 +69,38 @@
   <div class="modal-body">
     <input type="hidden" id="phId">
     <div class="mb-3">
-      <label class="form-label" data-i18n="ph.type">Tip</label>
-      <div class="btn-group w-100" role="group" id="phFormType">
-        <input type="radio" class="btn-check" name="phType" id="pt_server" value="server" checked>
-        <label class="btn btn-outline-primary" for="pt_server"><i class="bi bi-server"></i> <span data-i18n="ph.t.server">Fiziksel Sunucu</span></label>
+      <label class="form-label" data-i18n="ph.type">Cihaz Tipi</label> <span class="text-danger">*</span>
+      <div class="ph-type-grid" id="phFormType">
+        <input type="radio" class="btn-check" name="phType" id="pt_server" value="server">
+        <label class="ph-type-card" for="pt_server">
+          <i class="bi bi-server"></i>
+          <div><div class="ph-type-name" data-i18n="ph.t.server">Fiziksel Sunucu</div>
+            <div class="ph-type-desc" data-i18n="ph.d.server">Bare-metal, hypervisor</div></div>
+          <i class="bi bi-check-circle-fill ph-type-check"></i>
+        </label>
         <input type="radio" class="btn-check" name="phType" id="pt_storage" value="storage">
-        <label class="btn btn-outline-primary" for="pt_storage"><i class="bi bi-hdd-stack"></i> <span data-i18n="ph.t.storage">Storage</span></label>
+        <label class="ph-type-card" for="pt_storage">
+          <i class="bi bi-hdd-stack"></i>
+          <div><div class="ph-type-name" data-i18n="ph.t.storage">Storage</div>
+            <div class="ph-type-desc" data-i18n="ph.d.storage">Disk dizisi, NAS</div></div>
+          <i class="bi bi-check-circle-fill ph-type-check"></i>
+        </label>
         <input type="radio" class="btn-check" name="phType" id="pt_san_switch" value="san_switch">
-        <label class="btn btn-outline-primary" for="pt_san_switch"><i class="bi bi-diagram-3"></i> <span data-i18n="ph.t.san_switch">SAN Switch</span></label>
+        <label class="ph-type-card" for="pt_san_switch">
+          <i class="bi bi-diagram-3"></i>
+          <div><div class="ph-type-name" data-i18n="ph.t.san_switch">SAN Switch</div>
+            <div class="ph-type-desc" data-i18n="ph.d.san_switch">FC / iSCSI anahtar</div></div>
+          <i class="bi bi-check-circle-fill ph-type-check"></i>
+        </label>
         <input type="radio" class="btn-check" name="phType" id="pt_backup" value="backup">
-        <label class="btn btn-outline-primary" for="pt_backup"><i class="bi bi-archive"></i> <span data-i18n="ph.t.backup">Yedekleme</span></label>
+        <label class="ph-type-card" for="pt_backup">
+          <i class="bi bi-archive"></i>
+          <div><div class="ph-type-name" data-i18n="ph.t.backup">Yedekleme Ünitesi</div>
+            <div class="ph-type-desc" data-i18n="ph.d.backup">Backup appliance</div></div>
+          <i class="bi bi-check-circle-fill ph-type-check"></i>
+        </label>
       </div>
+      <div class="form-text text-danger" id="phTypeErr" style="display:none" data-i18n="ph.typeRequired">Lütfen bir cihaz tipi seçin.</div>
     </div>
 
     <div class="row g-3">
