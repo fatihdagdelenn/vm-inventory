@@ -50,7 +50,9 @@ except Exception as exc:  # pragma: no cover - font registration is non-critical
 VM_COLUMNS = [
     ("VM Adı", "name"), ("VM ID", "vmid"), ("IP Adresleri", "ip_addresses"),
     ("MAC Adresleri", "mac_addresses"), ("İşletim Sistemi", "guest_os"),
-    ("CPU", "cpu_count"), ("RAM (MB)", "ram_mb"), ("Disk (GB)", "disk_total_gb"),
+    ("CPU (adet)", "cpu_count"), ("CPU Kullanım (%)", "cpu_usage_pct"),
+    ("RAM Tahsis (MB)", "ram_mb"), ("RAM Kullanım (MB)", "ram_usage_mb"),
+    ("Disk Tahsis (GB)", "disk_total_gb"), ("Disk Kullanım (GB)", "disk_used_gb"),
     ("Güç Durumu", "power_state"), ("Host", "host_name"), ("Cluster", "cluster"),
     ("Datastore", "datastore"), ("VLAN", "vlans"), ("Ortam", "environment"),
     ("Sahip", "owner"), ("Tools/Agent", "tools_status"),
@@ -119,6 +121,9 @@ def _row_values(obj, columns):
             values.append(PHYSICAL_STATUS_LABELS.get(get(field), get(field) or ""))
         elif field == "role" and is_physical:
             values.append(PHYSICAL_ROLE_LABELS.get(get(field), get(field) or ""))
+        elif field in ("cpu_usage_pct", "disk_used_gb", "disk_total_gb"):
+            v = get(field)
+            values.append("" if v is None else round(float(v), 1))
         else:
             v = get(field)
             values.append("" if v is None else v)
