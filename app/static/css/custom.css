@@ -1237,3 +1237,8 @@ html.theme-dark .topo-live.on { color: #4ade80; }
   color: var(--accent); cursor: pointer;
 }
 .disk-count-badge .bi { font-size: .7rem; }
+
+/* Disk cell: size + count badge on one row (badge right-aligned), bar below */
+.disk-cell { display: flex; flex-direction: column; gap: 2px; min-width: 92px; }
+.disk-cell-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.disk-cell .usage-mini { width: 100%; }

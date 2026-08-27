@@ -92,13 +92,17 @@ const VMs = {
           '<td data-col="ram">' + App.fmtRam(v.ram_mb) +
             VMs.usageMini(v.ram_mb ? 100 * (v.ram_usage_mb || 0) / v.ram_mb : null,
                           v.ram_usage_mb) + '</td>' +
-          '<td data-col="disk">' + App.fmtGb(v.disk_total_gb) +
-            ((v.disks && v.disks.length > 1)
-              ? ' <span class="disk-count-badge" title="' +
-                t('vm.multiDisk', 'Bu VM\'de birden fazla disk var — ayrıntı için tıklayın') +
-                '">' + v.disks.length + ' <i class="bi bi-hdd-stack"></i></span>' : '') +
+          '<td data-col="disk"><div class="disk-cell">' +
+            '<div class="disk-cell-top">' +
+              '<span>' + App.fmtGb(v.disk_total_gb) + '</span>' +
+              ((v.disks && v.disks.length > 1)
+                ? '<span class="disk-count-badge" title="' +
+                  t('vm.multiDisk', 'Bu VM\'de birden fazla disk var — ayrıntı için tıklayın') +
+                  '">' + v.disks.length + ' <i class="bi bi-hdd-stack"></i></span>' : '') +
+            '</div>' +
             VMs.usageMini(v.disk_total_gb ? 100 * (v.disk_used_gb || 0) / v.disk_total_gb : null,
-                          null, v.disk_used_gb) + '</td>' +
+                          null, v.disk_used_gb) +
+          '</div></td>' +
           '<td data-col="host" class="small cell-filter" onclick="VMs.cellFilter(event,\'host\',\'' + App.esc(v.host || '') + '\')" title="' + t('vm.filterByHost','Bu host\'a göre filtrele') + '">' + App.esc(v.host || '—') + '</td>' +
           '<td data-col="cluster" class="small cell-filter" onclick="VMs.cellFilter(event,\'cluster\',\'' + App.esc(v.cluster || '') + '\')" title="' + t('vm.filterByCluster','Bu cluster\'a göre filtrele') + '">' + App.esc(v.cluster || '—') + '</td>' +
           '<td data-col="pool" class="small cell-filter" onclick="VMs.cellFilter(event,\'pool\',\'' + App.esc(v.pool || '') + '\')" title="' + t('vm.filterByPool','Bu pool\'a göre filtrele') + '">' + App.esc(v.pool || '—') + '</td>' +

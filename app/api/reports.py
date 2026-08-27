@@ -45,13 +45,31 @@ def _export(items, columns, fmt: str, title: str) -> Response:
 @router.get("/vms/export")
 def export_vms(fmt: str = "xlsx", q: str = "", db: Session = Depends(get_db),
                user: User = Depends(get_current_user)):
-    """VM report - results filtered by the q parameter are exported."""
+    """VM report - results filtered by the q parameter are exported.
+
+    Emits two sheets/sections: the VM summary and a per-disk "Diskler" list
+    (so VMs with many disks don't widen the main sheet)."""
     query = db.query(VirtualMachine).options(
         joinedload(VirtualMachine.host_ref)).filter_by(is_template=False)
     items = apply_vm_search(query, q).order_by(VirtualMachine.name).all()
     log_audit(db, user, "export", target=f"vms ({fmt})", detail=f"q='{q}' count={len(items)}")
     db.commit()
-    return _export(items, rs.vm_columns_with_disks(items), fmt, "VM Envanteri")
+    if fmt not in MEDIA:
+        raise HTTPException(400, "Format xlsx, csv veya pdf olmalı")
+    sections = [
+        ("Sanal Makineler", items, rs.VM_COLUMNS),
+        ("Diskler", rs.disk_rows(items), rs.DISK_COLUMNS),
+    ]
+    if fmt == "xlsx":
+        content = rs.export_excel_multi(sections, "VM Envanteri")
+    elif fmt == "csv":
+        content = rs.export_csv_multi(sections)
+    else:
+        content = rs.export_pdf_multi(sections, "VM Envanteri")
+    media, ext = MEDIA[fmt]
+    filename = f"vm_envanteri_{now_local():%Y%m%d_%H%M}.{ext}"
+    return Response(content, media_type=media, headers={
+        "Content-Disposition": f'attachment; filename="{filename}"'})
 
 
 @router.get("/hosts/export")
@@ -97,7 +115,8 @@ def export_all(fmt: str = "xlsx", q: str = "", db: Session = Depends(get_db),
     dstores = db.query(Datastore).order_by(Datastore.name).all()
     phys = physical_export_rows(db)
     sections = [
-        ("Sanal Makineler", vms, rs.vm_columns_with_disks(vms)),
+        ("Sanal Makineler", vms, rs.VM_COLUMNS),
+        ("Diskler", rs.disk_rows(vms), rs.DISK_COLUMNS),
         ("Host'lar", hosts, rs.HOST_COLUMNS),
         ("Datastore'lar", dstores, rs.DATASTORE_COLUMNS),
         ("Fiziksel Envanter", phys, rs.PHYSICAL_COLUMNS),
@@ -173,7 +192,8 @@ def _build_items(db: Session, target: str, q: str):
             joinedload(VirtualMachine.host_ref)).filter_by(is_template=False),
             q).order_by(VirtualMachine.name).all()
         sections = [
-            ("Sanal Makineler", vms, rs.vm_columns_with_disks(vms)),
+            ("Sanal Makineler", vms, rs.VM_COLUMNS),
+            ("Diskler", rs.disk_rows(vms), rs.DISK_COLUMNS),
             ("Host'lar", db.query(Host).order_by(Host.name).all(), rs.HOST_COLUMNS),
             ("Datastore'lar", db.query(Datastore).order_by(Datastore.name).all(),
              rs.DATASTORE_COLUMNS),
@@ -183,7 +203,7 @@ def _build_items(db: Session, target: str, q: str):
     query = db.query(VirtualMachine).options(
         joinedload(VirtualMachine.host_ref)).filter_by(is_template=False)
     items = apply_vm_search(query, q).order_by(VirtualMachine.name).all()
-    return items, rs.vm_columns_with_disks(items), "VM"
+    return items, rs.VM_COLUMNS, "VM"
 
 
 def run_scheduled_report(report_id: int):

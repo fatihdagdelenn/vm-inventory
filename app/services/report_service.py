@@ -54,6 +54,7 @@ VM_COLUMNS = [
     ("CPU (adet)", "cpu_count"), ("CPU Kullanım (%)", "cpu_usage_pct"),
     ("RAM Tahsis (MB)", "ram_mb"), ("RAM Kullanım (MB)", "ram_usage_mb"),
     ("Disk Tahsis (GB)", "disk_total_gb"), ("Disk Kullanım (GB)", "disk_used_gb"),
+    ("Disk Sayısı", "disk_count"),
     ("Güç Durumu", "power_state"), ("Host", "host_name"), ("Cluster", "cluster"),
     ("Datastore", "datastore"), ("VLAN", "vlans"), ("Ortam", "environment"),
     ("Sahip", "owner"), ("Tools/Agent", "tools_status"),
@@ -125,20 +126,12 @@ def _row_values(obj, columns):
         elif field in ("cpu_usage_pct", "disk_used_gb", "disk_total_gb"):
             v = get(field)
             values.append("" if v is None else round(float(v), 1))
-        elif field.startswith("disk_size_"):
-            # Per-disk allocated size: disk_size_1, disk_size_2, ...
-            idx = int(field.rsplit("_", 1)[1]) - 1
+        elif field == "disk_count":
             raw = getattr(obj, "disks_json", None) if not is_dict else obj.get("disks_json")
-            sz = ""
-            if raw:
-                try:
-                    dl = json.loads(raw)
-                    if 0 <= idx < len(dl):
-                        s = dl[idx].get("size_gb")
-                        sz = "" if s is None else round(float(s), 1)
-                except (ValueError, TypeError, AttributeError, IndexError):
-                    pass
-            values.append(sz)
+            try:
+                values.append(len(json.loads(raw)) if raw else "")
+            except (ValueError, TypeError):
+                values.append("")
         else:
             v = get(field)
             values.append("" if v is None else v)
@@ -146,7 +139,7 @@ def _row_values(obj, columns):
 
 
 def _max_disk_count(items):
-    """Largest disk count across VM items (for dynamic per-disk columns)."""
+    """Largest disk count across VM items."""
     n = 0
     for obj in items:
         raw = obj.get("disks_json") if isinstance(obj, dict) else getattr(obj, "disks_json", None)
@@ -158,22 +151,40 @@ def _max_disk_count(items):
     return n
 
 
-def vm_columns_with_disks(items):
-    """VM_COLUMNS plus one 'Disk N (GB)' column per disk, up to the max disk
-    count in the data. Single-disk fleets get no extra columns (max=1)."""
-    n = _max_disk_count(items)
-    if n <= 1:
-        return VM_COLUMNS
-    extra = [(f"Disk {i} (GB)", f"disk_size_{i}") for i in range(1, n + 1)]
-    # Insert the per-disk columns right after "Disk Kullanım (GB)"
-    out, injected = [], False
-    for col in VM_COLUMNS:
-        out.append(col)
-        if col[1] == "disk_used_gb":
-            out.extend(extra); injected = True
-    if not injected:
-        out.extend(extra)
-    return out
+# Separate "Disks" sheet/section: one row PER DISK (handles VMs with many
+# disks without widening the main VM sheet).
+DISK_COLUMNS = [
+    ("VM Adı", "_vm_name"), ("Disk", "_disk_label"),
+    ("Boyut (GB)", "_disk_size"), ("Host", "_host"), ("Cluster", "_cluster"),
+]
+
+
+def disk_rows(vms):
+    """Flatten VMs into per-disk rows for the Disks sheet. Only VMs that have
+    disk detail are included; a VM with 16 disks yields 16 rows."""
+    rows = []
+    for vm in vms:
+        is_dict = isinstance(vm, dict)
+        raw = vm.get("disks_json") if is_dict else getattr(vm, "disks_json", None)
+        if not raw:
+            continue
+        try:
+            disks = json.loads(raw)
+        except (ValueError, TypeError):
+            continue
+        name = vm.get("name") if is_dict else getattr(vm, "name", "")
+        host = (vm.get("host_name") if is_dict
+                else (vm.host_ref.name if getattr(vm, "host_ref", None) else ""))
+        cluster = vm.get("cluster") if is_dict else getattr(vm, "cluster", "")
+        for i, d in enumerate(disks, 1):
+            rows.append({
+                "_vm_name": name,
+                "_disk_label": d.get("label") or d.get("name") or f"disk {i}",
+                "_disk_size": ("" if d.get("size_gb") is None
+                               else round(float(d["size_gb"]), 1)),
+                "_host": host or "", "_cluster": cluster or "",
+            })
+    return rows
 
 
 def export_excel(items, columns, title="Envanter Raporu") -> bytes:
