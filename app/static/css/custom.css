@@ -1219,14 +1219,15 @@ html.theme-dark .topo-live.on { color: #4ade80; }
   font-size: .82rem;
 }
 .disk-item .bi { color: var(--text-muted); font-size: .85rem; }
-.disk-item .disk-label { color: var(--ink); }
-.disk-item .disk-size { margin-left: auto; font-weight: 600; color: var(--ink); }
+.disk-item .disk-label { color: var(--text); }
+.disk-item .disk-size { margin-left: auto; font-weight: 600; color: var(--text); }
 .disk-item.disk-total {
   background: transparent; border-top: 1px dashed var(--border);
   border-radius: 0; margin-top: 2px; padding-top: 5px;
 }
 .disk-item.disk-total .disk-label { color: var(--text-muted); font-weight: 600; }
 .disk-used-note { font-size: .75rem; color: var(--text-muted); margin-top: 5px; }
+html.theme-dark .disk-item { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 
 /* Multi-disk count badge in the VM list */
 .disk-count-badge {
