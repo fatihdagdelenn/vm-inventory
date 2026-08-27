@@ -54,7 +54,6 @@ VM_COLUMNS = [
     ("CPU (adet)", "cpu_count"), ("CPU Kullanım (%)", "cpu_usage_pct"),
     ("RAM Tahsis (MB)", "ram_mb"), ("RAM Kullanım (MB)", "ram_usage_mb"),
     ("Disk Tahsis (GB)", "disk_total_gb"), ("Disk Kullanım (GB)", "disk_used_gb"),
-    ("Disk Detayı", "disks_detail"),
     ("Güç Durumu", "power_state"), ("Host", "host_name"), ("Cluster", "cluster"),
     ("Datastore", "datastore"), ("VLAN", "vlans"), ("Ortam", "environment"),
     ("Sahip", "owner"), ("Tools/Agent", "tools_status"),
@@ -126,23 +125,55 @@ def _row_values(obj, columns):
         elif field in ("cpu_usage_pct", "disk_used_gb", "disk_total_gb"):
             v = get(field)
             values.append("" if v is None else round(float(v), 1))
-        elif field == "disks_detail":
-            # Parse disks_json -> "Hard disk 1: 40 GB; Hard disk 2: 100 GB"
+        elif field.startswith("disk_size_"):
+            # Per-disk allocated size: disk_size_1, disk_size_2, ...
+            idx = int(field.rsplit("_", 1)[1]) - 1
             raw = getattr(obj, "disks_json", None) if not is_dict else obj.get("disks_json")
-            parts = []
+            sz = ""
             if raw:
                 try:
-                    for d in json.loads(raw):
-                        lbl = d.get("label") or d.get("name") or "disk"
-                        sz = d.get("size_gb")
-                        parts.append(f"{lbl}: {sz} GB" if sz is not None else str(lbl))
-                except (ValueError, TypeError, AttributeError):
+                    dl = json.loads(raw)
+                    if 0 <= idx < len(dl):
+                        s = dl[idx].get("size_gb")
+                        sz = "" if s is None else round(float(s), 1)
+                except (ValueError, TypeError, AttributeError, IndexError):
                     pass
-            values.append("; ".join(parts))
+            values.append(sz)
         else:
             v = get(field)
             values.append("" if v is None else v)
     return values
+
+
+def _max_disk_count(items):
+    """Largest disk count across VM items (for dynamic per-disk columns)."""
+    n = 0
+    for obj in items:
+        raw = obj.get("disks_json") if isinstance(obj, dict) else getattr(obj, "disks_json", None)
+        if raw:
+            try:
+                n = max(n, len(json.loads(raw)))
+            except (ValueError, TypeError):
+                pass
+    return n
+
+
+def vm_columns_with_disks(items):
+    """VM_COLUMNS plus one 'Disk N (GB)' column per disk, up to the max disk
+    count in the data. Single-disk fleets get no extra columns (max=1)."""
+    n = _max_disk_count(items)
+    if n <= 1:
+        return VM_COLUMNS
+    extra = [(f"Disk {i} (GB)", f"disk_size_{i}") for i in range(1, n + 1)]
+    # Insert the per-disk columns right after "Disk Kullanım (GB)"
+    out, injected = [], False
+    for col in VM_COLUMNS:
+        out.append(col)
+        if col[1] == "disk_used_gb":
+            out.extend(extra); injected = True
+    if not injected:
+        out.extend(extra)
+    return out
 
 
 def export_excel(items, columns, title="Envanter Raporu") -> bytes:

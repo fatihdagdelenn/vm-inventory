@@ -51,7 +51,7 @@ def export_vms(fmt: str = "xlsx", q: str = "", db: Session = Depends(get_db),
     items = apply_vm_search(query, q).order_by(VirtualMachine.name).all()
     log_audit(db, user, "export", target=f"vms ({fmt})", detail=f"q='{q}' count={len(items)}")
     db.commit()
-    return _export(items, rs.VM_COLUMNS, fmt, "VM Envanteri")
+    return _export(items, rs.vm_columns_with_disks(items), fmt, "VM Envanteri")
 
 
 @router.get("/hosts/export")
@@ -97,7 +97,7 @@ def export_all(fmt: str = "xlsx", q: str = "", db: Session = Depends(get_db),
     dstores = db.query(Datastore).order_by(Datastore.name).all()
     phys = physical_export_rows(db)
     sections = [
-        ("Sanal Makineler", vms, rs.VM_COLUMNS),
+        ("Sanal Makineler", vms, rs.vm_columns_with_disks(vms)),
         ("Host'lar", hosts, rs.HOST_COLUMNS),
         ("Datastore'lar", dstores, rs.DATASTORE_COLUMNS),
         ("Fiziksel Envanter", phys, rs.PHYSICAL_COLUMNS),
@@ -173,7 +173,7 @@ def _build_items(db: Session, target: str, q: str):
             joinedload(VirtualMachine.host_ref)).filter_by(is_template=False),
             q).order_by(VirtualMachine.name).all()
         sections = [
-            ("Sanal Makineler", vms, rs.VM_COLUMNS),
+            ("Sanal Makineler", vms, rs.vm_columns_with_disks(vms)),
             ("Host'lar", db.query(Host).order_by(Host.name).all(), rs.HOST_COLUMNS),
             ("Datastore'lar", db.query(Datastore).order_by(Datastore.name).all(),
              rs.DATASTORE_COLUMNS),
@@ -183,7 +183,7 @@ def _build_items(db: Session, target: str, q: str):
     query = db.query(VirtualMachine).options(
         joinedload(VirtualMachine.host_ref)).filter_by(is_template=False)
     items = apply_vm_search(query, q).order_by(VirtualMachine.name).all()
-    return items, rs.VM_COLUMNS, "VM"
+    return items, rs.vm_columns_with_disks(items), "VM"
 
 
 def run_scheduled_report(report_id: int):
