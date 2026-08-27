@@ -1209,3 +1209,31 @@ html.theme-dark .topo-live.on { color: #4ade80; }
 /* Yükleniyor katmanı */
 .topo-loading { position: absolute; inset: 0; display: flex; flex-direction: column;
   align-items: center; justify-content: center; z-index: 8; }
+
+/* Per-disk list in the VM detail panel */
+.disk-list { display: flex; flex-direction: column; gap: 3px; margin-top: 2px; }
+.disk-item {
+  display: flex; align-items: center; gap: 6px;
+  padding: 3px 8px; border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+  font-size: .82rem;
+}
+.disk-item .bi { color: var(--text-muted); font-size: .85rem; }
+.disk-item .disk-label { color: var(--ink); }
+.disk-item .disk-size { margin-left: auto; font-weight: 600; color: var(--ink); }
+.disk-item.disk-total {
+  background: transparent; border-top: 1px dashed var(--border);
+  border-radius: 0; margin-top: 2px; padding-top: 5px;
+}
+.disk-item.disk-total .disk-label { color: var(--text-muted); font-weight: 600; }
+.disk-used-note { font-size: .75rem; color: var(--text-muted); margin-top: 5px; }
+
+/* Multi-disk count badge in the VM list */
+.disk-count-badge {
+  display: inline-flex; align-items: center; gap: 2px;
+  font-size: .68rem; font-weight: 600; padding: 1px 5px;
+  border-radius: 5px; vertical-align: 1px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent); cursor: pointer;
+}
+.disk-count-badge .bi { font-size: .7rem; }

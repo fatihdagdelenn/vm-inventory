@@ -4,6 +4,7 @@ Filtered search results export as-is (the search parameter is reapplied).
 """
 import csv
 import io
+import json
 from datetime import datetime
 
 from openpyxl import Workbook
@@ -53,6 +54,7 @@ VM_COLUMNS = [
     ("CPU (adet)", "cpu_count"), ("CPU Kullanım (%)", "cpu_usage_pct"),
     ("RAM Tahsis (MB)", "ram_mb"), ("RAM Kullanım (MB)", "ram_usage_mb"),
     ("Disk Tahsis (GB)", "disk_total_gb"), ("Disk Kullanım (GB)", "disk_used_gb"),
+    ("Disk Detayı", "disks_detail"),
     ("Güç Durumu", "power_state"), ("Host", "host_name"), ("Cluster", "cluster"),
     ("Datastore", "datastore"), ("VLAN", "vlans"), ("Ortam", "environment"),
     ("Sahip", "owner"), ("Tools/Agent", "tools_status"),
@@ -124,6 +126,19 @@ def _row_values(obj, columns):
         elif field in ("cpu_usage_pct", "disk_used_gb", "disk_total_gb"):
             v = get(field)
             values.append("" if v is None else round(float(v), 1))
+        elif field == "disks_detail":
+            # Parse disks_json -> "Hard disk 1: 40 GB; Hard disk 2: 100 GB"
+            raw = getattr(obj, "disks_json", None) if not is_dict else obj.get("disks_json")
+            parts = []
+            if raw:
+                try:
+                    for d in json.loads(raw):
+                        lbl = d.get("label") or d.get("name") or "disk"
+                        sz = d.get("size_gb")
+                        parts.append(f"{lbl}: {sz} GB" if sz is not None else str(lbl))
+                except (ValueError, TypeError, AttributeError):
+                    pass
+            values.append("; ".join(parts))
         else:
             v = get(field)
             values.append("" if v is None else v)

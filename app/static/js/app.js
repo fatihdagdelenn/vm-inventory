@@ -180,8 +180,22 @@ const App = {
     const row = (label, value) =>
       '<div class="detail-row"><span class="detail-label">' + label + '</span>' +
       '<span class="detail-value">' + (value || '—') + '</span></div>';
-    const disks = (v.disks || []).map(d =>
-      App.esc(d.label || d.name || 'disk') + ': ' + App.fmtGb(d.size_gb)).join('<br>') || '—';
+    const diskList = (v.disks || []);
+    const diskTotal = diskList.reduce((s, d) => s + (d.size_gb || 0), 0);
+    const disks = diskList.length
+      ? '<div class="disk-list">' + diskList.map(d =>
+          '<div class="disk-item">' +
+          '<i class="bi bi-hdd"></i> <span class="disk-label">' +
+          App.esc(d.label || d.name || 'disk') + '</span>' +
+          '<span class="disk-size">' + App.fmtGb(d.size_gb) + '</span></div>').join('') +
+        (diskList.length > 1
+          ? '<div class="disk-item disk-total"><span class="disk-label">' +
+            t('vm.diskTotal', 'Toplam') + ' (' + diskList.length + ' ' +
+            t('vm.diskCount', 'disk') + ')</span><span class="disk-size">' +
+            App.fmtGb(diskTotal) + '</span></div>'
+          : '') +
+        '</div>'
+      : '—';
 
     const canEdit = document.querySelector('.role-badge')?.textContent.trim() !== 'Görüntüleyici';
 
@@ -227,8 +241,9 @@ const App = {
           (v.ram_usage_mb ? ' <small class="text-muted">(anlık ' +
            App.fmtRam(v.ram_usage_mb) + ')</small>' : '')) +
       row('Diskler', disks +
-          (v.disk_used_gb ? '<br><small class="text-muted">Gerçek kullanım: ' +
-           App.fmtGb(v.disk_used_gb) + '</small>' : '')) +
+          (v.disk_used_gb ? '<div class="disk-used-note"><i class="bi bi-info-circle"></i> ' +
+           t('vm.diskUsedTotal', 'Gerçek kullanım (VM geneli)') + ': ' +
+           App.fmtGb(v.disk_used_gb) + '</div>' : '')) +
       row('Host', App.esc(v.host)) +
       row('Cluster', App.esc(v.cluster)) +
       row('Pool', App.esc(v.pool)) +
