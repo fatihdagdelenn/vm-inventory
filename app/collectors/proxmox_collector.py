@@ -305,6 +305,45 @@ class ProxmoxCollector:
         self._hw_cache[node] = result
         return result
 
+    def _guest_uptime(self, qa, vmid) -> float | None:
+        """Real uptime (seconds) from inside a Linux guest via the QEMU agent.
+
+        PVE's status.current 'uptime' measures the KVM process and resets on
+        live migration while the guest keeps running (PVE bugzilla #499), so a
+        migrated VM reports far less than the guest's real uptime. /proc/uptime
+        is authoritative. Tries agent/file-read first (single call); falls back
+        to agent/exec + exec-status. Returns None when unavailable (e.g.
+        Windows guests, agent without file-read/exec), so the caller keeps the
+        PVE value.
+        """
+        # 1) file-read: GET agent/file-read?file=/proc/uptime -> {"content": "..."}
+        try:
+            res = qa.agent("file-read").get(file="/proc/uptime")
+            content = res.get("content", "") if isinstance(res, dict) else ""
+            secs = float(str(content).split()[0])
+            if secs > 0:
+                return secs
+        except Exception as exc:
+            logger.debug("file-read /proc/uptime failed for %s: %s", vmid, exc)
+        # 2) exec fallback: POST agent/exec -> pid, then GET agent/exec-status
+        try:
+            started = qa.agent("exec").post(command=["cat", "/proc/uptime"])
+            pid = started.get("pid") if isinstance(started, dict) else None
+            if not pid:
+                return None
+            for _ in range(5):                       # brief poll, ~1s total
+                st = qa.agent("exec-status").get(pid=pid)
+                if isinstance(st, dict) and st.get("exited"):
+                    out = st.get("out-data", "")
+                    if st.get("out-truncated") or not out:
+                        return None
+                    secs = float(str(out).split()[0])
+                    return secs if secs > 0 else None
+                time.sleep(0.2)
+        except Exception as exc:
+            logger.debug("agent exec /proc/uptime failed for %s: %s", vmid, exc)
+        return None
+
     def collect_hosts(self) -> list[dict]:
         hosts = []
         for node in self.api.nodes.get():
@@ -582,8 +621,11 @@ class ProxmoxCollector:
                     try:
                         status = self.api.nodes(node).qemu(vmid).status.current.get()
                         if status.get("uptime"):
+                            up = int(status["uptime"])
                             entry["last_boot"] = datetime.utcfromtimestamp(
-                                int(time.time()) - int(status["uptime"]))
+                                int(time.time()) - up)
+                            logger.info("uptime diag vmid=%s raw_uptime_s=%s (=%.1f gun) last_boot=%s",
+                                        vmid, up, up / 86400, entry["last_boot"])
                     except Exception as exc:
                         logger.debug("Could not fetch status.current %s/%s: %s", node, vmid, exc)
                     agent_ok = False        # network-get-interfaces answered (IPs came)
@@ -721,6 +763,26 @@ class ProxmoxCollector:
                                 entry["disk_used_gb"] = round(used_b / 1024**3, 1)
                         except Exception:
                             pass  # agent does not support fsinfo -> disk_used stays empty
+
+                        # REAL guest uptime. PVE's status.current 'uptime' counts
+                        # the KVM process, which RESTARTS on live migration (the
+                        # guest keeps running) - a known PVE limitation, see
+                        # bugzilla #499. /proc/uptime inside the guest is the
+                        # truth. file-read is one call; exec is the fallback.
+                        # Linux only; Windows guests keep the PVE value.
+                        real_up = self._guest_uptime(qa, vmid)
+                        if real_up:
+                            pve_up = None
+                            if entry.get("last_boot"):
+                                pve_up = int(time.time()) - int(
+                                    entry["last_boot"].timestamp())
+                            entry["last_boot"] = datetime.utcfromtimestamp(
+                                int(time.time()) - int(real_up))
+                            entry["uptime_from_agent"] = True
+                            logger.info(
+                                "uptime vmid=%s agent=%.1f gun pve=%s gun (agent kullanildi)",
+                                vmid, real_up / 86400,
+                                f"{pve_up / 86400:.1f}" if pve_up else "?")
 
                 # If the agent gave no IPs, fall back to cloud-init static IPs
                 # (for stopped VMs and guests without an agent)

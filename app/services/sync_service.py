@@ -444,6 +444,8 @@ def sync_platform(platform_id: int):
             enrich_failed = vd.pop("enrich_failed", False)
             os_from_agent = vd.pop("os_from_agent", True)   # default for vCenter/LXC: trust
             ip_from_agent = vd.pop("ip_from_agent", True)
+            # Stays in vd (it is a real column), we only need to read it here.
+            uptime_from_agent = vd.get("uptime_from_agent", False)
             agent_indeterminate = vd.pop("agent_indeterminate", False)
             vm = existing_vms.get(vd["external_id"])
             ext_id = vd["external_id"]
@@ -515,6 +517,15 @@ def sync_platform(platform_id: int):
                     for f in ("ip_addresses", "mac_addresses", "networks"):
                         if f in vd:
                             vd[f] = getattr(vm, f)
+                # Uptime provenance: PVE's own uptime resets on live migration
+                # (bugzilla #499), so once we have an agent-read boot time we
+                # keep it when the agent is silent, rather than letting the
+                # shorter KVM-process value overwrite it. A real reboot is still
+                # picked up: the agent reports the new (smaller) uptime.
+                if not uptime_from_agent and vm.last_boot and vm.uptime_from_agent \
+                        and vd.get("last_boot") and vd["last_boot"] > vm.last_boot:
+                    vd["last_boot"] = vm.last_boot
+                    vd["uptime_from_agent"] = True      # keep provenance sticky
                 # Sticky agent state (PVE 8.4.x flap guard): the agent option is on
                 # but the probe failed with a timeout/connection-class error. The
                 # agent may be alive but busy (backup fsfreeze, boot). Keep the
