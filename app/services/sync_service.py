@@ -467,6 +467,18 @@ def sync_platform(platform_id: int):
                 if mig and mig[2] == ext_id:
                     # This 'new' record is actually the target side of a migration (node changed).
                     old_ext, old_node, _new_ext, new_node = mig
+                    # Live migration keeps the guest running, but PVE restarts the
+                    # KVM process on the target node so its 'uptime' resets to ~0
+                    # (bugzilla #499). Carry the previous boot time over so the
+                    # displayed uptime stays continuous.
+                    old_vm = existing_vms.get(old_ext)
+                    if old_vm is not None and old_vm.last_boot and not vd.get("uptime_from_agent"):
+                        if not vm.last_boot or vm.last_boot > old_vm.last_boot:
+                            vm.last_boot = old_vm.last_boot
+                            vm.uptime_carried = True
+                            logger.info("Uptime carried across migration vmid=%s "
+                                        "%s -> %s (boot %s kept)", vid, old_node,
+                                        new_node, old_vm.last_boot)
                     # search the qmigrate task by vmid across all op lists
                     # (independent of source/target node key -> actor not left empty).
                     op = _find_op_by_vid(vm_ops, vid, ["migrate"]) \
@@ -526,6 +538,19 @@ def sync_platform(platform_id: int):
                         and vd.get("last_boot") and vd["last_boot"] > vm.last_boot:
                     vd["last_boot"] = vm.last_boot
                     vd["uptime_from_agent"] = True      # keep provenance sticky
+                # After a live migration we carried the original boot time over
+                # (PVE's counter restarted on the target node). Keep carrying it
+                # on later syncs, otherwise PVE's short value would overwrite it.
+                # Applies ONLY to VMs already marked as carried, so a genuine
+                # stop/start on an ordinary VM is never masked. The mark is
+                # cleared as soon as the VM is actually seen not running.
+                elif (not uptime_from_agent and vm.last_boot and vm.uptime_carried
+                        and vd.get("power_state") == "running"
+                        and vd.get("last_boot") and vd["last_boot"] > vm.last_boot):
+                    vd["last_boot"] = vm.last_boot
+                    vd["uptime_carried"] = True
+                elif vd.get("power_state") and vd["power_state"] != "running":
+                    vd["uptime_carried"] = False        # real power cycle -> reset
                 # Sticky agent state (PVE 8.4.x flap guard): the agent option is on
                 # but the probe failed with a timeout/connection-class error. The
                 # agent may be alive but busy (backup fsfreeze, boot). Keep the

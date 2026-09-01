@@ -73,6 +73,7 @@ class VirtualMachine(Base):
     created_date = Column(DateTime)                 # VM creation date
     last_boot = Column(DateTime)                    # Last boot time
     uptime_from_agent = Column(Boolean, default=False)  # boot time read from guest agent
+    uptime_carried = Column(Boolean, default=False)     # boot time carried across a migration
     tools_status = Column(String(64))               # VMware Tools / QEMU Agent durumu
     agent_miss_count = Column(Integer, default=0)   # Consecutive indeterminate agent probes (sticky-state guard)
     owner = Column(String(128))                     # Manuel: VM sahibi
