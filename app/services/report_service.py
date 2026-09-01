@@ -54,7 +54,7 @@ VM_COLUMNS = [
     ("CPU (adet)", "cpu_count"), ("CPU Kullanım (%)", "cpu_usage_pct"),
     ("RAM Tahsis (MB)", "ram_mb"), ("RAM Kullanım (MB)", "ram_usage_mb"),
     ("Disk Tahsis (GB)", "disk_total_gb"), ("Disk Kullanım (GB)", "disk_used_gb"),
-    ("Disk Sayısı", "disk_count"),
+    ("Disk Sayısı", "disk_count"), ("Çalışma Süresi", "uptime_str"),
     ("Güç Durumu", "power_state"), ("Host", "host_name"), ("Cluster", "cluster"),
     ("Datastore", "datastore"), ("VLAN", "vlans"), ("Ortam", "environment"),
     ("Sahip", "owner"), ("Tools/Agent", "tools_status"),
@@ -132,6 +132,28 @@ def _row_values(obj, columns):
                 values.append(len(json.loads(raw)) if raw else "")
             except (ValueError, TypeError):
                 values.append("")
+        elif field == "uptime_str":
+            # Human-readable uptime derived from last_boot (UTC).
+            lb = getattr(obj, "last_boot", None) if not is_dict else obj.get("last_boot")
+            if not lb:
+                values.append("")
+            else:
+                try:
+                    from datetime import datetime, timezone
+                    if isinstance(lb, str):
+                        lb = datetime.fromisoformat(lb.replace("Z", "+00:00"))
+                    if lb.tzinfo is None:
+                        lb = lb.replace(tzinfo=timezone.utc)
+                    secs = int((datetime.now(timezone.utc) - lb).total_seconds())
+                    if secs < 0:
+                        values.append("")
+                    else:
+                        d, r = divmod(secs, 86400)
+                        h, r = divmod(r, 3600)
+                        m = r // 60
+                        values.append(f"{d}g {h}s" if d else (f"{h}s {m}dk" if h else f"{m}dk"))
+                except (ValueError, TypeError, AttributeError):
+                    values.append("")
         else:
             v = get(field)
             values.append("" if v is None else v)

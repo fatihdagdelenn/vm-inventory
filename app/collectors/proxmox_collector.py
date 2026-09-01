@@ -8,6 +8,7 @@ If the QEMU Guest Agent is installed, in-guest IP addresses are read too.
 import json
 import logging
 import re
+import time
 from datetime import datetime
 
 from proxmoxer import ProxmoxAPI
@@ -319,7 +320,7 @@ class ProxmoxCollector:
                 "disk_used_gb": round(node.get("disk", 0) / 1024**3, 1),
                 "status": "online" if node.get("status") == "online" else "offline",
                 "last_boot": (datetime.utcfromtimestamp(
-                    int(datetime.utcnow().timestamp()) - int(node["uptime"]))
+                    int(time.time()) - int(node["uptime"]))
                     if node.get("uptime") else None),
             }
             # Detail fields (mgmt_ip / cpu_model / os_version) are OMITTED from
@@ -582,7 +583,7 @@ class ProxmoxCollector:
                         status = self.api.nodes(node).qemu(vmid).status.current.get()
                         if status.get("uptime"):
                             entry["last_boot"] = datetime.utcfromtimestamp(
-                                int(datetime.utcnow().timestamp()) - int(status["uptime"]))
+                                int(time.time()) - int(status["uptime"]))
                     except Exception as exc:
                         logger.debug("Could not fetch status.current %s/%s: %s", node, vmid, exc)
                     agent_ok = False        # network-get-interfaces answered (IPs came)
@@ -806,7 +807,7 @@ class ProxmoxCollector:
                 status = self.api.nodes(node).lxc(vmid).status.current.get()
                 if status.get("uptime"):
                     entry["last_boot"] = datetime.utcfromtimestamp(
-                        int(datetime.utcnow().timestamp()) - int(status["uptime"]))
+                        int(time.time()) - int(status["uptime"]))
             except Exception:
                 pass
             # Live IPs of a running container (no agent needed)
@@ -1430,7 +1431,7 @@ class ProxmoxCollector:
         except Exception as exc:
             logger.warning("Could not fetch cluster log (entity actors): %s", exc)
             return out
-        min_ts = int(datetime.utcnow().timestamp()) - days * 86400
+        min_ts = int(time.time()) - days * 86400
         for en in entries:
             ts = int(en.get("time") or 0)
             if ts < min_ts:

@@ -23,7 +23,7 @@ SORTABLE = {"name": VirtualMachine.name, "power_state": VirtualMachine.power_sta
             "agent": VirtualMachine.tools_status,
             "ram_mb": VirtualMachine.ram_mb, "cpu_count": VirtualMachine.cpu_count,
             "disk_total_gb": VirtualMachine.disk_total_gb, "vmid": VirtualMachine.vmid,
-            "pool": VirtualMachine.pool}
+            "uptime": VirtualMachine.last_boot, "pool": VirtualMachine.pool}
 # Text columns sort case-insensitively (true alphabetical); otherwise the DB
 # sorts by byte/ASCII order (uppercase first -> not alphabetical)
 CASE_INSENSITIVE = {"name", "cluster", "guest_os", "vmid", "pool"}
@@ -127,7 +127,17 @@ def list_vms(q: str = "", page: int = 1, per_page: int = 50,
     else:
         base_col = SORTABLE.get(sort, VirtualMachine.name)
         sort_col = func.lower(base_col) if sort in CASE_INSENSITIVE else base_col
-    query = query.order_by(sort_col.desc() if order == "desc" else sort_col.asc())
+    if sort == "uptime":
+        # Uptime is derived from last_boot (older boot = longer uptime), so the
+        # direction is inverted: "desc" (longest uptime first) = last_boot asc.
+        # VMs without a boot time (powered off) always sort to the end.
+        nulls_last = VirtualMachine.last_boot.is_(None)
+        if order == "desc":
+            query = query.order_by(nulls_last.asc(), VirtualMachine.last_boot.asc())
+        else:
+            query = query.order_by(nulls_last.asc(), VirtualMachine.last_boot.desc())
+    else:
+        query = query.order_by(sort_col.desc() if order == "desc" else sort_col.asc())
     items = query.offset((page - 1) * per_page).limit(per_page).all()
     return {"total": total, "page": page, "per_page": per_page,
             "items": [_vm_to_dict(v) for v in items]}
