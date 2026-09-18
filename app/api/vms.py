@@ -226,56 +226,90 @@ def vm_facets(include_hidden: bool = False,
     }
 
 
+def _disk_state(total, disks):
+    """Classify a VM's disk data -> (state, disks_sum, human verdict).
+
+    states: ok | mismatch | diskless | detail_missing
+    A diskless VM (no disks AND a zero/absent total) is NORMAL, not a fault:
+    both sides agree that there is nothing to report.
+    """
+    dsum = round(sum(float(d.get("size_gb") or 0) for d in disks), 1) if disks else None
+    t = round(total, 1) if total is not None else None
+    if disks:
+        if t is not None and abs(dsum - t) < 0.2:
+            return "ok", dsum, f"Tutarlı — {t} GB / {len(disks)} disk"
+        return "mismatch", dsum, (f"TUTARSIZ — liste sütunu {t} GB diyor, "
+                                  f"disk detayı {dsum} GB ({len(disks)} disk)")
+    if not t:
+        return "diskless", None, "Disksiz VM — disk tanımlı değil (normal)"
+    return "detail_missing", None, (f"Disk detayı okunamadı — toplam "
+                                    f"platformdan geliyor ({t} GB)")
+
+
 @router.get("/disk-diag")
 def disk_diagnostics(name: str = "", db: Session = Depends(get_db),
                      user: User = Depends(require_role("admin"))):
-    """Admin-only: compare each VM's stored disk total with the sum of its
-    per-disk detail, to diagnose 'the list shows the wrong disk size'.
+    """Admin-only: check that each VM's disk total agrees with its per-disk
+    detail, to diagnose 'the list shows the wrong disk size'.
 
-    They should agree whenever the disk detail is known. A mismatch means the
-    total is stale or the detail could not be read. Without `name` only the
-    mismatching VMs are listed.
+    Without `name` only the VMs worth looking at are listed (mismatching total,
+    or a total with no readable detail); diskless VMs are counted, not listed.
+    With `name` every matching VM is listed, including the healthy ones.
     """
     q = db.query(VirtualMachine).filter_by(is_template=False)
     if name:
         q = q.filter(VirtualMachine.name.ilike(f"%{name.strip()}%"))
     ptypes = {p.id: p.type for p in db.query(Platform).all()}
-    items, mismatched = [], 0
+    counts = {"ok": 0, "mismatch": 0, "diskless": 0, "detail_missing": 0}
+    items = []
     for vm in q.order_by(VirtualMachine.name).all():
         try:
             disks = json.loads(vm.disks_json or "[]")
         except (ValueError, TypeError):
             disks = []
-        dsum = round(sum(float(d.get("size_gb") or 0) for d in disks), 1) if disks else None
-        total = round(vm.disk_total_gb, 1) if vm.disk_total_gb is not None else None
-        ok = (dsum is not None and total is not None and abs(dsum - total) < 0.2)
-        if not ok:
-            mismatched += 1
-        if not name and ok:
-            continue                       # only mismatches unless a name is given
+        state, dsum, verdict = _disk_state(vm.disk_total_gb, disks)
+        counts[state] += 1
+        if not name and state in ("ok", "diskless"):
+            continue                       # nothing to look at
         hist = (db.query(ChangeHistory)
                 .filter(ChangeHistory.entity_type == "vm",
                         ChangeHistory.entity_name == vm.name,
                         ChangeHistory.field == "disk_total_gb")
                 .order_by(ChangeHistory.changed_at.desc()).limit(3).all())
         items.append({
-            "id": vm.id, "name": vm.name, "external_id": vm.external_id,
+            "vm": vm.name,
+            "durum": verdict,
+            "state": state,
+            "liste_sutunu_gb": (round(vm.disk_total_gb, 1)
+                                if vm.disk_total_gb is not None else None),
+            "disk_detayi_gb": dsum,
+            "disk_sayisi": len(disks),
+            "diskler": "; ".join(
+                f"{d.get('label') or d.get('name') or 'disk'}: {d.get('size_gb')} GB"
+                for d in disks) or "—",
             "platform": ptypes.get(vm.platform_id, "?"),
-            "db_total_gb": total,                 # what the VM list shows
-            "disks_sum_gb": dsum,                 # sum of the per-disk detail
-            "disk_count": len(disks),
-            "disks": disks,
-            "consistent": ok,
-            "verdict": ("ok" if ok else
-                        "disk detail unknown - total comes from the platform total"
-                        if not disks else "total does NOT match the disk list"),
-            "updated_at": to_iso(vm.updated_at),
-            "recent_disk_changes": [
-                {"at": to_iso(h.changed_at), "old": h.old_value, "new": h.new_value}
-                for h in hist],
+            "external_id": vm.external_id,
+            "id": vm.id,
+            "son_sync": to_iso(vm.updated_at),
+            "gecmis": [f"{to_iso(h.changed_at)}: {h.old_value} -> {h.new_value}"
+                       for h in hist] or ["disk değişikliği kaydı yok"],
         })
-    return {"checked": q.count(), "mismatched": mismatched,
-            "shown": len(items), "items": items}
+    # Worst first, so the interesting rows are at the top.
+    order = {"mismatch": 0, "detail_missing": 1, "diskless": 2, "ok": 3}
+    items.sort(key=lambda i: (order.get(i["state"], 9), i["vm"].lower()))
+
+    checked = sum(counts.values())
+    problems = []
+    if counts["mismatch"]:
+        problems.append(f"{counts['mismatch']} tutarsız")
+    if counts["detail_missing"]:
+        problems.append(f"{counts['detail_missing']} disk detayı okunamadı")
+    summary = f"{checked} VM kontrol edildi — " + (
+        ", ".join(problems) if problems else "sorun yok")
+    if counts["diskless"]:
+        summary += f". {counts['diskless']} disksiz VM normal sayıldı"
+    return {"ozet": summary + ".", "sayilar": counts,
+            "listelenen": len(items), "items": items}
 
 
 @router.get("/{vm_id}")
