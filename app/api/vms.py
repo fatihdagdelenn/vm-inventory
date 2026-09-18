@@ -9,7 +9,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from ..database import get_db
-from ..models import VirtualMachine, Tag, User, AuditLog, Host
+from ..models import (VirtualMachine, Tag, User, AuditLog, Host,
+                      ChangeHistory, Platform)
 from ..core.timezone import to_iso
 from ..core.audit import log_audit
 from ..core.security import get_current_user, require_role, validate_csrf
@@ -223,6 +224,58 @@ def vm_facets(include_hidden: bool = False,
         "pools": counted(VirtualMachine.pool),
         "folders": counted(VirtualMachine.folder),
     }
+
+
+@router.get("/disk-diag")
+def disk_diagnostics(name: str = "", db: Session = Depends(get_db),
+                     user: User = Depends(require_role("admin"))):
+    """Admin-only: compare each VM's stored disk total with the sum of its
+    per-disk detail, to diagnose 'the list shows the wrong disk size'.
+
+    They should agree whenever the disk detail is known. A mismatch means the
+    total is stale or the detail could not be read. Without `name` only the
+    mismatching VMs are listed.
+    """
+    q = db.query(VirtualMachine).filter_by(is_template=False)
+    if name:
+        q = q.filter(VirtualMachine.name.ilike(f"%{name.strip()}%"))
+    ptypes = {p.id: p.type for p in db.query(Platform).all()}
+    items, mismatched = [], 0
+    for vm in q.order_by(VirtualMachine.name).all():
+        try:
+            disks = json.loads(vm.disks_json or "[]")
+        except (ValueError, TypeError):
+            disks = []
+        dsum = round(sum(float(d.get("size_gb") or 0) for d in disks), 1) if disks else None
+        total = round(vm.disk_total_gb, 1) if vm.disk_total_gb is not None else None
+        ok = (dsum is not None and total is not None and abs(dsum - total) < 0.2)
+        if not ok:
+            mismatched += 1
+        if not name and ok:
+            continue                       # only mismatches unless a name is given
+        hist = (db.query(ChangeHistory)
+                .filter(ChangeHistory.entity_type == "vm",
+                        ChangeHistory.entity_name == vm.name,
+                        ChangeHistory.field == "disk_total_gb")
+                .order_by(ChangeHistory.changed_at.desc()).limit(3).all())
+        items.append({
+            "id": vm.id, "name": vm.name, "external_id": vm.external_id,
+            "platform": ptypes.get(vm.platform_id, "?"),
+            "db_total_gb": total,                 # what the VM list shows
+            "disks_sum_gb": dsum,                 # sum of the per-disk detail
+            "disk_count": len(disks),
+            "disks": disks,
+            "consistent": ok,
+            "verdict": ("ok" if ok else
+                        "disk detail unknown - total comes from the platform total"
+                        if not disks else "total does NOT match the disk list"),
+            "updated_at": to_iso(vm.updated_at),
+            "recent_disk_changes": [
+                {"at": to_iso(h.changed_at), "old": h.old_value, "new": h.new_value}
+                for h in hist],
+        })
+    return {"checked": q.count(), "mismatched": mismatched,
+            "shown": len(items), "items": items}
 
 
 @router.get("/{vm_id}")

@@ -11,6 +11,7 @@ Flow:
 
 This keeps user searches always fast, served from local data.
 """
+import json
 import re
 import logging
 from datetime import datetime, date, timedelta
@@ -562,6 +563,33 @@ def sync_platform(platform_id: int):
                         vd["tools_status"] = vm.tools_status
                 else:
                     vm.agent_miss_count = 0
+                # Disk total and per-disk detail must never contradict each other.
+                # disk_total_gb is protected by _preserve_old (an unreadable disk
+                # list yields 0) while disks_json is not, so the two could drift
+                # apart and a stale total could then survive every later sync.
+                #   * list readable       -> the total is DERIVED from it, so they
+                #                            always agree and a resize is picked up;
+                #   * list empty, total 0 -> keep BOTH previous values together;
+                #   * list empty, total
+                #     still reported       -> trust the fresh total (Proxmox falls
+                #     (Proxmox maxdisk)      back to maxdisk) and leave the detail
+                #                            empty. "Unknown" is honest; a stale
+                #                            list beside a fresh total is not.
+                if "disks_json" in vd:
+                    try:
+                        _disks = json.loads(vd["disks_json"] or "[]")
+                    except (ValueError, TypeError):
+                        _disks = []
+                    if _disks:
+                        vd["disk_total_gb"] = round(
+                            sum(float(d.get("size_gb") or 0) for d in _disks), 1)
+                    elif not vd.get("disk_total_gb") and vm.disks_json and vm.disk_total_gb:
+                        vd["disks_json"] = vm.disks_json
+                        vd["disk_total_gb"] = vm.disk_total_gb
+                        logger.warning(
+                            "Disk list unreadable for VM %s (%s) - keeping the "
+                            "previous total %s GB; it may be stale",
+                            vm.name, ext_id, vm.disk_total_gb)
                 for f in TRACKED_VM_FIELDS:
                     old, new = getattr(vm, f), vd.get(f)
                     if _preserve_old(f, old, new):   # transient drop -> keep the old value
