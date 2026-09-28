@@ -203,28 +203,30 @@ def summary(no_local: int = 0, db: Session = Depends(get_db),
     phys = {"cores": int(_hc[0] or 0),
             "ram_gb": round(float(_hc[1] or 0) / 1024, 1),
             "disk_tb": round(float(_dc) / 1024, 2)}
-    # Oldest 30d+ snapshots (widget)
-    from datetime import datetime as _dt2, timedelta as _td2
+    # Snapshots for the widget: ALL of them, the age buttons (Tümü/7+/14+/30+)
+    # filter client-side. There used to be a 7-day floor here, which made the
+    # card look empty while the Snapshots page listed the very same snapshots.
+    from datetime import datetime as _dt2
     from .clusters import hidden_cluster_names, NONE_SENTINEL
-    _cut = _dt2.utcnow() - _td2(days=7)   # widget filters 7+/14+/30+ client-side
     _hid = set(hidden_cluster_names(db))
     _srows = (db.query(Snapshot.vm_name, Snapshot.name, Snapshot.created_at,
                        VirtualMachine.cluster)
                 .outerjoin(VirtualMachine, Snapshot.vm_id == VirtualMachine.id)
-                .filter(Snapshot.created_at != None,  # noqa: E711
-                        Snapshot.created_at < _cut)
-                .order_by(Snapshot.created_at.asc()).limit(500).all())
+                .limit(1000).all())
     if _hid:  # consistent with the Snapshots page: hidden clusters excluded
         _srows = [r for r in _srows if not (
             (r[3] and r[3] in _hid) or (not r[3] and NONE_SENTINEL in _hid))]
+    _now2 = _dt2.utcnow()
     old_snapshot_items = [
         {"vm": vm, "name": nm,
-         "days": (_dt2.utcnow() - ca).days if ca else None}
+         "days": (_now2 - ca).days if ca else None}
         for vm, nm, ca, _cl in _srows]
-    # Total snapshot count under the SAME hidden-cluster rule. The widget only
-    # receives snapshots older than the 7-day floor, so without this it cannot
-    # tell "no snapshots at all" from "they all exist but are younger" - and an
-    # empty card then reads as a bug.
+    # Oldest first; snapshots with an unknown creation date go last (their age
+    # cannot be judged, so they only appear under "Tümü").
+    old_snapshot_items.sort(
+        key=lambda i: (i["days"] is None, -(i["days"] or 0)))
+    # Total snapshot count under the SAME hidden-cluster rule, so the widget can
+    # tell that its list was capped (see the 1000-row limit above).
     _asnap = (db.query(Snapshot.id, VirtualMachine.cluster)
                 .outerjoin(VirtualMachine, Snapshot.vm_id == VirtualMachine.id).all())
     if _hid:

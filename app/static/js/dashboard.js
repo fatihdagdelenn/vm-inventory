@@ -14,13 +14,27 @@ const LS_KEY = 'vmi-dash-layout-v1';
 const SnapWidget = {
   items: [],
   total: 0,
-  // Default to the widest bucket (7+). Defaulting to 30+ made the card look
-  // empty/broken whenever snapshots existed but were younger.
-  minAge: parseInt(localStorage.getItem('vmi-snap-age') || '7', 10) || 7,
+  // Default to "Tümü": the card lists every snapshot and the age buttons
+  // narrow it down. A non-zero default hid snapshots that the Snapshots page
+  // was happily listing, which read as a bug.
+  minAge: parseInt(localStorage.getItem('vmi-snap-age') || '0', 10) || 0,
   render() {
     const osb = document.getElementById('oldSnapBody');
     if (!osb) return;
-    const rows = this.items.filter(it => (it.days || 0) >= this.minAge);
+    // minAge 0 = Tümü (snapshots with an unknown date are only listed here,
+    // since their age cannot be compared).
+    const rows = this.minAge
+      ? this.items.filter(it => it.days != null && it.days >= this.minAge)
+      : this.items.slice();
+    const cnt = document.getElementById('snapCount');
+    if (cnt) {
+      cnt.textContent = rows.length +
+        (this.total > this.items.length ? '/' + this.total : '');
+      cnt.title = this.total > this.items.length
+        ? t('dash.snapCapped', 'Toplam {n} snapshot; liste ilk {m} kayıtla sınırlı')
+            .replace('{n}', this.total).replace('{m}', this.items.length)
+        : '';
+    }
     osb.innerHTML = rows.length ? rows.map(it =>
       '<tr><td>' + App.esc(it.vm || '—') + '</td><td class="small">' + App.esc(it.name || '') +
       '</td><td class="text-end"><span class="badge ' +
@@ -34,17 +48,11 @@ const SnapWidget = {
   /* Say WHY the card is empty: none in this bucket, younger ones exist, or
      genuinely no snapshots. An unexplained empty card reads as a fault. */
   emptyMsg() {
-    if (this.items.length) {
+    if (this.items.length) {          // filtered out, not absent - say so
       return this.minAge + '+ ' + t('dash.noSnapsAge','gün yaşında snapshot yok') + ' 🎉' +
         '<div class="small mt-1">' +
-        t('dash.snapsYounger','Daha genç {n} snapshot var — yukarıdaki 7+ / 14+ sekmesine bakın')
+        t('dash.snapsSeeAll','Toplam {n} snapshot var — "Tümü" ile hepsini görebilirsiniz')
           .replace('{n}', this.items.length) + '</div>';
-    }
-    if (this.total) {
-      return t('dash.noOldSnaps','7 günden eski snapshot yok') + ' 🎉' +
-        '<div class="small mt-1">' +
-        t('dash.snapsAllFresh','Toplam {n} snapshot var, hepsi 7 günden yeni')
-          .replace('{n}', this.total) + '</div>';
     }
     return t('dash.noSnapsAtAll','Hiç snapshot yok') + ' 🎉';
   },
