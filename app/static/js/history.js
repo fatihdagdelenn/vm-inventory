@@ -5,6 +5,8 @@
  * kullanıcı (varsa IP/User-Agent) gösterilir.
  */
 const History = {
+  page: 1,
+  perPage: 200,
   FIELD_LABELS: {
     ram_mb: t('hi.f.ram','Bellek (RAM)'), cpu_count: 'vCPU', guest_os: t('vm.os','İşletim Sistemi'),
     disk_total_gb: t('hi.f.disk','Disk Boyutu'), datastore: t('hi.f.ds','Depolama (Datastore)'),
@@ -126,7 +128,7 @@ const History = {
   },
 
   /** Aktif filtre kutusu: arama terimleri (dahil/dışla) + varlık + kategori. */
-  renderFilters(q, entity, category, actorKind) {
+  renderFilters(q, entity, category, actorKind, from, to) {
     const wrap = document.getElementById('histFilters');
     const chips = [];
     const terms = q.match(/[-!]?"[^"]*"|[-!]?\S+/g) || [];
@@ -151,6 +153,11 @@ const History = {
       chips.push('<span class="filter-badge">' + t('hi.user','Kullan\u0131c\u0131') + ': ' + App.esc(al) +
         '<button title="' + t('vm.remove','Kald\u0131r') + '" onclick="History.clearSel(\'histActor\')"><i class="bi bi-x"></i></button></span>');
     }
+    if (from || to) {
+      chips.push('<span class="filter-badge"><i class="bi bi-calendar-range"></i> ' +
+        App.esc(from || '…') + ' – ' + App.esc(to || '…') +
+        '<button title="' + t('vm.remove','Kaldır') + '" onclick="History.clearDates()"><i class="bi bi-x"></i></button></span>');
+    }
     if (!chips.length) { wrap.classList.add('d-none'); wrap.innerHTML = ''; return; }
     wrap.classList.remove('d-none');
     wrap.innerHTML = '<span class="text-muted small me-1">' + t('vm.activeFilters','Aktif:') + '</span>' + chips.join('') +
@@ -162,15 +169,60 @@ const History = {
     const terms = (inp.value.trim().match(/[-!]?"[^"]*"|[-!]?\S+/g) || []);
     terms.splice(i, 1);
     inp.value = terms.join(' ');
-    History.load();
+    History.reload();
   },
-  clearSel(id) { document.getElementById(id).value = ''; History.load(); },
+  clearSel(id) { document.getElementById(id).value = ''; History.reload(); },
+  clearDates() {
+    document.getElementById('histFrom').value = '';
+    document.getElementById('histTo').value = '';
+    History.reload();
+  },
+  /* Jump back N days: the quickest way to reach an old event without paging. */
+  quickRange(days) {
+    const end = new Date();
+    const start = new Date(Date.now() - days * 86400000);
+    const iso = d => d.getFullYear() + '-' +
+      String(d.getMonth() + 1).padStart(2, '0') + '-' +
+      String(d.getDate()).padStart(2, '0');
+    document.getElementById('histFrom').value = iso(start);
+    document.getElementById('histTo').value = iso(end);
+    History.reload();
+  },
   clearAllFilters() {
     document.getElementById('histSearch').value = '';
     document.getElementById('histEntity').value = '';
     document.getElementById('histCategory').value = '';
     document.getElementById('histActor').value = '';
-    History.load();
+    document.getElementById('histFrom').value = '';
+    document.getElementById('histTo').value = '';
+    History.reload();
+  },
+
+  /* Any filter change must return to page 1: staying on page 12 of a new,
+     shorter result set would show an empty table and read as "no records". */
+  reload() { History.page = 1; History.load(); },
+
+  renderPager(d) {
+    const info = document.getElementById('histPageInfo');
+    const total = d.total || 0;
+    const from = total ? (d.page - 1) * d.per_page + 1 : 0;
+    const to = Math.min(d.page * d.per_page, total);
+    if (info) {
+      info.textContent = total
+        ? from.toLocaleString('tr') + '–' + to.toLocaleString('tr') + ' / ' +
+          total.toLocaleString('tr') + (d.capped ? ' +' : '')
+        : t('hi.noRecords','Kayıt bulunamadı.');
+      info.title = d.capped
+        ? t('hi.capped','Bu filtre kayıtları sunucuda taranarak süzülüyor; ' +
+            'yalnızca en yeni 20.000 kayıt tarandı. Daha geriye gitmek için tarih aralığı verin.')
+        : '';
+    }
+    const dis = (id, off) => {
+      const b = document.getElementById(id);
+      if (b) b.disabled = off;
+    };
+    dis('histFirst', d.page <= 1); dis('histPrev', d.page <= 1);
+    dis('histNext', d.page >= (d.pages || 1));
   },
 
   async load() {
@@ -178,17 +230,25 @@ const History = {
     const entity = document.getElementById('histEntity').value;
     const category = document.getElementById('histCategory').value;
     const actorKind = document.getElementById('histActor').value;
-    History.renderFilters(q, entity, category, actorKind);
+    const from = document.getElementById('histFrom').value;
+    const to = document.getElementById('histTo').value;
+    History.renderFilters(q, entity, category, actorKind, from, to);
     const body = document.getElementById('histBody');
     let data;
     try {
       data = await App.api('/api/admin/changes?entity=' + encodeURIComponent(entity) +
                            '&category=' + encodeURIComponent(category) +
                            '&actor_kind=' + encodeURIComponent(actorKind) +
+                           '&date_from=' + encodeURIComponent(from) +
+                           '&date_to=' + encodeURIComponent(to) +
+                           '&page=' + History.page +
+                           '&per_page=' + History.perPage +
                            '&q=' + encodeURIComponent(q));
     } catch (e) { return; }
     document.getElementById('histCount').textContent =
-      data.items.length ? data.items.length + ' ' + t('hi.records','kayıt') : '';
+      (data.total || 0).toLocaleString('tr') + ' ' + t('hi.records','kayıt') +
+      (data.capped ? ' (' + t('hi.cappedShort','tarama sınırlı') + ')' : '');
+    History.renderPager(data);
     if (!data.items.length) {
       body.innerHTML = '<tr><td colspan="7" class="text-center text-muted p-4">' + t('hi.noRecords','Kayıt bulunamadı.') + '</td></tr>';
       return;
@@ -207,10 +267,24 @@ const History = {
 };
 
 (function () {
-  document.getElementById('histSearch')
-    .addEventListener('input', App.debounce(History.load, 300));
-  document.getElementById('histEntity').addEventListener('change', History.load);
-  document.getElementById('histCategory').addEventListener('change', History.load);
-  document.getElementById('histActor').addEventListener('change', History.load);
+  const on = (id, ev, fn) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener(ev, fn);
+  };
+  on('histSearch', 'input', App.debounce(History.reload, 300));
+  ['histEntity', 'histCategory', 'histActor', 'histFrom', 'histTo']
+    .forEach(id => on(id, 'change', History.reload));
+  on('histDateClear', 'click', History.clearDates);
+  document.querySelectorAll('#histQuickRange [data-days]').forEach(b =>
+    b.addEventListener('click', () => History.quickRange(parseInt(b.dataset.days, 10))));
+  on('histPerPage', 'change', e => {
+    History.perPage = parseInt(e.target.value, 10) || 200;
+    History.reload();
+  });
+  on('histFirst', 'click', () => { History.page = 1; History.load(); });
+  on('histPrev', 'click', () => {
+    if (History.page > 1) { History.page--; History.load(); }
+  });
+  on('histNext', 'click', () => { History.page++; History.load(); });
   History.load();
 })();

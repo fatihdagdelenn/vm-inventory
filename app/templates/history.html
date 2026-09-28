@@ -29,6 +29,19 @@
       <option value="system" data-i18n="hi.actorSystem">Yalnız Sistem (otomatik)</option>
       <option value="none" data-i18n="hi.actorNone">Kullanıcısız (—)</option>
     </select>
+    <div class="input-group input-group-sm w-auto" title="Tarih aralığı (dahil)">
+      <span class="input-group-text"><i class="bi bi-calendar-range"></i></span>
+      <input type="date" id="histFrom" class="form-control form-control-sm" style="max-width:150px">
+      <span class="input-group-text">–</span>
+      <input type="date" id="histTo" class="form-control form-control-sm" style="max-width:150px">
+      <button class="btn btn-outline-secondary" id="histDateClear" type="button"
+              data-i18n-title="hi.clearDates" title="Tarihi temizle"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="btn-group btn-group-sm" role="group" id="histQuickRange">
+      <button class="btn btn-outline-secondary" data-days="7">7g</button>
+      <button class="btn btn-outline-secondary" data-days="30">30g</button>
+      <button class="btn btn-outline-secondary" data-days="90">90g</button>
+    </div>
     <span id="histCount" class="text-muted small ms-auto"></span>
   </div>
   <div id="histFilters" class="active-filters mb-3 d-none"></div>
@@ -47,7 +60,19 @@
         </tr></thead>
         <tbody id="histBody"><tr><td colspan="7" class="text-center text-muted p-4" data-i18n="common.loading">Yükleniyor…</td></tr></tbody>
       </table>
-    </div>
+      </div>
+      <div class="d-flex align-items-center gap-2 p-2 border-top" id="histPager">
+        <button class="btn btn-sm btn-outline-secondary" id="histFirst" title="İlk sayfa">«</button>
+        <button class="btn btn-sm btn-outline-secondary" id="histPrev" data-i18n="hi.prev">Önceki</button>
+        <span class="small text-muted" id="histPageInfo"></span>
+        <button class="btn btn-sm btn-outline-secondary" id="histNext" data-i18n="hi.next">Sonraki</button>
+        <select id="histPerPage" class="form-select form-select-sm w-auto ms-auto">
+          <option value="100">100</option>
+          <option value="200" selected>200</option>
+          <option value="500">500</option>
+          <option value="1000">1000</option>
+        </select>
+      </div>
   </div>
 
   <p class="text-muted small mt-2 mb-0">

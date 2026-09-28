@@ -1,5 +1,6 @@
 """Admin API: users, audit log, change history (admin)."""
 import re
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from sqlalchemy import or_, and_, not_, func
 from sqlalchemy.orm import Session
@@ -114,19 +115,45 @@ def _is_system_actor(actor: str, op_type: str) -> bool:
         bool(_SYS_OP_RE.search(op_type or ""))
 
 
+def _day_bound_utc(s: str, end: bool = False):
+    """'YYYY-MM-DD' typed by the user (app timezone) -> naive UTC datetime.
+
+    changed_at is stored as naive UTC, so a local day must be shifted before it
+    is compared; otherwise an Istanbul day would be off by the UTC offset and
+    the range would silently miss records. `end` returns the EXCLUSIVE upper
+    bound (next local midnight), so date_to includes the whole day.
+    """
+    from ..core.timezone import app_tz
+    d = datetime.strptime(s.strip(), "%Y-%m-%d").replace(tzinfo=app_tz())
+    if end:
+        d = d + timedelta(days=1)
+    return d.astimezone(timezone.utc).replace(tzinfo=None)
+
+
 @router.get("/changes")
 def change_history(entity: str = "", q: str = "", category: str = "",
                    actor_kind: str = "",
-                   limit: int = 200,
+                   date_from: str = "", date_to: str = "",
+                   page: int = 1, per_page: int = 200, limit: int = 0,
                    db: Session = Depends(get_db),
                    user: User = Depends(get_current_user)):
-    """Inventory change history (visible to all roles).
+    """Inventory change history (visible to all roles), paged.
 
     actor_kind: '' all | 'user' human accounts | 'system' machine accounts /
-    automation (vpxd, vCLS, DRS, HA, replication...) | 'none' no actor."""
+    automation (vpxd, vCLS, DRS, HA, replication...) | 'none' no actor.
+    date_from / date_to: 'YYYY-MM-DD' in the app timezone, both inclusive."""
     query = db.query(ChangeHistory)
     if entity in ("vm", "host", "datastore", "network"):
         query = query.filter_by(entity_type=entity)
+    for _val, _end in ((date_from, False), (date_to, True)):
+        if not _val:
+            continue
+        try:
+            _b = _day_bound_utc(_val, _end)
+        except ValueError:
+            raise HTTPException(400, "Tarih biçimi YYYY-AA-GG olmalı")
+        query = query.filter(ChangeHistory.changed_at < _b if _end
+                             else ChangeHistory.changed_at >= _b)
     if category:
         query = query.filter(ChangeHistory.category == category)
     if q:
@@ -142,16 +169,34 @@ def change_history(entity: str = "", q: str = "", category: str = "",
                 continue
             any_match = or_(*[func.coalesce(c, "").ilike(f"%{term}%") for c in cols])
             query = query.filter(not_(any_match) if neg else any_match)
-    rows = query.order_by(ChangeHistory.changed_at.desc()).limit(1000).all()
+    page = max(1, page)
+    per_page = max(1, min(limit or per_page, 1000))
+    _order = ChangeHistory.changed_at.desc()
+    capped = False
     if actor_kind in ("user", "system", "none"):
+        # The system-actor test is a Python regex (anchored, not expressible as
+        # a faithful SQL LIKE), so these rows must be filtered after the query.
+        # Scanning is therefore bounded; `capped` tells the UI when the window
+        # was hit, instead of silently pretending the result is complete.
+        _SCAN = 20000
+
         def _keep(r):
             if actor_kind == "none":
                 return not r.actor
             sysrec = bool(r.actor) and _is_system_actor(r.actor, r.op_type)
             return sysrec if actor_kind == "system" else bool(r.actor) and not sysrec
-        rows = [r for r in rows if _keep(r)]
-    rows = rows[:min(limit, 1000)]
-    return {"items": [{"changed_at": to_iso(r.changed_at),
+        scanned = query.order_by(_order).limit(_SCAN).all()
+        capped = len(scanned) >= _SCAN
+        matched = [r for r in scanned if _keep(r)]
+        total = len(matched)
+        rows = matched[(page - 1) * per_page: page * per_page]
+    else:
+        total = query.count()
+        rows = (query.order_by(_order)
+                     .offset((page - 1) * per_page).limit(per_page).all())
+    return {"total": total, "page": page, "per_page": per_page,
+            "pages": max(1, -(-total // per_page)), "capped": capped,
+            "items": [{"changed_at": to_iso(r.changed_at),
                        "entity_type": r.entity_type, "entity_name": r.entity_name,
                        "change_type": r.change_type, "field": r.field,
                        "old_value": r.old_value, "new_value": r.new_value,
