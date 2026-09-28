@@ -10,14 +10,22 @@
 const CHARTS = [];                       // layout değişiminde resize için
 const LS_KEY = 'vmi-dash-layout-v1';
 
-/* Long-lived snapshots widget: age filter (7+/14+/30+) applied client-side. */
+/* Snapshot widget: the age filter (Tümü/7+/14+/30+) is applied client-side.
+   Key is versioned: the previous key could hold a "30" written by the old
+   click handler when the user actually asked for "Tümü". */
+const SNAP_AGE_KEY = 'vmi-snap-age-v2';
 const SnapWidget = {
   items: [],
   total: 0,
   // Default to "Tümü": the card lists every snapshot and the age buttons
   // narrow it down. A non-zero default hid snapshots that the Snapshots page
   // was happily listing, which read as a bug.
-  minAge: parseInt(localStorage.getItem('vmi-snap-age') || '0', 10) || 0,
+  minAge: (function () {
+    try {
+      const v = parseInt(localStorage.getItem(SNAP_AGE_KEY), 10);
+      return isNaN(v) ? 0 : v;          // 0 = Tümü (default)
+    } catch (e) { return 0; }
+  })(),
   render() {
     const osb = document.getElementById('oldSnapBody');
     if (!osb) return;
@@ -59,8 +67,11 @@ const SnapWidget = {
   bind() {
     document.querySelectorAll('.snap-age-chips [data-age]').forEach(b =>
       b.addEventListener('click', () => {
-        SnapWidget.minAge = parseInt(b.dataset.age, 10) || 30;
-        try { localStorage.setItem('vmi-snap-age', String(SnapWidget.minAge)); } catch (e) {}
+        // NOTE: no "|| 30" fallback here - parseInt("0") is 0, which is falsy,
+        // so "Tümü" (data-age="0") used to fall through to 30 and stick there.
+        const v = parseInt(b.dataset.age, 10);
+        SnapWidget.minAge = isNaN(v) ? 0 : v;
+        try { localStorage.setItem(SNAP_AGE_KEY, String(SnapWidget.minAge)); } catch (e) {}
         SnapWidget.render();
       }));
   },
