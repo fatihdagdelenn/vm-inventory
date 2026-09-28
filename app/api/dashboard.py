@@ -221,6 +221,16 @@ def summary(no_local: int = 0, db: Session = Depends(get_db),
         {"vm": vm, "name": nm,
          "days": (_dt2.utcnow() - ca).days if ca else None}
         for vm, nm, ca, _cl in _srows]
+    # Total snapshot count under the SAME hidden-cluster rule. The widget only
+    # receives snapshots older than the 7-day floor, so without this it cannot
+    # tell "no snapshots at all" from "they all exist but are younger" - and an
+    # empty card then reads as a bug.
+    _asnap = (db.query(Snapshot.id, VirtualMachine.cluster)
+                .outerjoin(VirtualMachine, Snapshot.vm_id == VirtualMachine.id).all())
+    if _hid:
+        _asnap = [r for r in _asnap if not (
+            (r[1] and r[1] in _hid) or (not r[1] and NONE_SENTINEL in _hid))]
+    snapshot_total = len(_asnap)
 
     return {"vcenter_count": vcenter_count, "proxmox_count": proxmox_count,
             "host_count": host_count, "vm_total": vm_total,
@@ -230,6 +240,7 @@ def summary(no_local: int = 0, db: Session = Depends(get_db),
             "total_ram_gb": round(totals[1] / 1024, 1),
             "total_disk_tb": round(totals[2] / 1024, 2),
             "phys": phys, "old_snapshot_items": old_snapshot_items,
+            "snapshot_total": snapshot_total,
             "physical_count": db.query(PhysicalDevice).count(),
             "attention": {"no_ip": no_ip, "no_tools": no_tools, "no_owner": no_owner,
                           "old_snapshots": old_snapshots, "no_backup": no_backup},

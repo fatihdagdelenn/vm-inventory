@@ -13,7 +13,10 @@ const LS_KEY = 'vmi-dash-layout-v1';
 /* Long-lived snapshots widget: age filter (7+/14+/30+) applied client-side. */
 const SnapWidget = {
   items: [],
-  minAge: parseInt(localStorage.getItem('vmi-snap-age') || '30', 10) || 30,
+  total: 0,
+  // Default to the widest bucket (7+). Defaulting to 30+ made the card look
+  // empty/broken whenever snapshots existed but were younger.
+  minAge: parseInt(localStorage.getItem('vmi-snap-age') || '7', 10) || 7,
   render() {
     const osb = document.getElementById('oldSnapBody');
     if (!osb) return;
@@ -24,10 +27,26 @@ const SnapWidget = {
       ((it.days || 0) >= 90 ? 'text-bg-danger'
         : (it.days || 0) >= 30 ? 'text-bg-warning text-dark' : 'text-bg-secondary') + '">' +
       (it.days != null ? it.days + ' ' + t('unit.day','gün') : '—') + '</span></td></tr>').join('')
-      : '<tr><td colspan="3" class="text-muted p-3">' +
-        this.minAge + '+ ' + t('dash.noSnapsAge','gün yaşında snapshot yok 🎉') + '</td></tr>';
+      : '<tr><td colspan="3" class="text-muted p-3">' + this.emptyMsg() + '</td></tr>';
     document.querySelectorAll('.snap-age-chips [data-age]').forEach(b =>
       b.classList.toggle('active', parseInt(b.dataset.age, 10) === this.minAge));
+  },
+  /* Say WHY the card is empty: none in this bucket, younger ones exist, or
+     genuinely no snapshots. An unexplained empty card reads as a fault. */
+  emptyMsg() {
+    if (this.items.length) {
+      return this.minAge + '+ ' + t('dash.noSnapsAge','gün yaşında snapshot yok') + ' 🎉' +
+        '<div class="small mt-1">' +
+        t('dash.snapsYounger','Daha genç {n} snapshot var — yukarıdaki 7+ / 14+ sekmesine bakın')
+          .replace('{n}', this.items.length) + '</div>';
+    }
+    if (this.total) {
+      return t('dash.noOldSnaps','7 günden eski snapshot yok') + ' 🎉' +
+        '<div class="small mt-1">' +
+        t('dash.snapsAllFresh','Toplam {n} snapshot var, hepsi 7 günden yeni')
+          .replace('{n}', this.total) + '</div>';
+    }
+    return t('dash.noSnapsAtAll','Hiç snapshot yok') + ' 🎉';
   },
   bind() {
     document.querySelectorAll('.snap-age-chips [data-age]').forEach(b =>
@@ -98,6 +117,7 @@ function barGrad(chart, base, horizontal) {
   set('at-noowner', d.attention.no_owner);  set('at-oldsnap', d.attention.old_snapshots);
   set('at-nobackup', d.attention.no_backup);
   SnapWidget.items = d.old_snapshot_items || [];
+  SnapWidget.total = d.snapshot_total || 0;
   SnapWidget.render();
 
   const hi = document.getElementById('hiddenInfo');
