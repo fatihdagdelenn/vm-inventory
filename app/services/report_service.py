@@ -56,6 +56,9 @@ VM_COLUMNS = [
     ("Disk Tahsis (GB)", "disk_total_gb"), ("Disk Kullanım (GB)", "disk_used_gb"),
     ("Disk Sayısı", "disk_count"), ("Çalışma Süresi", "uptime_str"),
     ("Güç Durumu", "power_state"), ("Host", "host_name"), ("Cluster", "cluster"),
+    # Pool: resource pool on vCenter, pool on Proxmox (where it is the primary
+    # grouping/tenant marker, so it belongs in every VM export).
+    ("Pool", "pool"),
     ("Datastore", "datastore"), ("VLAN", "vlans"), ("Ortam", "environment"),
     ("Sahip", "owner"), ("Tools/Agent", "tools_status"),
     ("Platform Notu", "guest_notes"),
