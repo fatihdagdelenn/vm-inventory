@@ -5,6 +5,147 @@ Sürümleme [Semantic Versioning](https://semver.org/lang/tr/) yaklaşımını i
 
 ---
 
+## [v1.6.2] — 2026-10-09
+
+**v1.5.x'ten bu yana 6 adım (faz134–faz139; v1.5.4 → v1.6.2).** Odak: dashboard
+snapshot kartının dürüstleşmesi, Değişiklik Geçmişi'nde geriye dönük arama ve
+raporlardaki eksik kolonlar.
+
+### 📸 Dashboard Snapshot Kartı (faz134–136)
+- Kart artık **tüm** snapshot'ları listeler; yaş filtresi (**Tümü / 7+ / 14+ / 30+**)
+  kullanıcıda. Tarihi okunamayan snapshot'lar da görünür (sessizce düşmüyor).
+- Boş kart artık **nedenini söyler**: "daha yeni snapshot'lar var", "hepsi 7 günden
+  taze" veya "hiç snapshot yok" — aynı boş kutu üç farklı durumu gizlemiyor.
+- Sayı rozeti eklendi.
+- **Düzeltme:** "Tümü" seçilemiyordu. `parseInt("0")` falsy olduğu için `|| 30`
+  geri-dönüşü sessizce 30+ bucket'ını seçiyordu. localStorage anahtarı
+  sürümlendirildi (`vmi-snap-age-v2`) ki hatalı dönemde yazılmış değerler düşsün.
+
+### 🕵️ Değişiklik Geçmişi — Geriye Dönük Arama (faz137)
+- **Tarih aralığı filtresi** (başlangıç/bitiş) + 7g/30g/90g hızlı aralıkları.
+  Yerel saat dilimine göre, bitiş günü **dahil** (`app_tz()` ile UTC'ye çevrilir).
+- **Gerçek SQL sayfalama**: toplam kayıt, sayfa sayısı, sayfa boyutu seçimi.
+  Arayüzdeki eski 200 kayıt tavanı kaldırıldı — arşivin tamamı gezilebilir.
+- "İşlemi yapan" (kullanıcı/sistem) filtresi SQL'e birebir çevrilemediği için
+  Python tarafında kalıyor ve 20.000 satırlık tarama ile sınırlı; bu sınıra
+  takılan sorgular **`capped` bayrağıyla açıkça işaretlenir** (sessizce eksik
+  sonuç dönmez).
+
+### 🏷️ Sekme Simgesi (faz135, 138)
+- SVG favicon eklendi — çok sekmeli çalışırken uygulamayı bulmak kolaylaşıyor.
+- `login.html` `base.html`'i extend etmediği için **çıkış yapıldığında** tarayıcı
+  varsayılan dünya simgesine dönüyordu; favicon login sayfasına da eklendi.
+
+### 📊 Raporlar (faz139)
+- VM export'larına **Pool** kolonu eklendi (Cluster'dan sonra). Alan modelde,
+  senkronizasyonda, filtrede ve VM detayında zaten vardı; yalnız Excel/CSV/PDF
+  çıktısında yoktu. Proxmox'ta pool birincil gruplama/kiracı işareti olduğu için
+  önemli. Tek kolon listesinden beslendiği için VM export, "Tüm Envanter"
+  birleşik export ve zamanlanmış raporlara aynı anda yansır.
+
+---
+
+## [v1.5.0] — 2026-09
+
+**faz128–faz133 (v1.4.8 → v1.5.3).** Odak: iki "yanlış sayı" sınıfının kökünden
+çözülmesi — uptime ve disk boyutu.
+
+### ⏱️ Uptime Doğruluğu (faz128, 129, 131)
+- **Düzeltme:** Proxmox uptime'ı yanlış hesaplanıyordu — `utcnow().timestamp()`
+  saat dilimi hatası; `time.time()` ile değiştirildi.
+- Uptime **sıralanabilir** hale getirildi (iki platformda da; boş değerler sonda,
+  yön ters çevrilmiş) ve VM export'una **Çalışma Süresi** kolonu eklendi.
+- **Kök neden araştırması:** Proxmox'un `status.current.uptime` değeri KVM
+  *sürecinin* ömrünü sayar ve **canlı göçte sıfırlanır** (Proxmox bugzilla #499).
+  Yani 60 günlük bir misafir, göçten sonra 20 gün gösterebiliyordu.
+- Çözüm: mümkünse gerçek misafir uptime'ı QEMU Guest Agent üzerinden okunur
+  (`/proc/uptime`; `file-read`, olmazsa `exec`). Ajan okuması "yapışkan"dır —
+  ajan sustuğunda daha kısa olan süreç değeri eskiyi ezmez.
+- Ajan kapalıysa (RHEL türevlerinde `guest-file-open` varsayılan olarak kapalı)
+  **göç-farkında** yaklaşım: göç tespit edildiğinde önceki boot zamanı taşınır,
+  gerçek güç döngüsünde temizlenir. Platformda ayar değişikliği gerekmez.
+
+### 💾 Disk Boyutu Tutarlılığı (faz132, 133)
+- **Düzeltme:** Bazı VM'lerde disk boyutu güncellenmiyordu (ör. 40→75 GB
+  değişikliği Geçmiş'e doğru işlenirken liste 100 GB göstermeye devam ediyordu).
+  Neden: `disk_total_gb` geçici-hata koruması (`_ENRICH_FIELDS`) tarafından
+  korunuyor, `disks_json` korunmuyordu → toplam donabiliyordu.
+- Artık toplam ile disk listesi **kilitli adım** ilerliyor, üç açık kural ile:
+  liste okunabiliyorsa toplam listeden türetilir; liste okunamıyorsa ikisi de
+  korunur; taze toplam boş detayla gelirse toplam kabul edilir. Proxmox'un
+  `maxdisk` geri-dönüşü artık taze toplamı eski listeyle eşleştirmiyor.
+- Yöneticiler için **disk-diag** ucu: envanteri tarar, toplam ile detay arasında
+  tutarsızlık olan VM'leri okunabilir Türkçe çıktıyla listeler. (Disksiz VM'ler
+  **normaldir**, tutarsızlık sayılmaz.)
+
+---
+
+## [v1.4.0] — 2026-08
+
+**faz118–faz127 (v1.4.0 → v1.4.7).** Odak: sanallaştırma host'larının fiziksel
+envantere akması ve çok diskli VM'lerin görünür olması.
+
+### 🖧 Fiziksel Envanter — Platform Host'ları (faz118, 119, 122)
+- Sanallaştırma host'ları (ESXi / PVE node) fiziksel envanterde **salt-okunur
+  projeksiyon** olarak görünür; elle girilen alanlar (iLO/BMC IP, lokasyon,
+  seri no, rol) ayrı bir "supplement" kaydında tutulur — senkronizasyon ezmez.
+- Fiziksel sunucuya **rol** alanı (Hypervisor / Windows / Linux / Diğer) + filtre.
+- CPU ve RAM ayrı kolonlara bölündü; host'lar fiziksel envanter ve rapor
+  export'larına da akıyor.
+- Rozetler yumuşatıldı (parlak renkler göz yoruyordu).
+- Proxmox'un yanlış bildirdiği **marka/model elle düzeltilebilir** hale geldi;
+  otomatik algılanan değer ipucu olarak gösterilir, sıfırlanabilir.
+- **Cihaz tipi artık zorunlu**: tip kartları öne çıkarıldı, varsayılan seçim
+  kaldırıldı, onay bildirimi seçilen tipi adıyla söyler. (Yanlış tipe kaydedilen
+  bir cihazın "kaybolması" sınıfı hata kaynağında kapatıldı.) Filtre yüzünden
+  boş kalan liste artık bunu söyler ve "filtreleri temizle" sunar.
+
+### 💽 Çok Diskli VM Görünürlüğü (faz123–127)
+- VM export'una **kullanılan** CPU%/RAM/disk kolonları, tahsis edilenlerin
+  yanına eklendi (yuvarlanmış; kullanım verisi yoksa boş).
+- VM detay panelinde **disk disk liste**, listede **disk sayısı rozeti**.
+- Export'ta disk detayı için yol: tek hücre → yatay `Disk 1/2/3…` kolonları →
+  **ayrı "Diskler" sayfası** (disk başına bir satır). Son biçim 16 diskli
+  VM'lerde tabloyu şişirmiyor.
+- Disk sayısı rozeti hücrenin sağ üstüne sabitlendi (hizalama tutarlılığı).
+- **Dürüst sınır:** disk **kullanımı** disk başına alınamıyor — hem vCenter hem
+  Proxmox yalnızca VM geneli toplam veriyor. Arayüzde böyle etiketlendi.
+- **Düzeltme:** koyu temada disk listesi okunamıyordu (`--ink` → `--text`).
+
+---
+
+## [v1.3.0] — 2026-08
+
+**faz112–faz117 (v1.2.1 → v1.3.3).** Odak: yeni **Fiziksel Envanter** sayfası ve
+raporlama/zamanlanmış raporların elden geçirilmesi.
+
+### 🏢 Fiziksel Envanter (Yeni Sayfa — faz114, 115)
+- Fiziksel sunucu, storage, SAN switch ve yedekleme ünitesi için **elle CRUD**:
+  lokasyon, yönetim IP, iLO/BMC IP, marka, model, seri no, CPU, RAM, durum, not.
+- **Tipe duyarlı alanlar** — storage/SAN switch'te CPU/RAM sorulmaz.
+- Değişiklik geçmişi, Excel/CSV/PDF export, dashboard özet kartı.
+- Lokasyon listeden seçilir (datalist), filtreler koyu temada görünür, kolonlar
+  sıralanabilir, marka/model ayrı kolonlar.
+- **Birleşik "Tüm Envanter" export'u**: VM + host + datastore + fiziksel tek
+  dosyada.
+
+### 📄 Raporlar & Zamanlanmış Raporlar (faz116, 117)
+- Export paneli yeniden tasarlandı: **kapsam seçici + biçim düğmeleri**,
+  bağlama duyarlı filtre, koyu temada okunur.
+- Zamanlanmış raporlar: **beş kapsamın tamamı** (VM/host/datastore/fiziksel/tümü),
+  gerçek **saat seçici** (saat–dakika karışıklığı giderildi), hedef etiketleri.
+- Üretilmiş dosyalar listesi **20 ile sınırlandı** + toplam sayı; dosya başına
+  silme ve toplu temizlik eklendi. (Liste sonsuza doğru büyüyordu.)
+
+### 🕵️ Değişiklik Geçmişi — Aktör Doğruluğu (faz112, 113)
+- Platformdan bağımsız düzeltmeler: vCenter guest-shutdown olay çifti, PVE
+  `resize` görev tipi.
+- Proxmox config-aktörü sağlamlaştırıldı: 5000 satırlık cluster-log penceresi,
+  log-aralığı ve "eşleşme yok" teşhis satırları.
+- Her iki platform için **kalıcı regresyon testleri** eklendi (`tests/`).
+
+---
+
 ## [v1.2.0] — 2026-07-16
 
 **v1.1.0'dan bu yana 18 geliştirme adımı (faz94–faz110).** Bu sürümün odağı:
@@ -179,4 +320,4 @@ olgunlaştırır. Tüm veritabanı değişiklikleri **otomatik** uygulanır
 ---
 
 ## [v1.0.3] — önceki kararlı sürüm
-Ayrıntılı özellik listesi için `README.md` ve `docs/dokumantasyon.html`.
+Ayrıntılı özellik listesi için `README.md`.

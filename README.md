@@ -61,6 +61,9 @@ Bu soruların hepsi tek arama kutusundan, saniyeden kısa sürede yanıtlanır. 
 | 🐧 **Tam OS sürümü** | VMware'de ayrıntılı misafir OS verisi (ör. *"Ubuntu 24.04.1 LTS"*) — vSphere 8.0 U2+ ve VMware Tools 11.2+ ile; Proxmox'ta QEMU Guest Agent ile |
 | 🆔 **VM ID & çalışma süresi** | VM ID (Proxmox sayısal / VMware MoRef) ve host+VM **uptime** kolonları; host'larda CPU/RAM/Disk kullanım çubukları |
 | 🖧 **Host detayı & sıralama** | Host tablosunda tüm kolonlar tıklanabilir sıralanır (metin/sayı/IP/durum); VM sayısına tıklayınca host'un VM listesi açılır, oradan VM detayı **aynı sayfada** görüntülenir |
+| 🏢 **Fiziksel envanter** | Sanallaştırma dışı donanım (fiziksel sunucu, storage, SAN switch, yedekleme ünitesi) elle girilir; lokasyon / yönetim IP / iLO-BMC IP / marka / model / seri no / rol. Sanallaştırma host'ları buraya otomatik akar, elle eklenen alanlar senkronizasyonda korunur |
+| 💽 **Disk disk görünürlük** | Çok diskli VM'lerde her diskin boyutu ayrı listelenir; export'ta ayrı "Diskler" sayfası. *(Kullanım oranı platformlarda yalnız VM geneli verilir — disk başına değil; arayüzde böyle etiketlidir)* |
+| ⏱️ **Göç-farkında uptime** | Proxmox'un uptime sayacı canlı göçte sıfırlanır (bugzilla #499). Gerçek misafir uptime'ı mümkünse QEMU ajanından okunur, değilse göç boyunca boot zamanı taşınır — gerçek yeniden başlatmada sıfırlanır |
 | 🗂️ **Pool / klasör / etiket** | vCenter resource pool & klasör, Proxmox pool; platform etiketleri (vCenter REST tag / Proxmox tags) — hepsi aranır, filtrelenir ve gösterilir |
 | 🧰 **Kolon seçici** | VM listesinde görünür kolonları tek menüden seçme (tercih tarayıcıda hatırlanır) |
 | 👥 **Rol bazlı yetki** | Admin / Operatör / Görüntüleyici + opsiyonel LDAP/AD girişi |
@@ -272,8 +275,13 @@ Dashboard'daki **"Dikkat Gerektirenler"** kartından *"Agent/Tools kurulu olmaya
 | **Dashboard** | Genel durum: sayılar, kaynak toplamları, grafikler (dilime tıklayınca filtreli liste açılır), son değişiklikler, platform sağlığı. Cluster grafiğindeki **Yönet** butonu görünürlük ayarlarını açar |
 | **Sanal Makineler** | Arama + gelişmiş filtre + gruplama. CPU/RAM/disk kolonlarında anlık kullanım çubukları (sarı %75+, kırmızı %90+); ayrıca VM ID, Pool, Klasör, Tags ve Uptime kolonları. **Kolonlar** menüsünden görünür sütunları seçebilirsiniz (tercih tarayıcıda saklanır). Satıra tıklayınca detay paneli; not/sahip/etiket buradan düzenlenir. Host/cluster/VLAN/pool/klasör hücreleri tıklanabilir filtredir |
 | **Host'lar** | ESXi/PVE node'ları tek tabloda: Host adı, Yönetim IP, OS/hipervizör sürümü, CPU modeli, çekirdek sayısı, CPU/RAM/Disk kullanım çubukları, cluster, VM sayısı, çalışma süresi (uptime) ve durum. **Tüm sütun başlıkları tıklanabilir** — metin (A-Z), sayısal, IP ve durum bazlı sıralama. **VM sayısına tıklayınca** o host'taki VM'leri (ad, IP, güç durumu, anlık CPU/RAM) listeleyen bir pencere açılır; listedeki bir VM'e tıklayınca **aynı sayfada** VM detay paneli açılır (Sanal Makineler ekranındaki panelle aynı) |
+| **Datastore'lar** | Depolama alanları: kapasite, doluluk, tip, bağlı host'lar, çözümlenmiş cluster'lar. Kart / tip / node / tablo görünümleri; **yerel diskleri gizle** filtresi (paylaşımlı kapasiteyi ayrı görmek için), çok-cluster'lı paylaşımlı depolarda **kapasite çakışma uyarısı**, kart üzerinde son yedek yaşı rozeti |
+| **Snapshot'lar** | Tüm snapshot'lar tek listede: VM, ad, açıklama, yaş, boyut. Uzun süredir duran snapshot'ları bulmak için yaş sıralaması; gizli cluster'lar listeden düşer |
+| **Yedekler** | Proxmox / PBS yedekleri: VM başına arşivler, depo, boyut, yaş. İzin veya yapılandırma eksikse **sebebini söyleyen tanılama notu** verir (sessiz boş liste yok). *vCenter'ın yedek API'si olmadığı için bu ekran yalnız Proxmox içindir* |
 | **Ağlar** | Port group / bridge / SDN vnet ve host fiziksel kartları (NIC). Açılır-kapanır gruplama: Host'a göre, Cluster'a göre, VLAN'a göre veya Fiziksel Kartlar; ad/VLAN/vSwitch/subnet/MAC araması |
-| **Raporlar** | Anlık Excel/CSV/PDF (filtre destekler) + her gün belirli saatte çalışan zamanlanmış raporlar (`data/reports/` klasörüne yazılır) |
+| **Topoloji** | Cytoscape tabanlı canlı harita: platform → cluster → host → VM katmanları, katman filtreleri, sürüklenen düğüm konumları hesapta saklanır, VM erişim kabloları (yeşil/kırmızı) |
+| **Fiziksel Envanter** | Sanallaştırma dışındaki donanım: fiziksel sunucu, storage, SAN switch, yedekleme ünitesi. Lokasyon, yönetim IP, iLO/BMC IP, marka, model, seri no, CPU, RAM, rol, durum. **Cihaz tipi zorunludur** ve alanlar tipe göre değişir (storage/SAN switch'te CPU/RAM sorulmaz). Sanallaştırma host'ları buraya **salt-okunur** olarak akar; onlara iLO/lokasyon/seri no/rol gibi alanları siz eklersiniz, senkronizasyon bu eklemeleri ezmez. Yanlış gelen marka/model elle düzeltilebilir |
+| **Raporlar** | Anlık Excel/CSV/PDF (filtre destekler) + her gün belirli saatte çalışan zamanlanmış raporlar (`data/reports/` klasörüne yazılır). Kapsam seçilir: **VM / Host / Datastore / Fiziksel / Tüm Envanter**. VM export'unda tahsis **ve** kullanım kolonları (CPU/RAM/disk), Pool, Çalışma Süresi; çok diskli VM'ler için ayrı **"Diskler"** sayfası (disk başına bir satır) |
 | **Geçmiş** | Envanter değişiklikleri: eklenen/silinen/klonlanan/göç eden VM'ler, alan bazında **eski→yeni** değerler, **kategori** (Donanım/Disk/Ağ/Güç/Göç/Yaşam Döngüsü), **kaynak** (platform/cluster/host/VM ID) ve **kim yaptı** (kullanıcı). Kategori ve varlık türüne göre filtrelenir. Ayrıntı için aşağıdaki "[Değişiklik Geçmişi: Kim, Neyi, Ne Zaman?](#-değişiklik-geçmişi-kim-neyi-ne-zaman)" bölümüne bakın |
 | **Platformlar** | Bağlantı yönetimi, manuel senkronizasyon, API hata logları |
 | **Yönetim** *(admin)* | Kullanıcı CRUD + audit log (kim, ne zaman, ne yaptı) + **Senkronizasyon** sekmesi: tam ve kullanım senkron aralıklarını (1–1440 dk) arayüzden ayarlama (anında yeniden zamanlanır, restart gerekmez), **konsol erişimi takibi** anahtarı ve **konsol geçmişini temizle** |
@@ -426,18 +434,19 @@ vm-inventory/
 │   ├── main.py              # FastAPI uygulaması, sayfa rotaları, başlangıç
 │   ├── config.py            # Ortam değişkenleri (pydantic-settings)
 │   ├── database.py          # SQLAlchemy engine/session
-│   ├── models/              # ORM: User, Platform, Host, VM, Network, Tag, ChangeHistory, AuditLog
-│   ├── core/                # security (Fernet/bcrypt/CSRF), search (sorgu motoru), scheduler
+│   ├── models/              # ORM: User, Platform, Host, VM, Network, Tag, ChangeHistory, AuditLog, PhysicalDevice
+│   ├── core/                # security (Fernet/bcrypt/CSRF), search (sorgu motoru), scheduler, version
 │   ├── collectors/          # vmware_collector (pyVmomi), proxmox_collector (proxmoxer)
 │   ├── services/            # sync (fark analizi), report (xlsx/csv/pdf), ldap
-│   ├── api/                 # REST endpoint'leri (auth, vms, hosts, platforms, reports, admin…)
+│   ├── api/                 # REST endpoint'leri (auth, vms, hosts, platforms, physical, reports, admin…)
 │   ├── templates/           # Jinja2 HTML şablonları (Türkçe arayüz)
-│   └── static/              # custom.css + sayfa başına JS
+│   └── static/              # custom.css + sayfa başına JS + i18n.js + vendor/ (CDN'siz yerel varlıklar)
+├── tests/                   # Aktör tespiti regresyon testleri (vmware/proxmox)
 ├── Dockerfile
 ├── docker-compose.yml       # app + PostgreSQL 16
 ├── requirements.txt
 ├── .env.example
-└── docs/dokumantasyon.html  # bu dokümanın HTML sürümü
+└── CHANGELOG.md             # sürüm bazlı değişiklik günlüğü
 ```
 
 ## ❓ SSS
