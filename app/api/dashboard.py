@@ -90,12 +90,24 @@ def summary(no_local: int = 0, db: Session = Depends(get_db),
         VirtualMachine.tools_status.ilike("%unknown%")).count()
     no_owner = base.filter(func.coalesce(VirtualMachine.owner, "") == "").count()
 
-    # Snapshots older than 30 days (cleanup candidates)
+    # Snapshot queries share ONE hidden-cluster rule, applied in SQL. It used to
+    # be applied in Python after a LIMIT 1000, so 1000 hidden rows (e.g. Veeam
+    # replica restore points on cluster-less VMs) could fill the window and the
+    # card showed "0/1" while the Snapshots page listed the visible one.
+    # A snapshot whose VM row is missing joins as NULL cluster = "no cluster",
+    # exactly as the Snapshots page treats it.
     from datetime import datetime as _dt, timedelta as _td
     from ..models import Snapshot
-    old_snapshots = db.query(Snapshot).filter(
+
+    def snap_q(*cols):
+        q = db.query(*cols).outerjoin(VirtualMachine, Snapshot.vm_id == VirtualMachine.id)
+        return q.filter(vm_cond) if vm_cond is not None else q
+
+    # Snapshots older than 30 days (cleanup candidates) - same rule as the
+    # /snapshots?old=1 page the attention item links to.
+    old_snapshots = snap_q(func.count(Snapshot.id)).filter(
         Snapshot.created_at.isnot(None),
-        Snapshot.created_at < _dt.utcnow() - _td(days=30)).count()
+        Snapshot.created_at < _dt.utcnow() - _td(days=30)).scalar() or 0
 
     # Running VMs with no backup (Proxmox only; vCenter has no backup API)
     from ..models import Backup
@@ -208,33 +220,23 @@ def summary(no_local: int = 0, db: Session = Depends(get_db),
     # Snapshots for the widget: ALL of them, the age buttons (Tümü/7+/14+/30+)
     # filter client-side. There used to be a 7-day floor here, which made the
     # card look empty while the Snapshots page listed the very same snapshots.
+    # Oldest first BEFORE the limit, so a capped list keeps the snapshots that
+    # matter most (the oldest), not an arbitrary 1000.
     from datetime import datetime as _dt2
-    from .clusters import hidden_cluster_names, NONE_SENTINEL
-    _hid = set(hidden_cluster_names(db))
-    _srows = (db.query(Snapshot.vm_name, Snapshot.name, Snapshot.created_at,
-                       VirtualMachine.cluster)
-                .outerjoin(VirtualMachine, Snapshot.vm_id == VirtualMachine.id)
+    _srows = (snap_q(Snapshot.vm_name, Snapshot.name, Snapshot.created_at)
+                .order_by(Snapshot.created_at.asc().nullslast(), Snapshot.id)
                 .limit(1000).all())
-    if _hid:  # consistent with the Snapshots page: hidden clusters excluded
-        _srows = [r for r in _srows if not (
-            (r[3] and r[3] in _hid) or (not r[3] and NONE_SENTINEL in _hid))]
     _now2 = _dt2.utcnow()
     old_snapshot_items = [
         {"vm": vm, "name": nm,
          "days": (_now2 - ca).days if ca else None}
-        for vm, nm, ca, _cl in _srows]
+        for vm, nm, ca in _srows]
     # Oldest first; snapshots with an unknown creation date go last (their age
     # cannot be judged, so they only appear under "Tümü").
     old_snapshot_items.sort(
         key=lambda i: (i["days"] is None, -(i["days"] or 0)))
-    # Total snapshot count under the SAME hidden-cluster rule, so the widget can
-    # tell that its list was capped (see the 1000-row limit above).
-    _asnap = (db.query(Snapshot.id, VirtualMachine.cluster)
-                .outerjoin(VirtualMachine, Snapshot.vm_id == VirtualMachine.id).all())
-    if _hid:
-        _asnap = [r for r in _asnap if not (
-            (r[1] and r[1] in _hid) or (not r[1] and NONE_SENTINEL in _hid))]
-    snapshot_total = len(_asnap)
+    # Total under the SAME rule, so the widget can tell its list was capped.
+    snapshot_total = snap_q(func.count(Snapshot.id)).scalar() or 0
 
     return {"vcenter_count": vcenter_count, "proxmox_count": proxmox_count,
             "host_count": host_count, "vm_total": vm_total,

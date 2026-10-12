@@ -27,6 +27,16 @@ Sürümleme [Semantic Versioning](https://semver.org/lang/tr/) yaklaşımını i
 
 Henüz release'e girmemiş fazlar (faz142–; dahili v1.7.1 →).
 
+### 📸 Dashboard snapshot kartı (faz144)
+- **Düzeltme:** Kart "0/1 — Hiç snapshot yok" gösterirken Snapshot'lar sayfası
+  snapshot'ı listeliyordu. Sebep: kart en fazla 1000 kayıt alıyor, gizli cluster
+  filtresini ise **bu 1000'i aldıktan sonra** uyguluyordu. Gizli (ör. cluster'sız
+  Veeam replica restore point'leri) 1000+ snapshot olunca pencere tamamen onlarla
+  doluyor, görünür snapshot dışarıda kalıyordu. Filtre artık limitten önce, SQL'de
+  uygulanıyor; liste de limitten önce en eskiden yeniye sıralanıyor.
+- **Düzeltme:** "30 günden eski snapshot" sayacı gizli cluster'ları da sayıyordu
+  (tıklanınca açılan sayfa saymıyordu). Artık ikisi aynı kuralı kullanıyor.
+
 ### ✍️ Elle IP (faz143)
 - Agent kurulamayan VM'ler için (özel/kapalı yapılandırılmış OS) VM detayındaki
   **Manuel Bilgiler** bölümüne **Elle IP** alanı eklendi. Birden fazla IP virgül,
