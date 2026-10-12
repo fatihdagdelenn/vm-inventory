@@ -64,6 +64,13 @@ def _preserve_old(field, old, new) -> bool:
     return False
 
 
+# Fields only an operator sets (VM detail -> manual section). Collectors never
+# send them, so they have to be carried over explicitly whenever a VM gets a NEW
+# row: a Proxmox live migration changes external_id (node/vmid), and before
+# phase 143 owner/notes/environment/tags were silently lost on every migration.
+_MANUAL_VM_FIELDS = ("owner", "notes", "environment", "ip_manual")
+
+
 def _record_change(db, entity_type, entity_name, platform_id, change_type,
                    field=None, old=None, new=None, actor=None, *,
                    category=None, op_type=None, platform_type=None,
@@ -165,6 +172,21 @@ def _purge_vm_children(db, vm):
     db.query(Backup).filter_by(vm_id=vm.id).delete(synchronize_session=False)
     db.query(Snapshot).filter_by(vm_id=vm.id).delete(synchronize_session=False)
     db.query(VmUsageDaily).filter_by(vm_id=vm.id).delete(synchronize_session=False)
+
+
+def _drop_manual_ip(db, vm, platform_ips, platform_id, ptype, cluster, host, ext_id):
+    """The platform now reports IPs for a VM that had a hand-typed fallback.
+
+    The operator agreed that a real (agent/Tools) IP overrides the manual one,
+    so the manual value is cleared - but never silently: a Change History row
+    keeps what was typed, next to the regular ip_addresses row.
+    """
+    _record_change(db, "vm", vm.name, platform_id, "updated", "ip_manual",
+                   vm.ip_manual, "", category="network", platform_type=ptype,
+                   cluster=cluster, host=host, vm_external_id=ext_id)
+    logger.info("Manual IP cleared for VM %s (%s): platform now reports %s "
+                "(manual was %s)", vm.name, ext_id, platform_ips, vm.ip_manual)
+    vm.ip_manual = None
 
 
 def _epoch(dt):
@@ -473,6 +495,16 @@ def sync_platform(platform_id: int):
                     # (bugzilla #499). Carry the previous boot time over so the
                     # displayed uptime stays continuous.
                     old_vm = existing_vms.get(old_ext)
+                    if old_vm is not None:
+                        # Same VM, new row: carry everything the operator typed in.
+                        for f in _MANUAL_VM_FIELDS:
+                            val = getattr(old_vm, f)
+                            if val:
+                                setattr(vm, f, val)
+                        vm.tags = list(old_vm.tags)
+                        if vm.ip_manual and vm.ip_addresses:
+                            _drop_manual_ip(db, vm, vm.ip_addresses, platform.id, ptype,
+                                            vd.get("cluster"), host_name, ext_id)
                     if old_vm is not None and old_vm.last_boot and not vd.get("uptime_from_agent"):
                         if not vm.last_boot or vm.last_boot > old_vm.last_boot:
                             vm.last_boot = old_vm.last_boot
@@ -639,6 +671,10 @@ def sync_platform(platform_id: int):
                                    cluster=vd.get("cluster") or vm.cluster,
                                    host=f"{old_host} → {new_host}",
                                    vm_external_id=ext_id, **_meta(op))
+                if vm.ip_manual and vd.get("ip_addresses"):
+                    _drop_manual_ip(db, vm, vd["ip_addresses"], platform.id, ptype,
+                                    vd.get("cluster") or vm.cluster,
+                                    host_name or host_name_by_id.get(vm.host_id), ext_id)
                 for k, v in vd.items():
                     setattr(vm, k, v)
                 vm.host_id = host_obj.id if host_obj else None

@@ -126,6 +126,9 @@ def _row_values(obj, columns):
             values.append(PHYSICAL_STATUS_LABELS.get(get(field), get(field) or ""))
         elif field == "role" and is_physical:
             values.append(PHYSICAL_ROLE_LABELS.get(get(field), get(field) or ""))
+        elif field == "ip_addresses" and not is_physical:
+            # VM: the platform list, or the operator-entered IP when there is none
+            values.append(get("ip_addresses") or get("ip_manual") or "")
         elif field in ("cpu_usage_pct", "disk_used_gb", "disk_total_gb"):
             v = get(field)
             values.append("" if v is None else round(float(v), 1))

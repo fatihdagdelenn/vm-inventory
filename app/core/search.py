@@ -5,6 +5,7 @@ Supported syntax:
   FIELD SEARCHES : ip:10.10.10.15  mac:00:50:56  os:windows  cluster:prod
   NUMERIC        : cpu:>4  ram:>=16  disk:<100
   EMPTY VALUES   : ip:yok  owner:yok  tag:yok
+  MANUAL IP      : ip: also matches operator-entered IPs; manuelip:var lists them
   EXCLUSION      : -cluster:test  !os:windows
   OR             : os:ubuntu,centos
   FREE TEXT      : plain words search across common fields (AND)
@@ -61,7 +62,12 @@ FIELD_MAP = {
     "ptag": VirtualMachine.platform_tags,
     "petiket": VirtualMachine.platform_tags,
     "network": VirtualMachine.networks,
+    "manuelip": VirtualMachine.ip_manual,
+    "ipmanuel": VirtualMachine.ip_manual,
 }
+
+# Values that mean "not empty" (manuelip:var)
+PRESENT_WORDS = ("var", "dolu", "any", "set")
 
 # Numeric fields: field -> (column, multiplier) - ram is entered in GB, stored MB
 NUMERIC_MAP = {
@@ -116,6 +122,19 @@ def _field_condition(field: str, value: str):
         A None return means the field was not recognized (falls back to free text).
         """
     vlow = value.lower()
+
+    # ---- IP: the platform list OR the operator-entered one ----
+    # Both must be empty for ip:yok, so a VM whose IP was typed in by hand no
+    # longer shows up as "missing IP" (the dashboard counter agrees).
+    if field == "ip":
+        if vlow in EMPTY_WORDS:
+            return and_(func.coalesce(VirtualMachine.ip_addresses, "") == "",
+                        func.coalesce(VirtualMachine.ip_manual, "") == "")
+        a = _ilike_or(VirtualMachine.ip_addresses, value)
+        b = _ilike_or(VirtualMachine.ip_manual, value)
+        return or_(a, b) if a is not None else None
+    if field in ("manuelip", "ipmanuel") and vlow in PRESENT_WORDS:
+        return func.coalesce(VirtualMachine.ip_manual, "") != ""
 
     # ---- Empty-value searches: ip:yok, owner:yok, tag:yok ----
     # NOTE: not applied to specially-mapped fields like status/tools
@@ -222,6 +241,7 @@ def apply_vm_search(query: Query, q: str) -> Query:
             _like(VirtualMachine.name, like),
             _like(VirtualMachine.vmid, like),
             _like(VirtualMachine.ip_addresses, like),
+            _like(VirtualMachine.ip_manual, like),
             _like(VirtualMachine.mac_addresses, like),
             _like(VirtualMachine.guest_os, like),
             _like(VirtualMachine.cluster, like),

@@ -23,6 +23,33 @@ Sürümleme [Semantic Versioning](https://semver.org/lang/tr/) yaklaşımını i
 
 ---
 
+## [Yayınlanmamış]
+
+Henüz release'e girmemiş fazlar (faz142–; dahili v1.7.1 →).
+
+### ✍️ Elle IP (faz143)
+- Agent kurulamayan VM'ler için (özel/kapalı yapılandırılmış OS) VM detayındaki
+  **Manuel Bilgiler** bölümüne **Elle IP** alanı eklendi. Birden fazla IP virgül,
+  noktalı virgül veya boşlukla girilebilir; geçersiz adres reddedilir, `/24` gibi
+  önek atılır.
+- Elle IP; VM listesinin IP kolonunda **"elle"** rozetiyle, VM detayında, host /
+  datastore VM listelerinde, topolojide ve Excel/CSV/PDF dışa aktarımlarında görünür.
+- Arama: `ip:` ve serbest metin elle IP'yi de bulur; `manuelip:var` elle IP
+  girilmiş VM'leri listeler. `ip:yok` ve dashboard'daki "IP adresi alınamayan VM"
+  sayacı artık elle IP'si olanları saymaz (ikisi aynı kuralı kullanır).
+- **Platform her zaman kazanır:** agent kurulup IP bildirdiğinde elle IP otomatik
+  temizlenir; silinen değer Değişiklik Geçmişi'nde "Elle IP" satırı olarak kalır.
+  Platform zaten IP bildiren bir VM'e elle IP girilemez (alan kilitli, API 409).
+- **Düzeltme:** Proxmox'ta canlı migration sonrası VM yeni node'da yeni kayıt olarak
+  oluştuğu için **sahip, notlar, ortam ve etiketler kayboluyordu**. Artık bu manuel
+  alanlar (elle IP dahil) yeni kayda taşınıyor. Daha önce migration'da kaybolmuş
+  değerler geri gelmez.
+
+### 🧹 Repo (faz142)
+- Commit'lenmiş `RELEASE_v1.7.0.md` kaldırıldı; `RELEASE_*.md` `.gitignore`'a eklendi.
+
+---
+
 ## [v1.7.0] — 2026-10-09
 
 **v1.5.0'dan bu yana 7 adım (faz134–faz140; dahili v1.5.4 → v1.6.3).** Odak: dashboard

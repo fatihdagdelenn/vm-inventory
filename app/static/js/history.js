@@ -11,6 +11,7 @@ const History = {
     ram_mb: t('hi.f.ram','Bellek (RAM)'), cpu_count: 'vCPU', guest_os: t('vm.os','İşletim Sistemi'),
     disk_total_gb: t('hi.f.disk','Disk Boyutu'), datastore: t('hi.f.ds','Depolama (Datastore)'),
     vlans: t('hi.f.vlan','VLAN / Ağ'), ip_addresses: t('th.ip','IP Adresi'), name: t('hi.f.name','Ad'),
+    ip_manual: t('hi.f.ipManual','Elle IP (agent bildirdi, temizlendi)'),
     networks: t('hi.f.net','Ağ (Köprü/Portgrup)'),
     cluster: 'Cluster', power_state: t('hi.f.power','Güç Durumu'), host: t('hi.f.host','Host (Göç)'),
     console: t('hi.cat.console','Konsol Erişimi'),

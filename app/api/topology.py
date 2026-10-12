@@ -114,7 +114,7 @@ def host_vms(host_id: int, layers: str = "",
              .all())
     for v in vms:
         vid = f"v{v.id}"
-        ip = (v.ip_addresses or "").split(",")[0].strip()
+        ip = v.ip_effective.split(",")[0].strip()
         agent = _agent_state(v.tools_status, ptype)       # running | stopped | none
         access = "ok" if agent == "running" else "no"     # reachability: green/red cable
         nodes.append({"data": {

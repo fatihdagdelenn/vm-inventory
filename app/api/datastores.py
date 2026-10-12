@@ -114,7 +114,7 @@ def datastore_detail(ds_id: int, db: Session = Depends(get_db),
         vms.append({
             "id": vm.id, "name": vm.name,
             "vmid": ext.split("/", 1)[1] if "/" in ext else ext,
-            "ip_addresses": vm.ip_addresses or "",
+            "ip_addresses": vm.ip_effective,
             "power_state": vm.power_state,
             "cpu_count": vm.cpu_count, "cpu_usage_pct": vm.cpu_usage_pct,
             "ram_mb": vm.ram_mb, "ram_usage_mb": vm.ram_usage_mb,

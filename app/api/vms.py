@@ -3,6 +3,7 @@ VM API: server-side paging + search + grouping.
 Works with DataTables server-side processing for 500+ VMs; search runs on
 the local DB (never against the platforms).
 """
+import re
 import json
 from fastapi import APIRouter, Depends, HTTPException, Request, Body
 from sqlalchemy import func
@@ -57,6 +58,7 @@ def _vm_to_dict(vm: VirtualMachine) -> dict:
         "created_date": to_iso(vm.created_date),
         "last_boot": to_iso(vm.last_boot),
         "tools_status": vm.tools_status, "owner": vm.owner, "notes": vm.notes,
+        "ip_manual": vm.ip_manual or "",
         "agent_state": _agent_state(vm.tools_status,
                                     vm.platform.type if vm.platform else ""),
         "guest_notes": vm.guest_notes,
@@ -330,24 +332,55 @@ def get_vm(vm_id: int, db: Session = Depends(get_db),
     return data
 
 
+def _normalize_manual_ips(raw) -> str | None:
+    """Validate an operator-entered IP list; return the stored form or None.
+
+    Accepts IPv4/IPv6 separated by commas, semicolons or whitespace. A CIDR
+    suffix (10.0.0.5/24) is tolerated and dropped, because the platform-
+    reported list holds bare addresses too and both are searched the same way.
+    Stored like the collectors store theirs: comma-joined, sorted, unique.
+    """
+    import ipaddress
+    tokens = [x for x in re.split(r"[,;\s]+", str(raw or "").strip()) if x]
+    if not tokens:
+        return None
+    ips, bad = set(), []
+    for tok in tokens:
+        try:
+            ips.add(str(ipaddress.ip_interface(tok).ip))
+        except ValueError:
+            bad.append(tok)
+    if bad:
+        raise HTTPException(400, "Geçersiz IP adresi: " + ", ".join(bad[:5]))
+    return ",".join(sorted(ips))
+
+
 @router.patch("/{vm_id}")
 def update_vm_meta(vm_id: int, request: Request, payload: dict = Body(...),
                    db: Session = Depends(get_db),
                    user: User = Depends(require_role("operator"))):
-    """Update manual fields: note, owner, environment, tags (operator+)."""
+    """Update manual fields: note, owner, environment, tags, manual IP (operator+)."""
     validate_csrf(request, payload.pop("csrf_token", None))
     vm = db.get(VirtualMachine, vm_id)
     if not vm:
         raise HTTPException(404, "VM bulunamadı")
 
     old = {"notes": vm.notes or "", "owner": vm.owner or "",
-           "environment": vm.environment or "",
+           "environment": vm.environment or "", "ip_manual": vm.ip_manual or "",
            "tags": ", ".join(t.name for t in vm.tags)}
 
     if "notes" in payload:
         vm.notes = payload["notes"]
     if "owner" in payload:
         vm.owner = payload["owner"]
+    if "ip_manual" in payload:
+        manual = _normalize_manual_ips(payload["ip_manual"])
+        # The platform-reported list always wins; a manual entry next to it
+        # would be invisible and wiped by the next sync, so refuse it openly.
+        if manual and vm.ip_addresses:
+            raise HTTPException(409, "Platform bu VM için IP bildiriyor; "
+                                     "elle IP yalnız IP'si boş VM'lere girilebilir")
+        vm.ip_manual = manual
     if "environment" in payload and payload["environment"] in \
             ("production", "test", "development"):
         vm.environment = payload["environment"]
@@ -363,7 +396,7 @@ def update_vm_meta(vm_id: int, request: Request, payload: dict = Body(...),
         vm.tags = tags
 
     new = {"notes": vm.notes or "", "owner": vm.owner or "",
-           "environment": vm.environment or "",
+           "environment": vm.environment or "", "ip_manual": vm.ip_manual or "",
            "tags": ", ".join(t.name for t in vm.tags)}
     changed = [k for k in new if k in payload and old[k] != new[k]]
     log_audit(db, user, "update_vm", target=vm.name,

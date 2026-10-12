@@ -84,7 +84,7 @@ const VMs = {
             (v.tags.length ? '<br><small>' + v.tags.map(tg =>
               '<span class="badge text-bg-light border me-1">' + App.esc(tg.name) + '</span>').join('') + '</small>' : '') + '</td>' +
           '<td data-col="vmid" class="small text-muted text-nowrap">' + App.esc(v.vmid || '—') + '</td>' +
-          '<td data-col="ip" class="text-nowrap small">' + App.esc(v.ip_addresses || '—').split(',').join('<br>') + '</td>' +
+          '<td data-col="ip" class="text-nowrap small">' + App.ipHtml(v) + '</td>' +
           '<td data-col="guest_os" class="small">' + App.esc(v.guest_os || '—') + '</td>' +
           '<td data-col="platform" class="small text-nowrap">' + VMs.platformCell(v.platform_type) + '</td>' +
           '<td data-col="agent" class="text-nowrap">' + VMs.agentCell(v.agent_state) + '</td>' +

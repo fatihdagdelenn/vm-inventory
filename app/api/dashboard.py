@@ -81,7 +81,9 @@ def summary(no_local: int = 0, db: Session = Depends(get_db),
     vm_suspended = vm_q().filter(VirtualMachine.power_state == "suspended").count()
 
     # ---- Needs-attention items (click -> filtered VM list) ----
-    no_ip = base.filter(func.coalesce(VirtualMachine.ip_addresses, "") == "").count()
+    # A manually entered IP counts: this must match the 'ip:yok' search it links to.
+    no_ip = base.filter(func.coalesce(VirtualMachine.ip_addresses, "") == "",
+                        func.coalesce(VirtualMachine.ip_manual, "") == "").count()
     no_tools = base.filter(
         (func.coalesce(VirtualMachine.tools_status, "") == "") |
         VirtualMachine.tools_status.ilike("%NotRunning%") |

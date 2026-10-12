@@ -50,7 +50,7 @@ def get_host(host_id: int, db: Session = Depends(get_db),
                                        (v.name or "").lower()))
     data["vms"] = [{
         "id": v.id, "name": v.name, "vmid": v.vmid,
-        "ip_addresses": v.ip_addresses, "power_state": v.power_state,
+        "ip_addresses": v.ip_effective, "power_state": v.power_state,
         "cpu_count": v.cpu_count, "cpu_usage_pct": v.cpu_usage_pct,
         "ram_mb": v.ram_mb, "ram_usage_mb": v.ram_usage_mb,
     } for v in vms]

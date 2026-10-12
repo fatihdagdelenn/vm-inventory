@@ -170,6 +170,19 @@ const App = {
   _vmDetailId: null,
   _vmDetailOnSaved: null,
 
+  /** VM IP listesi (HTML): platformun bildirdiği IP'ler; yoksa elle girilen
+   *  IP, "elle" rozetiyle — doğrulanmamış bilgi olduğu görünür kalsın. */
+  ipHtml(v, sep = '<br>') {
+    const plat = v.ip_addresses || '';
+    const src = plat || v.ip_manual || '';
+    const list = src.split(',').map(s => s.trim()).filter(Boolean).map(App.esc).join(sep);
+    if (!list) return '—';
+    if (plat) return list;
+    return list + ' <span class="badge bg-warning-subtle text-warning-emphasis border ip-manual-badge" title="' +
+      App.esc(t('vm.ipManualTip', 'Elle girildi — agent bildirmiyor')) + '">' +
+      t('vm.ipManualBadge', 'elle') + '</span>';
+  },
+
   async vmDetail(id, opts = {}) {
     let v;
     try { v = await App.api('/api/vms/' + id); } catch (e) { return; }
@@ -228,7 +241,7 @@ const App = {
       '<span class="badge text-bg-light border">' + App.esc(v.platform) + '</span></div>' +
       '<div class="detail-grid">' +
       row('VM ID', App.esc(v.vmid)) +
-      row('IP Adresleri', App.esc(v.ip_addresses).split(',').join('<br>')) +
+      row(t('vm.ipAddresses', 'IP Adresleri'), App.ipHtml(v)) +
       row('MAC Adresleri', App.esc(v.mac_addresses).split(',').join('<br>')) +
       row(t('vm.dns','DNS Sunucuları'), App.esc(v.dns_servers).split(',').join('<br>')) +
       row('İşletim Sistemi', App.esc(v.guest_os)) +
@@ -257,14 +270,21 @@ const App = {
       row('Tools / Agent', agentBadge) +
       row('Platform Notu', App.esc(v.guest_notes).split('\n').join('<br>')) +
       row('Tags', v.platform_tags
-        ? v.platform_tags.split(',').map(t => t.trim()).filter(Boolean).map(t =>
-            '<span class="badge bg-info-subtle text-info-emphasis border me-1">' + App.esc(t) + '</span>').join('')
+        ? v.platform_tags.split(',').map(tg => tg.trim()).filter(Boolean).map(tg =>
+            '<span class="badge bg-info-subtle text-info-emphasis border me-1">' + App.esc(tg) + '</span>').join('')
         : '—') +
       row('Son Güncelleme', App.fmtDate(v.updated_at)) +
       '</div>' + snapHtml + '<hr>' +
       '<h6 class="mb-3"><i class="bi bi-pencil-square"></i> Manuel Bilgiler</h6>' +
       '<div class="mb-2"><label class="form-label small">Sahip</label>' +
       '<input id="vmdOwner" class="form-control form-control-sm" value="' + App.esc(v.owner) + '"' + (canEdit ? '' : ' disabled') + '></div>' +
+      '<div class="mb-2"><label class="form-label small">' + t('vm.ipManual', 'Elle IP') + '</label>' +
+      '<input id="vmdIpManual" class="form-control form-control-sm" placeholder="10.0.0.5, 10.0.0.6" value="' +
+      App.esc(v.ip_manual) + '"' + (canEdit && !v.ip_addresses ? '' : ' disabled') + '>' +
+      '<div class="form-text">' + (v.ip_addresses
+        ? t('vm.ipManualLocked', 'Platform bu VM için IP bildiriyor; elle IP gerekmez.')
+        : t('vm.ipManualHint', 'Agent IP bildirmeyen VM\'ler için. Agent kurulup IP bildirdiğinde bu değer onun yerine geçer ve temizlenir.')) +
+      '</div></div>' +
       '<div class="mb-2"><label class="form-label small">Ortam</label>' +
       '<select id="vmdEnv" class="form-select form-select-sm"' + (canEdit ? '' : ' disabled') + '>' +
       ['production', 'test', 'development'].map(e =>
@@ -272,7 +292,7 @@ const App = {
         e.charAt(0).toUpperCase() + e.slice(1) + '</option>').join('') + '</select></div>' +
       '<div class="mb-2"><label class="form-label small">Etiketler (virgülle ayırın)</label>' +
       '<input id="vmdTags" class="form-control form-control-sm" value="' +
-      App.esc(v.tags.map(t => t.name).join(', ')) + '"' + (canEdit ? '' : ' disabled') + '></div>' +
+      App.esc(v.tags.map(tg => tg.name).join(', ')) + '"' + (canEdit ? '' : ' disabled') + '></div>' +
       '<div class="mb-3"><label class="form-label small">Notlar</label>' +
       '<textarea id="vmdNotes" class="form-control form-control-sm" rows="3"' + (canEdit ? '' : ' disabled') + '>' +
       App.esc(v.notes) + '</textarea></div>' +
@@ -290,10 +310,14 @@ const App = {
       notes: document.getElementById('vmdNotes').value,
       tags: document.getElementById('vmdTags').value.split(',').map(s => s.trim()).filter(Boolean),
     };
+    const ipEl = document.getElementById('vmdIpManual');
+    if (ipEl && !ipEl.disabled) payload.ip_manual = ipEl.value;   // locked when the platform has IPs
     try {
       await App.api('/api/vms/' + App._vmDetailId, {method: 'PATCH', body: payload});
       App.toast('VM bilgileri güncellendi');
-      if (typeof App._vmDetailOnSaved === 'function') App._vmDetailOnSaved();
+      const cb = App._vmDetailOnSaved;
+      if (typeof cb === 'function') cb();
+      App.vmDetail(App._vmDetailId, {onSaved: cb});   // show the normalized values
     } catch (e) { /* hata gösterildi */ }
   },
 

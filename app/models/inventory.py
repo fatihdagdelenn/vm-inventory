@@ -78,6 +78,8 @@ class VirtualMachine(Base):
     agent_miss_count = Column(Integer, default=0)   # Consecutive indeterminate agent probes (sticky-state guard)
     owner = Column(String(128))                     # Manuel: VM sahibi
     notes = Column(Text)                            # Manuel: notlar
+    ip_manual = Column(Text)                        # Manual: operator-entered IP(s) for VMs no agent reports;
+                                                    # cleared by the sync once the platform reports a real IP
     guest_notes = Column(Text)                      # Platformdan: vCenter annotation / Proxmox description
     platform_tags = Column(Text)                    # Platform tags (vCenter tag / Proxmox tags), comma-separated
     pool = Column(String(255), index=True)          # Resource pool (vCenter) / pool (Proxmox)
@@ -98,6 +100,12 @@ class VirtualMachine(Base):
     host_ref = relationship("Host", back_populates="vms")
     platform = relationship("Platform")
     tags = relationship("Tag", secondary=vm_tags, back_populates="vms")
+
+    @property
+    def ip_effective(self) -> str:
+        """IPs to show/export: the platform-reported list wins; the manual
+        entry only fills the gap when the platform reports nothing."""
+        return self.ip_addresses or self.ip_manual or ""
 
     # Composite index for frequent combined searches
     __table_args__ = (

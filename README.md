@@ -333,7 +333,8 @@ yazılır. Mevcut konsol kayıtları aynı ekrandaki butonla toplu silinebilir.
 | Sözdizimi | Örnek | Açıklama |
 |---|---|---|
 | serbest metin | `web01` | Ad, VM ID, IP, MAC, OS, cluster, sahip, notlar, platform notu, pool, klasör ve platform etiketlerinde arar |
-| `ip:` | `ip:10.10.10.` | IP'ye göre (kısmi eşleşir) |
+| `ip:` | `ip:10.10.10.` | IP'ye göre (kısmi eşleşir); elle girilen IP'leri de bulur |
+| `manuelip:` | `manuelip:var` `-manuelip:var` | Elle IP girilmiş VM'ler (agent IP bildirmiyor) |
 | `mac:` | `mac:00:50:56` | MAC'e göre |
 | `os:` | `os:linux` | OS ailesi — Ubuntu/CentOS/RHEL/Debian… hepsini bulur |
 | `osfam:` | `osfam:windows` `osfam:other` | Tek bir OS ailesi (dashboard pastası ve filtre menüsüyle aynı) |
@@ -351,7 +352,7 @@ yazılır. Mevcut konsol kayıtları aynı ekrandaki butonla toplu silinebilir.
 | **Sayısal** | `ram:>=16` `cpu:>4` `disk:<100` | Karşılaştırma (RAM/disk GB) |
 | **Dışlama** | `-os:windows` | Önüne `-` koyulan dışlanır |
 | **VEYA** | `os:windows,linux` | Virgülle çoklu değer |
-| **Boş alan** | `ip:yok` `tag:yok` | Alanı boş olanlar |
+| **Boş alan** | `ip:yok` `tag:yok` | Alanı boş olanlar (`ip:yok`: ne platform ne elle IP var) |
 
 Birleştirme örneği: `cluster:production os:linux status:running ram:>=16 -tag:test`
 
@@ -362,7 +363,7 @@ Arama kutusundaki **?** butonu bu tabloyu arayüzde gösterir. Sorgu adres çubu
 | Rol | Yetkiler |
 |---|---|
 | **Görüntüleyici** | Tüm ekranları ve raporları görüntüleme |
-| **Operatör** | + Not/sahip/etiket düzenleme, manuel senkronizasyon, zamanlanmış rapor |
+| **Operatör** | + Not/sahip/etiket/elle IP düzenleme, manuel senkronizasyon, zamanlanmış rapor |
 | **Admin** | + Platform yönetimi, kullanıcı yönetimi, audit log |
 
 ## 🔗 LDAP / Active Directory (opsiyonel)
@@ -416,7 +417,7 @@ server {
 | Geçmiş'te **istemci IP / User-Agent boş** | Beklenen davranış — vCenter/Proxmox altyapı kayıtları operatör IP/UA'sı tutmaz. IP/UA'lı denetim için uygulama-içi **Audit Log**'a (Yönetim) bakın |
 | **Konsol erişimi satırları çok fazla** | Yönetim → Senkronizasyon'dan "Konsol erişimi takibi"ni kapatın (varsayılan kapalı) ve "Mevcut konsol geçmişini temizle"yi kullanın |
 | **Değişiklikler geç/eksik geliyor** | Yakalama gecikmesi = tam senkron aralığı. Yönetim → Senkronizasyon'dan aralığı düşürün (3–5 dk önerilir); "Tümünü Yenile" anında tetikler |
-| VM IP'leri boş | Misafirde QEMU Guest Agent / VMware Tools kurulu ve çalışır olmalı. `ip:yok` aramasıyla eksikleri listeleyin |
+| VM IP'leri boş | Misafirde QEMU Guest Agent / VMware Tools kurulu ve çalışır olmalı. `ip:yok` aramasıyla eksikleri listeleyin. Agent kurulamıyorsa (özel/kapalı OS) VM detayındaki **Elle IP** alanına yazın — listede "elle" rozetiyle görünür, aramada ve raporlarda yer alır; agent sonradan IP bildirirse onun yerine geçer |
 | OS "Linux (2.6+ çekirdek)" görünüyor | O VM'de agent yok — Proxmox yalnızca kaba OS tipini bilir. Agent kurulunca tam ad gelir ("Ubuntu 22.04.3 LTS" gibi) |
 | Cluster kolonu boş | Eski sürüm davranışı; güncel sürümde cluster adı (tek node'da node adı) otomatik atanır. Senkronize edin |
 | Platform kartında "Hata" | Karttaki **Loglar** butonu API hatasının tam mesajını gösterir |
