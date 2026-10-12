@@ -9,6 +9,8 @@ Sürümleme [Semantic Versioning](https://semver.org/lang/tr/) yaklaşımını i
   *dahili* bir damgadır, release değildir.
 - **Release** = bu dosyadaki bir `## [vX.Y.Z]` bölümü + aynı adda **git tag** +
   GitHub release. Bu üçü birbirinden ayrılmaz; biri varsa üçü de olmalı.
+  Release notu (`RELEASE_vX.Y.Z.md`) yalnız GitHub'a yapıştırılır, repoya
+  **commit'lenmez** (`.gitignore`'da).
 - **Ne zaman release?** Şu üçünden biri olduğunda: *(a)* son tag'den beri **10+ faz**
   birikti, *(b)* **yeni bir sayfa / yeni bir veri kaynağı** eklendi, *(c)* kullanıcıyı
   etkileyen **kırıcı bir değişiklik** veya veri göçü var. Takvim değil, birikim belirler.

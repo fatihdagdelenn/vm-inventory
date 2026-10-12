@@ -30,6 +30,8 @@ tmp/
 *.tmp
 *.bak
 *.patch
+# GitHub release notes are pasted on GitHub, never committed
+RELEASE_*.md
 # ===== LOGLAR =====
 *.log
 logs/
