@@ -3,13 +3,32 @@
 Bu projedeki tüm önemli değişiklikler bu dosyada belgelenir.
 Sürümleme [Semantic Versioning](https://semver.org/lang/tr/) yaklaşımını izler.
 
+### Sürümleme & release politikası
+
+- **Faz sürümü** (`app/core/version.py`, footer'da görünür) her fazda artar; bu
+  *dahili* bir damgadır, release değildir.
+- **Release** = bu dosyadaki bir `## [vX.Y.Z]` bölümü + aynı adda **git tag** +
+  GitHub release. Bu üçü birbirinden ayrılmaz; biri varsa üçü de olmalı.
+- **Ne zaman release?** Şu üçünden biri olduğunda: *(a)* son tag'den beri **10+ faz**
+  birikti, *(b)* **yeni bir sayfa / yeni bir veri kaynağı** eklendi, *(c)* kullanıcıyı
+  etkileyen **kırıcı bir değişiklik** veya veri göçü var. Takvim değil, birikim belirler.
+- **Numaralandırma:** yeni sayfa veya belirgin yetenek → minor (`1.6` → `1.7`);
+  yalnız düzeltme/iyileştirme → patch. Dahili faz damgaları release numarası ile
+  aynı olmak zorunda değildir; her bölümün alt başlığı hangi dahili aralığı
+  kapsadığını yazar.
+- Her bölüm **dürüst sınırları** da yazar — bir şeyin platform yüzünden
+  yapılamadığı, yapılabilmiş gibi görünmesin.
+
 ---
 
-## [v1.6.2] — 2026-10-09
+## [v1.7.0] — 2026-10-09
 
-**v1.5.x'ten bu yana 6 adım (faz134–faz139; v1.5.4 → v1.6.2).** Odak: dashboard
-snapshot kartının dürüstleşmesi, Değişiklik Geçmişi'nde geriye dönük arama ve
-raporlardaki eksik kolonlar.
+**v1.5.0'dan bu yana 7 adım (faz134–faz140; dahili v1.5.4 → v1.6.3).** Odak: dashboard
+snapshot kartının dürüstleşmesi, Değişiklik Geçmişi'nde geriye dönük arama,
+raporlardaki eksik kolonlar ve belgelerin güncellenmesi.
+
+> **v1.2.0'dan beri ilk yayınlanan release.** Aradaki v1.3.0 / v1.4.0 / v1.5.0
+> bölümleri aşağıda; o tag'ler geriye dönük olarak kendi commit'lerine atıldı.
 
 ### 📸 Dashboard Snapshot Kartı (faz134–136)
 - Kart artık **tüm** snapshot'ları listeler; yaş filtresi (**Tümü / 7+ / 14+ / 30+**)
@@ -42,6 +61,16 @@ raporlardaki eksik kolonlar.
   çıktısında yoktu. Proxmox'ta pool birincil gruplama/kiracı işareti olduğu için
   önemli. Tek kolon listesinden beslendiği için VM export, "Tüm Envanter"
   birleşik export ve zamanlanmış raporlara aynı anda yansır.
+
+### 📚 Belgeler (faz140)
+- Bu changelog **v1.2.0'da duruyordu**; faz112–faz139 kaydı git geçmişinden
+  yeniden kurulup v1.3.0 / v1.4.0 / v1.5.0 / v1.7.0 bölümleri olarak yazıldı.
+- README'de hiç belgelenmemiş **beş sayfa** eklendi: Datastore'lar, Snapshot'lar,
+  Yedekler, Topoloji ve **Fiziksel Envanter**. Özellik tablosuna fiziksel envanter,
+  disk disk görünürlük ve göç-farkında uptime satırları girdi; Raporlar bölümü
+  Pool / "Diskler" sayfası / kullanım kolonlarını söylüyor.
+- İki ölü dosya kaldırıldı: kazara commit'lenmiş `dosya` ve ~40 faz eskimiş
+  `docs/dokumantasyon.html` (README'nin kopyasıydı; git geçmişinde duruyor).
 
 ---
 
