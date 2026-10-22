@@ -232,6 +232,8 @@ html.theme-light .app-version { color: rgba(226,232,240,.5); }
 }
 @keyframes chipIn { from { opacity: 0; transform: scale(.85); } to { opacity: 1; } }
 .filter-badge.negative { background: rgba(229,83,75,.08); color: var(--red); border-color: rgba(229,83,75,.3); }
+/* Sıralama rozeti bir sorgu token'ı değil, düz metin: monospace değil */
+.filter-badge.sort-badge { font-family: inherit; gap: .3rem; }
 .filter-badge button {
   border: 0; background: transparent; color: inherit; padding: 0 .15rem;
   display: inline-flex; border-radius: 5px; cursor: pointer;

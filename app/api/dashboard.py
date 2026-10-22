@@ -137,39 +137,48 @@ def summary(no_local: int = 0, db: Session = Depends(get_db),
     # ---- Top resource-consuming VMs (running, top 8, desc) ----
     running = base.filter(VirtualMachine.power_state == "running")
 
-    def _running_top(cols, order_col, limit=8):
+    # The metric expressions are shared with the VM list sort keys
+    # (cpu_usage / ram_usage / disk_usage), so a click on a bar lands on a
+    # list sorted by exactly the same number, in the same order.
+    from .vms import USAGE_SORTS
+    _META = [VirtualMachine.id, VirtualMachine.name, Host.name, VirtualMachine.cluster,
+             VirtualMachine.ip_addresses, VirtualMachine.ip_manual]
+    _M = len(_META)
+
+    def _running_top(extra, order_col, limit=8):
         return (running.outerjoin(Host, VirtualMachine.host_id == Host.id)
-                       .with_entities(*cols)
-                       .order_by(order_col.desc()).limit(limit).all())
+                       .with_entities(*(_META + extra))
+                       .order_by(order_col.desc().nullslast(), VirtualMachine.name)
+                       .limit(limit).all())
 
-    top_cpu_vms = [{"name": r[0], "host": r[1] or "", "cluster": r[2] or "",
-                    "pct": round(r[3] or 0, 1)}
-                   for r in _running_top(
-                       [VirtualMachine.name, Host.name, VirtualMachine.cluster,
-                        VirtualMachine.cpu_usage_pct], VirtualMachine.cpu_usage_pct)
-                   if (r[3] or 0) > 0]
+    def _vm_meta(r):
+        """id/name/host/cluster + first IP (platform list, else the manual one)."""
+        ips = [x.strip() for x in (r[4] or r[5] or "").split(",") if x.strip()]
+        return {"id": r[0], "name": r[1], "host": r[2] or "", "cluster": r[3] or "",
+                "ip": ips[0] if ips else "", "ip_more": max(0, len(ips) - 1),
+                "ip_manual": bool(ips) and not r[4]}
 
-    ram_pct = VirtualMachine.ram_usage_mb * 100.0 / func.nullif(VirtualMachine.ram_mb, 0)
-    top_ram_vms = [{"name": r[0], "host": r[1] or "", "cluster": r[2] or "",
-                    "pct": round(r[3] or 0, 1), "used_gb": round((r[4] or 0) / 1024, 1)}
-                   for r in _running_top(
-                       [VirtualMachine.name, Host.name, VirtualMachine.cluster,
-                        ram_pct, VirtualMachine.ram_usage_mb], ram_pct)
-                   if (r[3] or 0) > 0]
+    cpu_metric = USAGE_SORTS["cpu_usage"]
+    top_cpu_vms = [dict(_vm_meta(r), pct=round(r[_M] or 0, 1))
+                   for r in _running_top([cpu_metric], cpu_metric)
+                   if (r[_M] or 0) > 0]
+
+    ram_pct = USAGE_SORTS["ram_usage"]
+    top_ram_vms = [dict(_vm_meta(r), pct=round(r[_M] or 0, 1),
+                        used_gb=round((r[_M + 1] or 0) / 1024, 1))
+                   for r in _running_top([ram_pct, VirtualMachine.ram_usage_mb], ram_pct)
+                   if (r[_M] or 0) > 0]
 
     # Disk: on agentless Proxmox used disk is 0, so fall back to allocated disk
     # (disk_total_gb) when used is missing, so the card is never empty.
-    disk_metric = func.coalesce(func.nullif(VirtualMachine.disk_used_gb, 0),
-                                VirtualMachine.disk_total_gb)
-    top_disk_vms = [{"name": r[0], "host": r[1] or "", "cluster": r[2] or "",
-                     "used_gb": round(r[3] or 0, 1), "total_gb": round(r[4] or 0, 1),
-                     "value_gb": round((r[3] or r[4] or 0), 1),
-                     "is_used": bool(r[3] and r[3] > 0)}
-                    for r in _running_top(
-                        [VirtualMachine.name, Host.name, VirtualMachine.cluster,
-                         VirtualMachine.disk_used_gb, VirtualMachine.disk_total_gb],
-                        disk_metric)
-                    if (r[3] or r[4] or 0) > 0]
+    disk_metric = USAGE_SORTS["disk_usage"]
+    top_disk_vms = [dict(_vm_meta(r), used_gb=round(r[_M] or 0, 1),
+                         total_gb=round(r[_M + 1] or 0, 1),
+                         value_gb=round((r[_M] or r[_M + 1] or 0), 1),
+                         is_used=bool(r[_M] and r[_M] > 0))
+                    for r in _running_top([VirtualMachine.disk_used_gb,
+                                           VirtualMachine.disk_total_gb], disk_metric)
+                    if (r[_M] or r[_M + 1] or 0) > 0]
 
     # ---- VM distribution per host (desc, top 12) ----
     host_vm_dist = [{"name": r[0] or "—", "count": r[1]} for r in

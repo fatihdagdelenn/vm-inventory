@@ -8,7 +8,13 @@
  */
 const VMs = {
   q: '', page: 1, perPage: 50, sort: 'name', order: 'asc', total: 0,
-  currentId: null, includeHidden: false, focusId: null,
+  currentId: null, includeHidden: false, focusId: null, highlightId: null,
+
+  /** Sütun başlığı olmayan sıralamalar (dashboard 'en çok kullanan' kartlarından
+   *  gelinir). Etkinken bir 'Sıralama' rozetiyle görünür ve kaldırılabilir. */
+  USAGE_SORTS: {cpu_usage: ['vm.sortCpuUsage', 'CPU kullanımı'],
+                ram_usage: ['vm.sortRamUsage', 'RAM kullanımı (%)'],
+                disk_usage: ['vm.sortDiskUsage', 'Disk kullanımı']},
 
   /** Anlık kullanım için mini çubuk (veri yoksa boş döner). */
   platformCell(ptype) {
@@ -126,6 +132,16 @@ const VMs = {
   /** Deep-link: ?focus=<id> ile gelindiyse o VM'in detayını aç ve satırını
    *  vurgula. Yalnızca bir kez çalışır (sonraki yükleme/sıralamada tekrarlamaz). */
   applyFocus() {
+    if (VMs.highlightId) {            // ?hl=<id>: vurgula ama detayı açma
+      const hid = VMs.highlightId;
+      VMs.highlightId = null;
+      const hrow = document.querySelector('#vmBody tr[data-id="' + hid + '"]');
+      if (hrow) {
+        hrow.classList.add('row-focus');
+        hrow.scrollIntoView({behavior: 'smooth', block: 'center'});
+        setTimeout(() => hrow.classList.remove('row-focus'), 2600);
+      }
+    }
     if (!VMs.focusId) return;
     const id = VMs.focusId;
     VMs.focusId = null;
@@ -278,23 +294,54 @@ const VMs = {
   /** Sorguyu adres çubuğuna yaz - sayfa yenilense de filtre korunur,
    *  link kopyalanıp paylaşılabilir. */
   syncUrl() {
-    const url = VMs.q ? '/vms?q=' + encodeURIComponent(VMs.q) : '/vms';
-    history.replaceState(null, '', url);
+    const sp = new URLSearchParams();
+    if (VMs.q) sp.set('q', VMs.q);
+    if (VMs.sort !== 'name' || VMs.order !== 'asc') {   // varsayılan değilse sıralama da linkte
+      sp.set('sort', VMs.sort); sp.set('order', VMs.order);
+    }
+    const qs = sp.toString();
+    history.replaceState(null, '', '/vms' + (qs ? '?' + qs.replace(/%3A/gi, ':') : ''));
+  },
+
+  /** Başlıksız sıralamayı bırak, varsayılana (ada göre A→Z) dön. */
+  resetSort() {
+    VMs.sort = 'name'; VMs.order = 'asc'; VMs.page = 1;
+    VMs.markSortHeader();
+    VMs.load();
+  },
+
+  /** Aktif sıralama sütununun başlığına ▲/▼ koy. */
+  markSortHeader() {
+    document.querySelectorAll('#vmTable th.sortable').forEach(th => {
+      th.classList.remove('sorted-asc', 'sorted-desc');
+      if (th.dataset.sort === VMs.sort)
+        th.classList.add(VMs.order === 'asc' ? 'sorted-asc' : 'sorted-desc');
+    });
   },
 
   /** Sorgudaki her kriteri X'le kaldırılabilir rozet olarak göster. */
   renderActiveFilters() {
     const wrap = document.getElementById('activeFilters');
     const tokens = VMs.q.match(/[-!]?\w+:"[^"]*"|[-!]?\w+:\S+|[-!]?\S+/g) || [];
-    if (!tokens.length) { wrap.classList.add('d-none'); wrap.innerHTML = ''; return; }
+    const us = VMs.USAGE_SORTS[VMs.sort];
+    const sortBadge = us
+      ? '<span class="filter-badge sort-badge"><i class="bi bi-sort-' +
+        (VMs.order === 'desc' ? 'down' : 'up') + '"></i> ' +
+        t('vm.sortedBy', 'Sıralama') + ': ' + t(us[0], us[1]) + ' ' +
+        (VMs.order === 'desc' ? '▼' : '▲') +
+        '<button title="' + t('vm.remove','Kaldır') + '" onclick="VMs.resetSort()">' +
+        '<i class="bi bi-x"></i></button></span>'
+      : '';
+    if (!tokens.length && !sortBadge) { wrap.classList.add('d-none'); wrap.innerHTML = ''; return; }
     wrap.classList.remove('d-none');
-    wrap.innerHTML = '<span class="text-muted small me-1">' + t('vm.activeFilters','Aktif:') + '</span>' +
+    wrap.innerHTML = sortBadge + (!tokens.length ? '' :
+      '<span class="text-muted small me-1">' + t('vm.activeFilters','Aktif:') + '</span>' +
       tokens.map((tok, i) =>
         '<span class="filter-badge' + ((tok.startsWith('-') || tok.startsWith('!')) ? ' negative' : '') + '">' +
         App.esc(tok) + '<button title="' + t('vm.remove','Kaldır') + '" onclick="VMs.removeToken(' + i + ')">' +
         '<i class="bi bi-x"></i></button></span>').join('') +
       (tokens.length > 1 ? '<button class="btn btn-link btn-sm p-0 ms-1" ' +
-        'onclick="VMs.clearAll()">' + t('vm.clearAll','tümünü temizle') + '</button>' : '');
+        'onclick="VMs.clearAll()">' + t('vm.clearAll','tümünü temizle') + '</button>' : ''));
   },
 
   /** Rozetin X'ine basılınca o kriteri sorgudan çıkar. */
@@ -390,6 +437,16 @@ const VMs = {
   const urlFocus = parseInt(new URLSearchParams(location.search).get('focus'), 10);
   if (urlFocus) VMs.focusId = urlFocus;
 
+  // ?sort=&order= (dashboard "en çok kullanan" kartları, paylaşılan linkler) ve
+  // ?hl=<id> (tıklanan VM'in satırını vurgula, detayı açmadan).
+  const sp = new URLSearchParams(location.search);
+  const known = new Set([...document.querySelectorAll('#vmTable th.sortable')]
+    .map(th => th.dataset.sort).concat(Object.keys(VMs.USAGE_SORTS)));
+  if (known.has(sp.get('sort'))) VMs.sort = sp.get('sort');
+  if (sp.get('order') === 'asc' || sp.get('order') === 'desc') VMs.order = sp.get('order');
+  const urlHl = parseInt(sp.get('hl'), 10);
+  if (urlHl) VMs.highlightId = urlHl;
+
   // Debounce'lu arama: her tuş vuruşunda değil, 350 ms duraksamada sorgula
   input.addEventListener('input', App.debounce(() => {
     VMs.q = input.value.trim();
@@ -442,10 +499,8 @@ const VMs = {
       th.classList.add(VMs.order === 'asc' ? 'sorted-asc' : 'sorted-desc');
       VMs.load();
     });
-    // Açılışta aktif sıralama sütununu işaretle (varsayılan: name asc)
-    if (th.dataset.sort === VMs.sort)
-      th.classList.add(VMs.order === 'asc' ? 'sorted-asc' : 'sorted-desc');
   });
+  VMs.markSortHeader();   // açılışta aktif sıralama sütununu işaretle (varsayılan: name asc)
 
   VMs.buildColChooser();
   VMs.applyCols();

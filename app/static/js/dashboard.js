@@ -216,7 +216,11 @@ function barGrad(chart, base, horizontal) {
         plugins: {legend: {display: false}, glow: {color: hexA(opts.base || BLUE, .45), blur: 12},
                   tooltip: opts.tooltip},
         scales: opts.scales || {x: {beginAtZero: true, ticks: {precision: 0}}},
-        onClick: opts.onClick}
+        onClick: opts.onClick,
+        // Clickable bars show a hand cursor, so the deep link is discoverable.
+        onHover: opts.onClick ? (e, els) => {
+          if (e.native && e.native.target) e.native.target.style.cursor = els.length ? 'pointer' : 'default';
+        } : undefined}
     }));
   };
 
@@ -238,19 +242,36 @@ function barGrad(chart, base, horizontal) {
   usageBar('chartCpu', 'cpu_pct', BLUE);
   usageBar('chartRam', 'ram_pct', GREEN);
 
-  /* En çok kaynak tüketen VM'ler */
-  const topVm = (canvasId, items, valueFn, tipFn, colorFn) =>
+  /* En çok kaynak tüketen VM'ler.
+     Tooltip: başlık = VM adı, altında metrik, IP ve bağlı olduğu host.
+     Tıklama: VM listesi çalışanlar + aynı metrikle büyükten küçüğe sıralı açılır,
+     tıklanan VM'in satırı vurgulanır (dashboard ile birebir aynı sıralama). */
+  const ipLine = v => 'IP: ' + (v.ip
+    ? v.ip + (v.ip_more ? ' (+' + v.ip_more + ')' : '') +
+      (v.ip_manual ? ' (' + t('vm.ipManualBadge', 'elle') + ')' : '')
+    : '—');
+  const topVm = (canvasId, items, valueFn, tipFn, colorFn, sortKey) =>
     bar(canvasId, items.map(v => v.name), items.map(valueFn),
       {base: BLUE, thick: 22, colorFn,
-       tooltip: {callbacks: {label: ctx => tipFn(items[ctx.dataIndex])}},
-       onClick: (e, els) => { if (els.length) goVms(items[els[0].index].name); }});
+       tooltip: {callbacks: {label: ctx => {
+         const v = items[ctx.dataIndex];
+         return [tipFn(v), ipLine(v)].concat(v.host ? ['Host: ' + v.host] : []);
+       }}},
+       onClick: (e, els) => {
+         if (!els.length) return;
+         const v = items[els[0].index];
+         location.href = '/vms?q=' + encodeURIComponent('status:running') +
+           '&sort=' + sortKey + '&order=desc' + (v.id ? '&hl=' + v.id : '');
+       }});
   topVm('chartTopCpu', d.top_cpu_vms || [], v => v.pct,
-    v => `CPU %${v.pct}` + (v.host ? ' · ' + v.host : ''), i => critColor((d.top_cpu_vms||[])[i].pct));
+    v => `CPU %${v.pct}`, i => critColor((d.top_cpu_vms||[])[i].pct), 'cpu_usage');
   topVm('chartTopRam', d.top_ram_vms || [], v => v.pct,
-    v => `RAM %${v.pct} (${v.used_gb} GB)` + (v.host ? ' · ' + v.host : ''), i => critColor((d.top_ram_vms||[])[i].pct));
+    v => `RAM %${v.pct} (${v.used_gb} GB)`, i => critColor((d.top_ram_vms||[])[i].pct), 'ram_usage');
   topVm('chartTopDisk', d.top_disk_vms || [], v => (v.value_gb != null ? v.value_gb : v.used_gb),
-    v => (v.is_used ? `${v.used_gb} / ${v.total_gb} GB kullanımda` : `${v.total_gb} GB ayrılan`) + (v.host ? ' · ' + v.host : ''),
-    i => { const v = (d.top_disk_vms||[])[i]; return v.is_used ? critColor(v.total_gb ? 100*v.used_gb/v.total_gb : 0) : '#5f7799'; });
+    v => (v.is_used ? `${v.used_gb} / ${v.total_gb} GB ` + t('dash.diskInUse', 'kullanımda')
+                    : `${v.total_gb} GB ` + t('dash.diskAllocated', 'ayrılan')),
+    i => { const v = (d.top_disk_vms||[])[i]; return v.is_used ? critColor(v.total_gb ? 100*v.used_gb/v.total_gb : 0) : '#5f7799'; },
+    'disk_usage');
 
   bar('chartHostVm', (d.host_vm_dist || []).map(h => h.name), (d.host_vm_dist || []).map(h => h.count),
     {base: BLUE, thick: 24, label: 'VM',

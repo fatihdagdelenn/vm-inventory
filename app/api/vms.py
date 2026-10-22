@@ -29,6 +29,16 @@ SORTABLE = {"name": VirtualMachine.name, "power_state": VirtualMachine.power_sta
 # Text columns sort case-insensitively (true alphabetical); otherwise the DB
 # sorts by byte/ASCII order (uppercase first -> not alphabetical)
 CASE_INSENSITIVE = {"name", "cluster", "guest_os", "vmid", "pool"}
+# Live-usage sort keys. The dashboard's "top VM" cards order by these SAME
+# expressions, so clicking a bar opens a list in the identical order.
+# Disk falls back to the allocated size when real usage is unknown (agentless
+# Proxmox), exactly as the dashboard card does.
+USAGE_SORTS = {
+    "cpu_usage": VirtualMachine.cpu_usage_pct,
+    "ram_usage": VirtualMachine.ram_usage_mb * 100.0 / func.nullif(VirtualMachine.ram_mb, 0),
+    "disk_usage": func.coalesce(func.nullif(VirtualMachine.disk_used_gb, 0),
+                                VirtualMachine.disk_total_gb),
+}
 
 
 def _agent_state(ts, ptype) -> str:
@@ -130,7 +140,13 @@ def list_vms(q: str = "", page: int = 1, per_page: int = 50,
     else:
         base_col = SORTABLE.get(sort, VirtualMachine.name)
         sort_col = func.lower(base_col) if sort in CASE_INSENSITIVE else base_col
-    if sort == "uptime":
+    if sort in USAGE_SORTS:
+        # VMs without a sample (powered off, never measured) go last in BOTH
+        # directions - PostgreSQL would otherwise put NULLs first on DESC.
+        col = USAGE_SORTS[sort]
+        query = query.order_by(col.desc().nullslast() if order == "desc"
+                               else col.asc().nullslast(), VirtualMachine.name)
+    elif sort == "uptime":
         # Uptime is derived from last_boot (older boot = longer uptime), so the
         # direction is inverted: "desc" (longest uptime first) = last_boot asc.
         # VMs without a boot time (powered off) always sort to the end.

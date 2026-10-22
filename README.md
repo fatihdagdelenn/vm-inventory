@@ -272,7 +272,7 @@ Dashboard'daki **"Dikkat Gerektirenler"** kartından *"Agent/Tools kurulu olmaya
 
 | Ekran | Ne yapılır? |
 |---|---|
-| **Dashboard** | Genel durum: sayılar, kaynak toplamları, grafikler (dilime tıklayınca filtreli liste açılır), son değişiklikler, platform sağlığı. Cluster grafiğindeki **Yönet** butonu görünürlük ayarlarını açar |
+| **Dashboard** | Genel durum: sayılar, kaynak toplamları, grafikler (dilime tıklayınca filtreli liste açılır), son değişiklikler, platform sağlığı. Cluster grafiğindeki **Yönet** butonu görünürlük ayarlarını açar. **En Çok CPU / RAM / Disk Kullanan VM** kartlarında bar üzerine gelince VM'in IP'si ve bağlı olduğu host görünür; bara tıklayınca Sanal Makineler listesi çalışan VM'lerle, **aynı metriğe göre büyükten küçüğe sıralı** açılır ve tıklanan VM vurgulanır |
 | **Sanal Makineler** | Arama + gelişmiş filtre + gruplama. CPU/RAM/disk kolonlarında anlık kullanım çubukları (sarı %75+, kırmızı %90+); ayrıca VM ID, Pool, Klasör, Tags ve Uptime kolonları. **Kolonlar** menüsünden görünür sütunları seçebilirsiniz (tercih tarayıcıda saklanır). Satıra tıklayınca detay paneli; not/sahip/etiket buradan düzenlenir. Host/cluster/VLAN/pool/klasör hücreleri tıklanabilir filtredir |
 | **Host'lar** | ESXi/PVE node'ları tek tabloda: Host adı, Yönetim IP, OS/hipervizör sürümü, CPU modeli, çekirdek sayısı, CPU/RAM/Disk kullanım çubukları, cluster, VM sayısı, çalışma süresi (uptime) ve durum. **Tüm sütun başlıkları tıklanabilir** — metin (A-Z), sayısal, IP ve durum bazlı sıralama. **VM sayısına tıklayınca** o host'taki VM'leri (ad, IP, güç durumu, anlık CPU/RAM) listeleyen bir pencere açılır; listedeki bir VM'e tıklayınca **aynı sayfada** VM detay paneli açılır (Sanal Makineler ekranındaki panelle aynı) |
 | **Datastore'lar** | Depolama alanları: kapasite, doluluk, tip, bağlı host'lar, çözümlenmiş cluster'lar. Kart / tip / node / tablo görünümleri; **yerel diskleri gizle** filtresi (paylaşımlı kapasiteyi ayrı görmek için), çok-cluster'lı paylaşımlı depolarda **kapasite çakışma uyarısı**, kart üzerinde son yedek yaşı rozeti |
@@ -356,7 +356,7 @@ yazılır. Mevcut konsol kayıtları aynı ekrandaki butonla toplu silinebilir.
 
 Birleştirme örneği: `cluster:production os:linux status:running ram:>=16 -tag:test`
 
-Arama kutusundaki **?** butonu bu tabloyu arayüzde gösterir. Sorgu adres çubuğuna yansır — linki kopyalayıp paylaşabilirsiniz.
+Arama kutusundaki **?** butonu bu tabloyu arayüzde gösterir. Sorgu adres çubuğuna yansır — linki kopyalayıp paylaşabilirsiniz. Varsayılan dışı sıralama da linke girer (`&sort=…&order=desc`); sütun başlığı olmayan kullanım sıralamaları (`cpu_usage`, `ram_usage`, `disk_usage`) bir **Sıralama** rozetiyle görünür, X ile kaldırılır.
 
 ## 👥 Roller ve Yetkiler
 

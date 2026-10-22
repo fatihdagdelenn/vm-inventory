@@ -27,6 +27,20 @@ Sürümleme [Semantic Versioning](https://semver.org/lang/tr/) yaklaşımını i
 
 Henüz release'e girmemiş fazlar (faz142–; dahili v1.7.1 →).
 
+### 📊 En çok kaynak kullanan VM kartları (faz145)
+- CPU / RAM / Disk kartlarında bar üzerine gelince VM adının altında artık
+  **VM'in IP'si** (birden fazlaysa `+N`, elle girilmişse "elle") ve ardından bağlı
+  olduğu **host** görünüyor. Önceden yalnız host vardı.
+- Bara tıklamak artık Sanal Makineler sayfasını **çalışan VM'ler, aynı metriğe
+  göre büyükten küçüğe sıralı** açıyor ve tıklanan VM'in satırını vurguluyor
+  (önceden yalnız o VM'in adıyla arama yapıyordu). Kart ile liste aynı SQL
+  ifadesiyle sıralandığı için ilk satırlar karttaki sırayla birebir aynıdır.
+- VM listesine kullanım sıralamaları eklendi (`sort=cpu_usage|ram_usage|disk_usage`);
+  ölçümü olmayan VM'ler her iki yönde de sona düşer. Etkin olduğunda X'le
+  kaldırılabilen bir **Sıralama** rozeti görünür; varsayılan dışı sıralama
+  adres çubuğuna yazılır, sayfa yenilense de korunur.
+- Bar üzerinde el imleci çıkıyor (tıklanabilir olduğu belli).
+
 ### 📸 Dashboard snapshot kartı (faz144)
 - **Düzeltme:** Kart "0/1 — Hiç snapshot yok" gösterirken Snapshot'lar sayfası
   snapshot'ı listeliyordu. Sebep: kart en fazla 1000 kayıt alıyor, gizli cluster

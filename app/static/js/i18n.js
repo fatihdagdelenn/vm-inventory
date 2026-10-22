@@ -181,6 +181,8 @@ const I18N = {
     'vm.filterByPool': 'Filter by this pool', 'vm.filterByFolder': 'Filter by this folder',
     'vm.filterByVlan': 'Filter by this VLAN', 'vm.hiddenMark': 'hidden',
     'vm.activeFilters': 'Active:', 'vm.clearAll': 'clear all', 'vm.remove': 'Remove',
+    'vm.sortedBy': 'Sorted by', 'vm.sortCpuUsage': 'CPU usage', 'vm.sortRamUsage': 'RAM usage (%)',
+    'vm.sortDiskUsage': 'Disk usage', 'dash.diskInUse': 'in use', 'dash.diskAllocated': 'allocated',
     'st.running': 'Running', 'st.stopped': 'Stopped', 'st.suspended': 'Suspended',
     'ag.active': 'Active', 'ag.passive': 'Passive', 'ag.none': 'None',
     'st.maintenance': 'Maintenance', 'st.unknown': 'Unknown',
