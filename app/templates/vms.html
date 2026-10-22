@@ -6,21 +6,51 @@
     <i class="bi bi-search"></i>
     <input type="text" id="vmSearch" class="form-control form-control-lg"
            placeholder='Ara…  örn: ip:10.10.10.15  os:linux  ram:>=16  -cluster:test  status:running' data-i18n-ph="vm.searchPh">
+    <div class="dropdown">
+      <button class="btn btn-link p-0 me-1" id="savedBtn" type="button" data-bs-toggle="dropdown"
+              data-bs-auto-close="outside" data-i18n-title="vm.savedSearches" title="Kayıtlı aramalar">
+        <i class="bi bi-bookmark-star"></i></button>
+      <div class="dropdown-menu dropdown-menu-end saved-menu p-0" id="savedMenu"></div>
+    </div>
     <button class="btn btn-link p-0 me-1" id="searchHelp" data-i18n-title="vm.searchHelp" title="Arama söz dizimi"><i class="bi bi-question-circle"></i></button>
     <button class="btn btn-link p-0" id="searchClear" data-i18n-title="vm.clear" title="Temizle"><i class="bi bi-x-lg"></i></button>
   </div>
+
+  <!-- Hızlı filtreler: çoklu seçim. Aynı gruptakiler VEYA, gruplar arası VE;
+       Shift+tık hariç tutar. Her çip arama kutusundaki bir token'dır. -->
+  <div class="qf-bar mt-2" id="quickFilters">
+    <div class="qf-group"><span class="qf-label" data-i18n="vm.qf.status">Durum</span>
+      <button type="button" class="chip qf" data-field="status" data-value="running"><span class="qf-text" data-i18n="vm.chipRunning">Çalışan</span><span class="qf-count"></span></button>
+      <button type="button" class="chip qf" data-field="status" data-value="stopped"><span class="qf-text" data-i18n="vm.chipStopped">Kapalı</span><span class="qf-count"></span></button>
+      <button type="button" class="chip qf" data-field="status" data-value="suspended"><span class="qf-text" data-i18n="st.suspended">Askıda</span><span class="qf-count"></span></button>
+    </div>
+    <div class="qf-group"><span class="qf-label">Platform</span>
+      <button type="button" class="chip qf" data-field="type" data-value="vcenter"><span class="qf-text">VMware</span><span class="qf-count"></span></button>
+      <button type="button" class="chip qf" data-field="type" data-value="proxmox"><span class="qf-text">Proxmox</span><span class="qf-count"></span></button>
+    </div>
+    <div class="qf-group"><span class="qf-label">OS</span>
+      <button type="button" class="chip qf" data-field="osfam" data-value="windows"><span class="qf-text">Windows</span><span class="qf-count"></span></button>
+      <button type="button" class="chip qf" data-field="osfam" data-value="linux"><span class="qf-text">Linux</span><span class="qf-count"></span></button>
+    </div>
+    <div class="qf-group"><span class="qf-label" data-i18n="vm.qf.missing">Eksikler</span>
+      <button type="button" class="chip qf" data-field="ip" data-value="yok"><span class="qf-text" data-i18n="vm.chipNoIp">IP'siz</span><span class="qf-count"></span></button>
+      <button type="button" class="chip qf" data-field="tools" data-value="yok"><span class="qf-text" data-i18n="vm.chipNoAgent">Agent'sız</span><span class="qf-count"></span></button>
+      <button type="button" class="chip qf" data-field="owner" data-value="yok"><span class="qf-text" data-i18n="vm.chipNoOwner">Sahipsiz</span><span class="qf-count"></span></button>
+      <button type="button" class="chip qf" data-field="tag" data-value="yok"><span class="qf-text" data-i18n="vm.chipNoTag">Etiketsiz</span><span class="qf-count"></span></button>
+    </div>
+    <div class="qf-group"><span class="qf-label" data-i18n="vm.qf.usage">Kullanım</span>
+      <button type="button" class="chip qf" data-field="cpuuse" data-value="&gt;=80"><span class="qf-text">CPU %80+</span><span class="qf-count"></span></button>
+      <button type="button" class="chip qf" data-field="ramuse" data-value="&gt;=80"><span class="qf-text">RAM %80+</span><span class="qf-count"></span></button>
+      <button type="button" class="chip qf" data-field="diskuse" data-value="&gt;=85"><span class="qf-text">Disk %85+</span><span class="qf-count"></span></button>
+    </div>
+    <span class="qf-hint" data-i18n="vm.qf.hint">Çoklu seçim · Shift+tık: hariç tut</span>
+  </div>
+
   <div class="search-chips mt-2">
-    <span class="text-muted small me-1" data-i18n="vm.quickFilters">Hızlı filtreler:</span>
-    <button class="chip" data-q="status:running" data-i18n="vm.chipRunning">Çalışan</button>
-    <button class="chip" data-q="status:stopped" data-i18n="vm.chipStopped">Kapalı</button>
-    <button class="chip" data-q="os:windows">Windows</button>
-    <button class="chip" data-q="os:linux">Linux</button>
-    <button class="chip" data-q="ip:yok" data-i18n="vm.chipNoIp">IP'siz</button>
-    <button class="chip" data-q="tools:yok" data-i18n="vm.chipNoAgent">Agent'sız</button>
     <button class="chip chip-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#advFilters">
       <i class="bi bi-sliders"></i> <span data-i18n="vm.advanced">Gelişmiş</span> <span id="advCount" class="badge text-bg-primary d-none"></span>
     </button>
-    <span class="ms-3 text-muted small me-1" data-i18n="vm.groupBy">Grupla:</span>
+    <span class="ms-2 text-muted small me-1" data-i18n="vm.groupBy">Grupla:</span>
     <select id="groupBy" class="form-select form-select-sm d-inline-block w-auto">
       <option value="" data-i18n="vm.noGrouping">— Gruplama yok —</option>
       <option value="cluster" data-i18n="vm.byCluster">Cluster'a göre</option>
@@ -95,37 +125,13 @@
   </div>
 </div>
 
-<!-- Arama söz dizimi yardım modalı -->
+<!-- Arama söz dizimi yardım modalı (içerik vms.js > VMs.renderHelp, örnekler tıklanabilir) -->
 <div class="modal fade" id="helpModal" tabindex="-1">
-  <div class="modal-dialog modal-lg">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header"><h5 class="modal-title"><i class="bi bi-question-circle"></i> <span data-i18n="vm.searchSyntax">Arama Söz Dizimi</span></h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-      <div class="modal-body">
-        <table class="table table-sm">
-          <thead><tr><th style="width:40%" data-i18n="vm.example">Örnek</th><th data-i18n="vm.description">Açıklama</th></tr></thead>
-          <tbody>
-            <tr><td><code>web01</code></td><td data-i18n="vm.h.free">Serbest metin: ad, IP, MAC, OS, cluster, sahip ve notlarda arar</td></tr>
-            <tr><td><code>ip:10.10.10.15</code></td><td><span data-i18n="vm.h.ip">IP adresine göre (kısmi eşleşir:</span> <code>ip:10.10.</code>)</td></tr>
-            <tr><td><code>manuelip:var</code> &nbsp; <code>-manuelip:var</code></td><td data-i18n="vm.h.manualip">Elle IP girilmiş VM'ler (agent IP bildirmiyor) / girilmemişler</td></tr>
-            <tr><td><code>os:linux</code></td><td data-i18n="vm.h.os">OS ailesi: Ubuntu, CentOS, RHEL, Debian… hepsini bulur</td></tr>
-            <tr><td><code>os:windows,linux</code></td><td data-i18n="vm.h.or">Virgül = VEYA: Windows veya Linux</td></tr>
-            <tr><td><code>-os:windows</code></td><td data-i18n="vm.h.not">Dışlama: Windows olmayanlar</td></tr>
-            <tr><td><code>ram:&gt;=16</code> &nbsp; <code>cpu:&gt;4</code> &nbsp; <code>disk:&lt;100</code></td><td data-i18n="vm.h.num">Sayısal karşılaştırma (RAM ve disk GB cinsinden)</td></tr>
-            <tr><td><code>status:running</code></td><td data-i18n="vm.h.status">Güç durumu: running / stopped / suspended (TR: çalışan, kapalı)</td></tr>
-            <tr><td><code>ip:yok</code> &nbsp; <code>tag:yok</code> &nbsp; <code>owner:yok</code></td><td data-i18n="vm.h.empty">Boş alan araması — IP'si alınamayanlar, etiketsizler…</td></tr>
-            <tr><td><code>tools:yok</code></td><td data-i18n="vm.h.tools">VMware Tools / QEMU Agent kurulu olmayanlar</td></tr>
-            <tr><td><code>host:esxi01</code> &nbsp; <code>cluster:prod</code> &nbsp; <code>vlan:100</code></td><td data-i18n="vm.h.infra">Altyapı konumuna göre</td></tr>
-            <tr><td><code>platform:"Ankara vCenter"</code></td><td data-i18n="vm.h.platform">Platform adına göre (boşluk varsa tırnakla)</td></tr>
-            <tr><td><code>type:proxmox</code> &nbsp; <code>location:ankara</code></td><td data-i18n="vm.h.ptype">Platform tipi / lokasyonuna göre</td></tr>
-            <tr><td><code>tag:kritik</code> &nbsp; <code>env:production</code> &nbsp; <code>datastore:ssd</code></td><td data-i18n="vm.h.tagenv">Etiket, ortam, datastore</td></tr>
-          </tbody>
-        </table>
-        <div class="alert alert-light border small mb-0">
-          <span data-i18n="vm.h.and">Kriterler boşlukla birleştirilir (VE mantığı):</span><br>
-          <code>cluster:production os:linux status:running ram:&gt;=16 -tag:test</code>
-        </div>
-      </div>
+      <div class="modal-body help-body" id="helpBody"></div>
     </div>
   </div>
 </div>

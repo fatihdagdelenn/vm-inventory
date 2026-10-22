@@ -4,6 +4,7 @@ Google-like advanced search engine.
 Supported syntax:
   FIELD SEARCHES : ip:10.10.10.15  mac:00:50:56  os:windows  cluster:prod
   NUMERIC        : cpu:>4  ram:>=16  disk:<100
+  LIVE USAGE (%) : cpuuse:>=80  ramuse:>90  diskuse:>=85
   EMPTY VALUES   : ip:yok  owner:yok  tag:yok
   MANUAL IP      : ip: also matches operator-entered IPs; manuelip:var lists them
   EXCLUSION      : -cluster:test  !os:windows
@@ -74,6 +75,14 @@ NUMERIC_MAP = {
     "cpu": (VirtualMachine.cpu_count, 1),
     "ram": (VirtualMachine.ram_mb, 1024),
     "disk": (VirtualMachine.disk_total_gb, 1),
+    # Live usage percentages (latest light-sync sample). A VM with no sample
+    # (powered off / never measured) has NULL here and never matches.
+    "cpuuse": (VirtualMachine.cpu_usage_pct, 1),
+    "ramuse": (VirtualMachine.ram_usage_mb * 100.0
+               / func.nullif(VirtualMachine.ram_mb, 0), 1),
+    # Disk used 0 means "unknown" on agentless Proxmox, not an empty disk.
+    "diskuse": (func.nullif(VirtualMachine.disk_used_gb, 0) * 100.0
+                / func.nullif(VirtualMachine.disk_total_gb, 0), 1),
 }
 
 # OS family aliases - "os:linux" catches all distros
@@ -83,6 +92,9 @@ OS_ALIASES = {
               "suse", "fedora", "alma", "rocky", "oracle linux", "l26"),
     "windows": ("windows", "win"),
 }
+
+# osfam: group keys expanding to several families
+OSFAM_ALIASES = {"linux": ("ubuntu", "debian", "redhat", "suse", "otherlinux")}
 
 # Power state mappings (incl. Turkish aliases)
 STATUS_MAP = {"calisan": "running", "çalışan": "running", "açık": "running",
@@ -184,13 +196,16 @@ def _field_condition(field: str, value: str):
                  for p in value.split(",") if p.strip()]
         return or_(*[_like(VirtualMachine.power_state, f"%{p}%") for p in parts])
     if field in ("tools", "agent"):
-        if vlow in ("yok", "notrunning", "kapali", "kapalı", "none"):
-            # Agent/Tools not installed: NotRunning, unknown or empty
-            return or_(_like(VirtualMachine.tools_status, "%NotRunning%"),
-                       _like(VirtualMachine.tools_status, "%unknown%"),
-                       func.coalesce(VirtualMachine.tools_status, "") == "")
-        mapped = TOOLS_MAP.get(vlow, value)
-        return _like(VirtualMachine.tools_status, f"%{mapped}%")
+        def _tools_one(part):
+            if part in ("yok", "notrunning", "kapali", "kapalı", "none"):
+                # Agent/Tools not installed: NotRunning, unknown or empty
+                return or_(_like(VirtualMachine.tools_status, "%NotRunning%"),
+                           _like(VirtualMachine.tools_status, "%unknown%"),
+                           func.coalesce(VirtualMachine.tools_status, "") == "")
+            mapped = TOOLS_MAP.get(part, part)
+            return _like(VirtualMachine.tools_status, f"%{mapped}%")
+        parts = [p.strip().lower() for p in value.split(",") if p.strip()]
+        return or_(*[_tools_one(p) for p in parts]) if parts else None
     if field == "os":
         conds = []
         for part in (p.strip().lower() for p in value.split(",") if p.strip()):
@@ -206,16 +221,25 @@ def _field_condition(field: str, value: str):
     # in core/os_family.py (first-match wins -> exclude list).
     if field in ("osfam", "osailesi", "os_family", "osaile"):
         from .os_family import match_keywords
-        inc, exc = match_keywords(value)
-        if inc is None and exc is None:
-            return None          # bilinmeyen aile
-        conds = []
-        if inc:
-            conds.append(or_(*[_like(VirtualMachine.guest_os, f"%{k}%")
-                               for k in inc]))
-        conds.extend(not_(_like(VirtualMachine.guest_os, f"%{k}%"))
-                     for k in exc)
-        return and_(*conds) if conds else None
+        # "linux" = every Linux family; commas OR families (osfam:windows,ubuntu).
+        # Before phase 146 a comma silently fell back to free text (no match).
+        keys = []
+        for part in (p.strip().lower() for p in value.split(",") if p.strip()):
+            keys.extend(OSFAM_ALIASES.get(part, (part,)))
+        fams = []
+        for k in keys:
+            inc, exc = match_keywords(k)
+            if inc is None and exc is None:
+                return None      # unknown family -> whole token is free text
+            conds = []
+            if inc:
+                conds.append(or_(*[_like(VirtualMachine.guest_os, f"%{kw}%")
+                                   for kw in inc]))
+            conds.extend(not_(_like(VirtualMachine.guest_os, f"%{kw}%"))
+                         for kw in exc)
+            fams.append(and_(*conds) if conds else None)
+        fams = [c for c in fams if c is not None]
+        return or_(*fams) if fams else None
 
     # ---- Simple ilike fields ----
     if field in FIELD_MAP:

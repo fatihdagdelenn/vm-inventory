@@ -221,6 +221,85 @@ html.theme-light .app-version { color: rgba(226,232,240,.5); }
 .chip-toggle { font-weight: 600; }
 .chip-toggle .badge { font-size: .65rem; vertical-align: 1px; }
 
+/* ---------- Hızlı filtreler (faz146): gruplu, çoklu seçim, hariç tutma ---------- */
+.qf-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem 1.5rem; }
+/* Gruplar etiketleriyle ayrışır; kenarlık yok (satır kırılınca boşta çizgi kalıyordu) */
+.qf-group { display: inline-flex; align-items: center; flex-wrap: wrap; gap: .3rem; }
+.qf-label {
+  font-size: .66rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-muted); margin-right: .15rem;
+}
+.chip.qf { display: inline-flex; align-items: center; gap: .35rem; padding: .24rem .5rem .24rem .75rem; }
+.chip.qf.active::before { content: "\f272"; font-family: "bootstrap-icons"; font-size: .75rem; margin-left: -.15rem; }
+.chip.qf.excluded::before { content: "\2212"; font-weight: 700; margin-left: -.1rem; }
+.qf-count {
+  font-size: .68rem; font-weight: 600; min-width: 1.5em; text-align: center; padding: 0 .38rem;
+  border-radius: 99px; background: rgba(100,116,139,.13); color: var(--text-muted);
+}
+.qf-count:empty { display: none; }
+.chip.qf.zero:not(.active):not(.excluded) { opacity: .5; }
+.chip.qf.active,
+.chip.qf.active:hover {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+  box-shadow: 0 2px 8px rgba(47,129,247,.32); transform: none;
+}
+.chip.qf.active .qf-count { background: rgba(255,255,255,.24); color: #fff; }
+.chip.qf.excluded,
+.chip.qf.excluded:hover { background: rgba(229,83,75,.1); border-color: rgba(229,83,75,.5); color: var(--red); transform: none; }
+.chip.qf.excluded .qf-text { text-decoration: line-through; }
+.chip.qf.excluded .qf-count { background: rgba(229,83,75,.16); color: var(--red); }
+.qf-hint { font-size: .72rem; color: var(--text-muted); margin-left: auto; white-space: nowrap; }
+@media (max-width: 767px) { .qf-hint { margin-left: 0; } }
+
+/* Kayıtlı aramalar menüsü */
+.saved-menu { width: 380px; max-width: 92vw; overflow: hidden; }
+.saved-head { padding: .55rem .85rem; font-weight: 600; font-size: .85rem; border-bottom: 1px solid var(--border); }
+.saved-head i { color: var(--accent); }
+.saved-list { max-height: 50vh; overflow: auto; }
+.saved-item {
+  display: flex; align-items: center; gap: .6rem; padding: .5rem .85rem; cursor: pointer;
+  border-bottom: 1px solid var(--border);
+}
+.saved-item:hover { background: var(--accent-soft); }
+.saved-main { flex: 1; min-width: 0; }
+.saved-name { font-weight: 600; font-size: .85rem; }
+.saved-count { font-weight: 500; font-size: .72rem; color: var(--text-muted); margin-left: .25rem; }
+.saved-q {
+  display: block; font-size: .72rem; color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.saved-form { display: flex; gap: .4rem; padding: .6rem .85rem; background: rgba(100,116,139,.06); }
+.saved-form .btn { white-space: nowrap; }
+
+/* Arama söz dizimi yardımı */
+.help-rules { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: .6rem; margin-bottom: 1.2rem; }
+.help-rule { border: 1px solid var(--border); border-radius: 10px; padding: .6rem .75rem; }
+.help-rule-title { font-weight: 600; font-size: .86rem; margin-bottom: .35rem; }
+.help-rule-title i { color: var(--accent); margin-right: .15rem; }
+.help-rule-ex { display: flex; flex-wrap: wrap; gap: .25rem; margin-bottom: .35rem; }
+.help-rule-desc { font-size: .78rem; color: var(--text-muted); line-height: 1.45; }
+/* #helpBody ile: temanın genel `code` kuralını (html.theme-dark code) ezer */
+#helpBody .q-ex {
+  cursor: pointer; padding: .06rem .4rem; border-radius: 6px; font-size: .78rem;
+  background: var(--accent-soft); color: var(--accent); white-space: nowrap; transition: all .12s;
+}
+#helpBody .q-ex:hover { background: var(--accent); color: #fff; }
+.help-h { font-size: .9rem; font-weight: 700; margin: .5rem 0 .5rem; }
+.help-h i { color: var(--accent); }
+.help-table td { vertical-align: middle; font-size: .82rem; }
+.help-table tr.help-group td {
+  background: rgba(100,116,139,.09); font-weight: 700; font-size: .68rem;
+  text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted);
+}
+#helpBody .help-field { color: var(--accent); font-weight: 600; background: transparent; padding: 0; }
+#helpBody .help-alias { color: var(--text-muted); background: transparent; padding: 0; }
+.help-tips { padding-left: 1.1rem; font-size: .82rem; margin-bottom: 0; }
+.help-tips li { margin-bottom: .4rem; }
+.help-combo {
+  margin-top: 1rem; padding: .6rem .85rem; border: 1px dashed var(--border); border-radius: 10px;
+  font-size: .85rem; display: flex; flex-wrap: wrap; align-items: center; gap: .4rem;
+}
+
 /* Aktif filtre rozetleri */
 .active-filters { display: flex; align-items: center; flex-wrap: wrap; gap: .3rem; }
 .filter-badge {
@@ -1086,6 +1165,14 @@ html.theme-dark .chip:hover,
 html.theme-dark .chip.active {
   background: rgba(59,155,255,.18); border-color: rgba(59,155,255,.5); color: #cfe4ff;
 }
+html.theme-dark .chip.qf.active,
+html.theme-dark .chip.qf.active:hover { background: #2f81f7; border-color: #3b9bff; color: #fff; }
+html.theme-dark .chip.qf.excluded,
+html.theme-dark .chip.qf.excluded:hover { background: rgba(229,83,75,.16); border-color: rgba(229,83,75,.55); color: #ff9b94; }
+html.theme-dark .chip.qf.excluded .qf-count { color: #ff9b94; }
+html.theme-dark .qf-count { background: rgba(148,163,184,.16); }
+html.theme-dark .saved-form { background: rgba(255,255,255,.03); }
+html.theme-dark .help-table tr.help-group td { background: rgba(148,163,184,.1); }
 html.theme-dark .adv-panel {
   background: linear-gradient(180deg, #141d30, #111a2b);
   border-color: rgba(148,163,184,.14); box-shadow: inset 0 1px 0 rgba(255,255,255,.03);

@@ -199,6 +199,320 @@ const VMs = {
     location.href = '/api/reports/vms/export?fmt=' + fmt + '&q=' + encodeURIComponent(VMs.q);
   },
 
+  /* ---------- Sorgu token'ları (arama kutusu tek doğruluk kaynağı) ---------- */
+
+  tokenize(q) { return (q || '').match(/[-!]?\w+:"[^"]*"|[-!]?\w+:\S+|[-!]?\S+/g) || []; },
+
+  /** 'field:value' / '-field:"a b"' → {neg, field, raw, quoted}; serbest kelime → null. */
+  parseTok(tok) {
+    const m = (tok || '').match(/^([-!]?)(\w+):(?:"([^"]*)"|(\S+))$/);
+    if (!m) return null;
+    return {neg: !!m[1], field: m[2].toLowerCase(),
+            raw: m[3] != null ? m[3] : m[4], quoted: m[3] != null};
+  },
+
+  /** Virgülle VEYA'lanamayan değerler: boş/dolu kelimeleri ve sayısal karşılaştırmalar. */
+  isSolo(value) {
+    return /^(yok|bos|boş|none|empty|null|var|dolu)$/i.test(value || '') || /^[<>=]/.test(value || '');
+  },
+
+  /** Arama kutusuna yeni sorgu yaz ve listeyi yükle. */
+  applyQuery(q) {
+    q = (q || '').replace(/\s+/g, ' ').trim();
+    document.getElementById('vmSearch').value = q;
+    VMs.q = q; VMs.page = 1;
+    VMs.load();
+  },
+
+  /* ---------- Hızlı filtreler (çoklu seçim) ---------- */
+
+  /** Çipin sorgudaki durumu: 'on' (dahil) | 'not' (hariç) | 'off'. */
+  chipState(field, value) {
+    const v = value.toLowerCase(), solo = VMs.isSolo(value);
+    let state = 'off';
+    VMs.tokenize(VMs.q).forEach(tok => {
+      const p = VMs.parseTok(tok);
+      if (!p || p.field !== field) return;
+      const hit = solo ? p.raw.toLowerCase() === v
+                       : p.raw.split(',').map(x => x.trim().toLowerCase()).includes(v);
+      if (hit) state = p.neg ? 'not' : 'on';
+    });
+    return state;
+  },
+
+  /**
+   * Çipi aç/kapat. Aynı alanın değerleri tek token'da virgülle birleşir
+   * (status:running,stopped = VEYA); farklı alanlar ayrı token (VE).
+   * exclude=true (Shift+tık) değeri '-field:' token'ına koyar.
+   */
+  toggleChip(field, value, exclude) {
+    const v = value.toLowerCase(), solo = VMs.isSolo(value);
+    const want = exclude ? 'not' : 'on';
+    const before = VMs.chipState(field, value);
+    // 1) değeri bu alanın tüm token'larından çıkar (iki işaret için de)
+    let toks = [];
+    VMs.tokenize(VMs.q).forEach(tok => {
+      const p = VMs.parseTok(tok);
+      if (!p || p.field !== field) { toks.push(tok); return; }
+      if (solo) { if (p.raw.toLowerCase() !== v) toks.push(tok); return; }
+      const vals = p.raw.split(',').map(x => x.trim()).filter(Boolean);
+      const rest = vals.filter(x => x.toLowerCase() !== v);
+      if (rest.length === vals.length) { toks.push(tok); return; }
+      if (rest.length) toks.push((p.neg ? '-' : '') + field + ':' + rest.join(','));
+    });
+    // 2) istenen işaretle yeniden ekle - zaten o durumdaysa bu bir kapatmadır
+    if (before !== want) {
+      const sign = exclude ? '-' : '';
+      const i = solo ? -1 : toks.findIndex(tok => {
+        const p = VMs.parseTok(tok);
+        return p && p.field === field && p.neg === !!exclude && !p.quoted && !VMs.isSolo(p.raw);
+      });
+      if (i >= 0) toks[i] = toks[i] + ',' + value;
+      else toks.push(sign + field + ':' + value);
+    }
+    VMs.applyQuery(toks.join(' '));
+  },
+
+  /** Çiplerin görünümünü sorguyla eşitle (kutuya elle yazılanlar da yansır). */
+  renderChips() {
+    document.querySelectorAll('#quickFilters .qf').forEach(ch => {
+      const st = VMs.chipState(ch.dataset.field, ch.dataset.value);
+      ch.classList.toggle('active', st === 'on');
+      ch.classList.toggle('excluded', st === 'not');
+      ch.setAttribute('aria-pressed', st === 'off' ? 'false' : 'true');
+      ch.title = st === 'not'
+        ? t('vm.qf.tipExcluded', 'Hariç tutuluyor — kaldırmak için Shift+tık')
+        : t('vm.qf.tip', 'Tık: ekle/kaldır · Shift+tık: hariç tut') +
+          ' — ' + ch.dataset.field + ':' + ch.dataset.value;
+    });
+  },
+
+  /** Her çipin tek başına kaç VM döndürdüğü (aynı gizli-cluster kuralıyla). */
+  async loadChipCounts() {
+    const chips = [...document.querySelectorAll('#quickFilters .qf')];
+    const sp = new URLSearchParams();
+    chips.forEach(ch => sp.append('q', ch.dataset.field + ':' + ch.dataset.value));
+    if (VMs.includeHidden) sp.set('include_hidden', '1');
+    let r;
+    try { r = await App.api('/api/vms/counts?' + sp); } catch (e) { return; }
+    chips.forEach((ch, i) => {
+      const n = (r.counts || [])[i];
+      ch.querySelector('.qf-count').textContent = n == null ? '' : n;
+      ch.classList.toggle('zero', n === 0);
+    });
+  },
+
+  /** Gelişmiş panel seçimlerini sorgudan türet (çip/elle yazım panelle çelişmesin). */
+  syncAdvFromQuery() {
+    const pos = {};
+    VMs.tokenize(VMs.q).forEach(tok => {
+      const p = VMs.parseTok(tok);
+      if (p && !p.neg) pos[p.field] = p.raw;
+    });
+    document.querySelectorAll('.adv-sel').forEach(sel => {
+      const raw = pos[sel.dataset.field];
+      const opt = raw == null ? null
+        : [...sel.options].find(o => o.value && o.value.toLowerCase() === raw.toLowerCase());
+      sel.value = opt ? opt.value : '';
+    });
+    document.querySelectorAll('.adv-num').forEach(inp => {
+      const m = (pos[inp.dataset.field] || '').match(/^>=(\d+)$/);
+      inp.value = m ? m[1] : '';
+    });
+    VMs.updateAdvCount();
+  },
+
+  /* ---------- Kayıtlı aramalar (hesaba bağlı, sunucuda saklanır) ---------- */
+  SAVED_KEY: 'vms-saved-searches',
+  saved: [],
+
+  async loadSaved() {
+    try { VMs.saved = JSON.parse(await App.userGet(VMs.SAVED_KEY) || '[]') || []; }
+    catch (e) { VMs.saved = []; }
+    if (!Array.isArray(VMs.saved)) VMs.saved = [];
+  },
+
+  persistSaved() { App.userSet(VMs.SAVED_KEY, JSON.stringify(VMs.saved)); },
+
+  /** Menü: kayıtlı aramalar (adetleriyle) + mevcut aramayı kaydetme formu. */
+  async renderSaved() {
+    const menu = document.getElementById('savedMenu');
+    const canSave = !!VMs.q || VMs.sort !== 'name' || VMs.order !== 'asc';
+    const list = VMs.saved.length
+      ? VMs.saved.map((s, i) =>
+          '<div class="saved-item" onclick="VMs.applySaved(' + i + ')">' +
+            '<div class="saved-main"><div class="saved-name">' + App.esc(s.n) +
+              ' <span class="saved-count" data-i="' + i + '"></span></div>' +
+              '<code class="saved-q">' + App.esc(s.q || '—') +
+              (VMs.USAGE_SORTS[s.s] || (s.s && s.s !== 'name')
+                ? ' · ' + App.esc(s.s) + (s.o === 'desc' ? ' ▼' : ' ▲') : '') + '</code></div>' +
+            '<button class="btn btn-sm btn-link text-danger p-0" title="' + t('vm.remove', 'Kaldır') + '"' +
+            ' onclick="event.stopPropagation();VMs.deleteSaved(' + i + ')"><i class="bi bi-trash"></i></button>' +
+          '</div>').join('')
+      : '<div class="text-muted small p-3">' +
+        t('vm.savedEmpty', 'Henüz kayıtlı arama yok. Bir arama yapıp aşağıdan ad vererek kaydedin.') + '</div>';
+    menu.innerHTML =
+      '<div class="saved-head"><i class="bi bi-bookmark-star"></i> ' + t('vm.savedSearches', 'Kayıtlı aramalar') + '</div>' +
+      '<div class="saved-list">' + list + '</div>' +
+      '<div class="saved-form">' +
+        '<input id="savedName" class="form-control form-control-sm" maxlength="60" placeholder="' +
+          App.esc(canSave ? t('vm.savedNamePh', 'Bu aramaya bir ad verin…') : t('vm.savedNeedQuery', 'Önce bir arama yapın')) + '"' +
+          (canSave ? '' : ' disabled') + ' onkeydown="if(event.key===\'Enter\'){event.preventDefault();VMs.saveCurrent();}">' +
+        '<button class="btn btn-sm btn-primary" onclick="VMs.saveCurrent()"' + (canSave ? '' : ' disabled') + '>' +
+          '<i class="bi bi-plus-lg"></i> ' + t('action.save', 'Kaydet') + '</button>' +
+      '</div>';
+    if (!VMs.saved.length) return;
+    const sp = new URLSearchParams();
+    VMs.saved.forEach(s => sp.append('q', s.q || ''));
+    if (VMs.includeHidden) sp.set('include_hidden', '1');
+    try {
+      const r = await App.api('/api/vms/counts?' + sp);
+      menu.querySelectorAll('.saved-count').forEach(el => {
+        const n = (r.counts || [])[+el.dataset.i];
+        if (n != null) el.textContent = n + ' VM';
+      });
+    } catch (e) { /* adetler opsiyonel */ }
+  },
+
+  saveCurrent() {
+    const inp = document.getElementById('savedName');
+    const name = (inp && inp.value || '').trim();
+    if (!name) { if (inp) inp.focus(); return; }
+    const entry = {n: name, q: VMs.q, s: VMs.sort, o: VMs.order};
+    const i = VMs.saved.findIndex(s => s.n.toLowerCase() === name.toLowerCase());
+    if (i >= 0) VMs.saved[i] = entry; else VMs.saved.unshift(entry);
+    VMs.saved = VMs.saved.slice(0, 30);
+    VMs.persistSaved();
+    App.toast(t('vm.savedOk', 'Arama kaydedildi') + ': ' + name);
+    VMs.renderSaved();
+  },
+
+  deleteSaved(i) {
+    VMs.saved.splice(i, 1);
+    VMs.persistSaved();
+    VMs.renderSaved();
+  },
+
+  applySaved(i) {
+    const s = VMs.saved[i]; if (!s) return;
+    VMs.sort = s.s || 'name'; VMs.order = s.o === 'desc' ? 'desc' : 'asc';
+    VMs.markSortHeader();
+    bootstrap.Dropdown.getOrCreateInstance(document.getElementById('savedBtn')).hide();
+    VMs.applyQuery(s.q || '');
+  },
+
+  /* ---------- Arama söz dizimi yardımı (tıklanabilir örnekler) ---------- */
+  renderHelp() {
+    const ex = (q) => '<code class="q-ex" data-q="' + App.esc(q) + '" title="' +
+      App.esc(t('vh.tryIt', 'Tıkla: bu aramayı uygula')) + '">' + App.esc(q) + '</code>';
+    const rules = [
+      ['bi-fonts', t('vh.r.free', 'Serbest metin'), ['web01'],
+       t('vh.r.freeD', 'Her kelime ad, VM ID, IP (elle girilen dahil), MAC, OS, cluster, VLAN, ağ, pool, klasör, sahip, notlar, platform notu ve platform etiketlerinde aranır. Etiket ve host için tag: / host: kullanın.')],
+      ['bi-input-cursor-text', t('vh.r.field', 'Alan:değer'), ['os:linux', 'host:esx01'],
+       t('vh.r.fieldD', 'Belirli bir alanda arar. Büyük/küçük harf duyarsızdır ve çoğu alan kısmi eşleşir (host:esx → esx01, esx02).')],
+      ['bi-intersect', t('vh.r.and', 'VE — boşluk'), ['status:running os:linux'],
+       t('vh.r.andD', 'Boşlukla ayrılan kriterlerin hepsi sağlanmalı.')],
+      ['bi-union', t('vh.r.or', 'VEYA — virgül'), ['status:running,stopped', 'osfam:windows,linux'],
+       t('vh.r.orD', 'Aynı alanda değerlerden herhangi biri. Sayısal ve yok/var değerlerinde virgül kullanılmaz.')],
+      ['bi-dash-circle', t('vh.r.not', 'Hariç — eksi'), ['-cluster:test', '-osfam:windows'],
+       t('vh.r.notD', 'Başına - (veya !) koyulan kriter dışlanır. Virgüllü değerle: hiçbiri olmayanlar.')],
+      ['bi-quote', t('vh.r.quote', 'Tırnak'), ['cluster:"Ankara Prod"'],
+       t('vh.r.quoteD', 'Boşluk içeren değerler çift tırnak içine alınır.')],
+      ['bi-circle', t('vh.r.empty', 'Boş / dolu'), ['owner:yok', '-owner:yok'],
+       t('vh.r.emptyD', 'yok (boş, none, empty, null) alanı boş olanları bulur; başına - koyunca dolu olanları.')],
+      ['bi-123', t('vh.r.num', 'Sayısal'), ['ram:>=16', 'cpu:>4', 'cpuuse:>=80'],
+       t('vh.r.numD', '> >= < <= = ile karşılaştırır; işaretsiz sayı tam eşitliktir (ram:16 = tam 16 GB).')],
+    ];
+    const F = (names, example, desc) => ({names, example, desc});
+    const groups = [
+      [t('vh.g.id', 'Kimlik ve ağ'), [
+        F(['name', 'vm'], 'name:web', t('vh.f.name', 'VM adı.')),
+        F(['vmid', 'id'], 'vmid:105', t('vh.f.vmid', 'VM ID — Proxmox sayısal, VMware MoRef (vm-123).')),
+        F(['ip'], 'ip:10.10.', t('vh.f.ip', 'IP adresi (kısmi; elle girilen IP de aranır). ip:yok = ne platform ne elle IP var.')),
+        F(['manuelip', 'ipmanuel'], 'manuelip:var', t('vh.f.manualip', 'Elle girilen IP. manuelip:var = elle IP girilmiş VM\'ler.')),
+        F(['mac'], 'mac:00:50:56', t('vh.f.mac', 'MAC adresi (kısmi).')),
+        F(['vlan'], 'vlan:100', t('vh.f.vlan', 'VLAN — kısmi eşleşir: vlan:10, 100 ve 110\'u da bulur.')),
+        F(['network'], 'network:vmbr0', t('vh.f.network', 'Bağlı ağ / portgroup / köprü adı.')),
+      ]],
+      [t('vh.g.sys', 'Sistem ve durum'), [
+        F(['os'], 'os:ubuntu', t('vh.f.os', 'OS adı (kısmi). os:linux ve os:windows tüm dağıtımları/sürümleri bulur.')),
+        F(['osfam', 'osailesi'], 'osfam:redhat', t('vh.f.osfam', 'OS ailesi — dashboard pastasıyla aynı sınıflandırma. Değerler aşağıda.')),
+        F(['status'], 'status:running', t('vh.f.status', 'Güç durumu: running, stopped, suspended (TR: çalışan, kapalı, askıda).')),
+        F(['tools', 'agent'], 'tools:yok', t('vh.f.tools', 'VMware Tools / QEMU Agent: running = çalışıyor; yok = kurulu değil veya çalışmıyor.')),
+      ]],
+      [t('vh.g.infra', 'Altyapı ve platform'), [
+        F(['host', 'node'], 'host:esx01', t('vh.f.host', 'Bağlı ESXi host / Proxmox node. host:yok = host\'u bilinmeyen.')),
+        F(['cluster'], 'cluster:prod', t('vh.f.cluster', 'Cluster. Sorguda cluster: varsa gizli cluster\'lar da aranır.')),
+        F(['datastore'], 'datastore:ssd', t('vh.f.datastore', 'Disklerin bulunduğu datastore / storage.')),
+        F(['pool', 'havuz'], 'pool:prod', t('vh.f.pool', 'Resource pool (vCenter) / pool (Proxmox).')),
+        F(['folder', 'klasor'], 'folder:web', t('vh.f.folder', 'VM klasörü (yalnız vCenter).')),
+        F(['platform'], 'platform:"Ankara vCenter"', t('vh.f.platform', 'Platform (bağlantı) adı.')),
+        F(['type'], 'type:proxmox', t('vh.f.type', 'Platform tipi: vcenter veya proxmox.')),
+        F(['location', 'lokasyon'], 'location:ankara', t('vh.f.location', 'Platformun lokasyonu.')),
+      ]],
+      [t('vh.g.manual', 'Manuel ve platform bilgileri'), [
+        F(['env', 'environment'], 'env:production', t('vh.f.env', 'Ortam: production, test, development.')),
+        F(['owner'], 'owner:fatih', t('vh.f.owner', 'Sahip. owner:yok = sahibi atanmamış.')),
+        F(['tag'], 'tag:kritik', t('vh.f.tag', 'Manuel etiket. tag:yok = etiketsiz.')),
+        F(['notes', 'not'], 'notes:bakım', t('vh.f.notes', 'Manuel notlar.')),
+        F(['aciklama', 'desc'], 'aciklama:yedek', t('vh.f.desc', 'Platform notu (vCenter annotation / Proxmox description).')),
+        F(['ptag', 'petiket'], 'ptag:backup', t('vh.f.ptag', 'Platform etiketleri (vCenter tag / Proxmox tags).')),
+      ]],
+      [t('vh.g.res', 'Kaynak (sayısal)'), [
+        F(['cpu'], 'cpu:>=8', t('vh.f.cpu', 'vCPU sayısı.')),
+        F(['ram'], 'ram:>=16', t('vh.f.ram', 'Atanan RAM, GB cinsinden.')),
+        F(['disk'], 'disk:>500', t('vh.f.disk', 'Toplam disk boyutu, GB cinsinden.')),
+      ]],
+      [t('vh.g.use', 'Anlık kullanım (%)'), [
+        F(['cpuuse'], 'cpuuse:>=80', t('vh.f.cpuuse', 'Son ölçülen CPU kullanımı. Ölçümü olmayan (kapalı) VM eşleşmez.')),
+        F(['ramuse'], 'ramuse:>=90', t('vh.f.ramuse', 'Son ölçülen RAM kullanımı (kullanılan / atanan).')),
+        F(['diskuse'], 'diskuse:>=85', t('vh.f.diskuse', 'Gerçek disk doluluğu. Kullanımı bilinmeyen (agent\'sız Proxmox) VM eşleşmez.')),
+      ]],
+    ];
+    const values = [
+      ['status', 'running · stopped · suspended — çalışan · kapalı · askıda'],
+      ['tools', 'running (var, ok) · yok (notrunning, kapalı)'],
+      ['osfam', 'windows · linux · ubuntu · debian · redhat · suse · otherlinux · bsd · vmware · macos · other'],
+      ['type', 'vcenter · proxmox'],
+      ['env', 'production · test · development'],
+      [t('vh.v.empty', 'boş değeri'), 'yok · boş · none · empty · null'],
+    ];
+    const tips = [
+      t('vh.t.chips', 'Hızlı filtreler çoklu seçimlidir: aynı gruptakiler VEYA (Çalışan + Kapalı = status:running,stopped), farklı gruplar VE ile birleşir. Shift+tık hariç tutar (kırmızı); aynı işlem tekrar edilince kaldırılır.'),
+      t('vh.t.counts', 'Çiplerdeki sayı, o filtrenin tek başına kaç VM döndürdüğüdür.'),
+      t('vh.t.cells', 'Tablodaki Host, Cluster, Pool, Klasör ve VLAN hücrelerine tıklamak o değeri filtre olarak ekler.'),
+      t('vh.t.saved', 'Yer imi simgesi: sık kullandığınız sorguyu (sıralamasıyla) hesabınıza kaydeder; her cihazdan erişilir.'),
+      t('vh.t.url', 'Sorgu ve sıralama adres çubuğundadır — linki paylaşabilirsiniz. / tuşu arama kutusuna odaklanır.'),
+      t('vh.t.hidden', 'Gizli cluster\'lardaki VM\'ler listelenmez; sorguda cluster: geçerse veya Gelişmiş\'te "Gizli cluster\'ları dahil et" açıksa dahil edilir.'),
+      t('vh.t.unknown', 'Tanınmayan alan adı (ör. abc:x) serbest metin olarak aranır.'),
+    ];
+    document.getElementById('helpBody').innerHTML =
+      '<div class="help-rules">' + rules.map(r =>
+        '<div class="help-rule"><div class="help-rule-title"><i class="bi ' + r[0] + '"></i> ' + r[1] + '</div>' +
+        '<div class="help-rule-ex">' + r[2].map(ex).join(' ') + '</div>' +
+        '<div class="help-rule-desc">' + App.esc(r[3]) + '</div></div>').join('') + '</div>' +
+      '<h6 class="help-h"><i class="bi bi-list-columns"></i> ' + t('vh.fields', 'Alanlar') +
+        ' <small class="text-muted fw-normal">' + t('vh.fieldsSub', '— örneğe tıklayınca arama uygulanır') + '</small></h6>' +
+      '<div class="table-responsive"><table class="table table-sm help-table"><thead><tr>' +
+        '<th>' + t('vh.col.field', 'Alan') + '</th><th>' + t('vm.example', 'Örnek') + '</th><th>' +
+        t('vm.description', 'Açıklama') + '</th></tr></thead><tbody>' +
+      groups.map(g => '<tr class="help-group"><td colspan="3">' + g[0] + '</td></tr>' +
+        g[1].map(f => '<tr><td class="text-nowrap">' + f.names.map((n, i) =>
+            '<code class="' + (i ? 'help-alias' : 'help-field') + '">' + n + ':</code>').join(' ') + '</td>' +
+          '<td class="text-nowrap">' + ex(f.example) + '</td><td>' + App.esc(f.desc) + '</td></tr>').join('')).join('') +
+      '</tbody></table></div>' +
+      '<div class="row g-3">' +
+        '<div class="col-lg-6"><h6 class="help-h"><i class="bi bi-card-list"></i> ' + t('vh.values', 'Değerler') + '</h6>' +
+          '<table class="table table-sm help-table mb-0"><tbody>' + values.map(v =>
+            '<tr><td class="text-nowrap"><code class="help-field">' + App.esc(v[0]) + '</code></td><td class="small">' +
+            App.esc(v[1]) + '</td></tr>').join('') + '</tbody></table></div>' +
+        '<div class="col-lg-6"><h6 class="help-h"><i class="bi bi-lightbulb"></i> ' + t('vh.tips', 'İpuçları') + '</h6>' +
+          '<ul class="help-tips">' + tips.map(x => '<li>' + App.esc(x) + '</li>').join('') + '</ul></div>' +
+      '</div>' +
+      '<div class="help-combo"><span>' + t('vh.combo', 'Hepsi bir arada:') + '</span> ' +
+        ex('type:proxmox status:running osfam:linux ram:>=16 -tag:test') + '</div>';
+  },
+
   /* ---------- Gelişmiş filtre paneli ---------- */
 
   /** Facets API'sinden ayrık değerleri çekip select'leri doldur. */
@@ -235,6 +549,7 @@ const VMs = {
     fill('folder', f.folders || []);
     fill('status', f.power_states, k =>
       ({running: t('st.running','Çalışıyor'), stopped: t('st.stopped','Kapalı'), suspended: t('st.suspended','Askıda')}[k] || k));
+    VMs.syncAdvFromQuery();   // seçenekler artık var: sorgudaki değerleri seçili göster
   },
 
   /**
@@ -321,6 +636,8 @@ const VMs = {
 
   /** Sorgudaki her kriteri X'le kaldırılabilir rozet olarak göster. */
   renderActiveFilters() {
+    VMs.renderChips();
+    VMs.syncAdvFromQuery();
     const wrap = document.getElementById('activeFilters');
     const tokens = VMs.q.match(/[-!]?\w+:"[^"]*"|[-!]?\w+:\S+|[-!]?\S+/g) || [];
     const us = VMs.USAGE_SORTS[VMs.sort];
@@ -458,19 +775,41 @@ const VMs = {
     input.value = ''; VMs.q = ''; VMs.page = 1; VMs.load();
   });
 
-  // Hızlı filtre chip'leri — arama kutusuna sorgu ekler
-  document.querySelectorAll('.chip[data-q]').forEach(chip => {
-    chip.addEventListener('click', () => {
-      input.value = chip.dataset.q;
-      VMs.q = chip.dataset.q; VMs.page = 1; VMs.load();
-    });
+  // Hızlı filtreler: tık = ekle/kaldır (çoklu seçim), Shift+tık = hariç tut
+  document.querySelectorAll('#quickFilters .qf').forEach(chip => {
+    chip.addEventListener('click', e =>
+      VMs.toggleChip(chip.dataset.field, chip.dataset.value, e.shiftKey));
+  });
+  VMs.loadChipCounts();
+
+  // Kayıtlı aramalar: menü açılırken güncel liste + adetler çizilir
+  VMs.loadSaved();
+  document.getElementById('savedBtn').addEventListener('show.bs.dropdown', () => VMs.renderSaved());
+  document.getElementById('savedBtn').addEventListener('shown.bs.dropdown', () => {
+    const n = document.getElementById('savedName'); if (n && !n.disabled) n.focus();
+  });
+
+  // '/' tuşu arama kutusuna odaklanır (bir alana yazarken değil)
+  document.addEventListener('keydown', e => {
+    if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+    const tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) return;
+    e.preventDefault(); input.focus(); input.select();
   });
 
   document.getElementById('groupBy').addEventListener('change', () => { VMs.page = 1; VMs.load(); });
 
-  // Yardım modalı
-  document.getElementById('searchHelp').addEventListener('click', () =>
-    bootstrap.Modal.getOrCreateInstance(document.getElementById('helpModal')).show());
+  // Yardım modalı (içerik ilk açılışta çizilir); örneğe tıklamak aramayı uygular
+  document.getElementById('searchHelp').addEventListener('click', () => {
+    const body = document.getElementById('helpBody');
+    if (!body.childElementCount) VMs.renderHelp();
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('helpModal')).show();
+  });
+  document.getElementById('helpBody').addEventListener('click', e => {
+    const ex = e.target.closest('.q-ex'); if (!ex) return;
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('helpModal')).hide();
+    VMs.applyQuery(ex.dataset.q);
+  });
 
   // Gelişmiş filtre paneli: seçimler arama kutusuna token olarak yansır
   document.querySelectorAll('.adv-sel').forEach(sel => {
@@ -484,6 +823,7 @@ const VMs = {
     VMs.includeHidden = e.target.checked;
     VMs.page = 1;
     VMs.loadFacets();   // sayımlar da değişir
+    VMs.loadChipCounts();
     VMs.load();
   });
   VMs.loadFacets();

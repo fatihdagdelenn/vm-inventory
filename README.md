@@ -50,6 +50,8 @@ Bu soruların hepsi tek arama kutusundan, saniyeden kısa sürede yanıtlanır. 
 |---|---|
 | 🔍 **Google benzeri arama** | `ip:` `os:` `vlan:` `cluster:` `ram:>=16` `-tag:test` `ip:yok` … kriterler birleştirilebilir |
 | 🎛️ **Gelişmiş filtre paneli** | Mevcut değerlerden (sayılarıyla) seçim, X'le kaldırılabilir filtre rozetleri, tıklanabilir tablo hücreleri |
+| 🏷️ **Çoklu seçimli hızlı filtreler** | Durum / Platform / OS / Eksikler / Kullanım grupları, her çipte VM sayısı; aynı gruptakiler VEYA, gruplar arası VE, Shift+tık hariç tutar |
+| 🔖 **Kayıtlı aramalar** | Sık kullanılan sorgu + sıralama hesaba kaydedilir, her cihazdan tek tıkla açılır |
 | 📊 **Detaylı dashboard** | Kaynak toplamları, OS/ortam/cluster dağılımları, host CPU-RAM grafikleri, depolama, "dikkat gerektirenler" |
 | 🔗 **Çoklu platform** | Sınırsız sayıda vCenter + Proxmox (QEMU VM **ve LXC konteyner**) aynı envanterde |
 | 📄 **Raporlama** | Filtrelenmiş Excel / CSV / PDF; her gün otomatik üretilen zamanlanmış raporlar |
@@ -332,31 +334,33 @@ yazılır. Mevcut konsol kayıtları aynı ekrandaki butonla toplu silinebilir.
 
 | Sözdizimi | Örnek | Açıklama |
 |---|---|---|
-| serbest metin | `web01` | Ad, VM ID, IP, MAC, OS, cluster, sahip, notlar, platform notu, pool, klasör ve platform etiketlerinde arar |
+| serbest metin | `web01` | Ad, VM ID, IP (elle girilen dahil), MAC, OS, cluster, VLAN, ağ, pool, klasör, sahip, notlar, platform notu ve platform etiketlerinde arar (etiket ve host için `tag:` / `host:`) |
+| `name:` / `vm:` | `name:web` | VM adı |
+| `vmid:` / `id:` | `vmid:100` | VM ID (Proxmox sayısal / VMware MoRef) |
 | `ip:` | `ip:10.10.10.` | IP'ye göre (kısmi eşleşir); elle girilen IP'leri de bulur |
 | `manuelip:` | `manuelip:var` `-manuelip:var` | Elle IP girilmiş VM'ler (agent IP bildirmiyor) |
-| `mac:` | `mac:00:50:56` | MAC'e göre |
-| `os:` | `os:linux` | OS ailesi — Ubuntu/CentOS/RHEL/Debian… hepsini bulur |
-| `osfam:` | `osfam:windows` `osfam:other` | Tek bir OS ailesi (dashboard pastası ve filtre menüsüyle aynı) |
-| `vmid:` / `id:` | `vmid:100` | VM ID (Proxmox sayısal / VMware MoRef) |
-| `vlan:` / `host:` / `node:` | `vlan:100` | Altyapı konumuna göre |
-| `cluster:` / `datastore:` | `cluster:"Ankara Prod"` | Boşluklu değerler tırnaklanır |
-| `status:` | `status:running` | running / stopped / suspended (TR: `çalışan`, `kapalı`) |
-| `tag:` / `env:` / `owner:` | `tag:kritik` | Manuel alanlara göre |
+| `mac:` / `vlan:` / `network:` | `vlan:100` | MAC, VLAN (kısmi: `vlan:10` 100'ü de bulur), bağlı ağ/portgroup/köprü |
+| `os:` | `os:linux` | OS adı; `linux`/`windows` tüm dağıtım ve sürümleri bulur |
+| `osfam:` | `osfam:windows,linux` `osfam:redhat` | OS ailesi (dashboard pastasıyla aynı): `windows` `linux` `ubuntu` `debian` `redhat` `suse` `otherlinux` `bsd` `vmware` `macos` `other` |
+| `status:` | `status:running,stopped` | running / stopped / suspended (TR: `çalışan`, `kapalı`, `askıda`) |
+| `tools:` / `agent:` | `tools:yok` | `running` = çalışıyor; `yok` = kurulu değil veya çalışmıyor |
+| `host:` / `node:` | `host:esx01` | Bağlı ESXi host / Proxmox node |
+| `cluster:` / `datastore:` | `cluster:"Ankara Prod"` | Boşluklu değerler tırnaklanır; sorguda `cluster:` varsa gizli cluster'lar da aranır |
 | `pool:` / `havuz:` | `pool:Prod` | Resource pool (vCenter) / pool (Proxmox) |
 | `folder:` / `klasor:` | `folder:Web` | VM klasörü (vCenter); Proxmox'ta yok |
-| `ptag:` / `petiket:` | `ptag:kritik` | Platform etiketleri (vCenter REST tag / Proxmox tags) |
+| `platform:` / `type:` / `location:` | `type:proxmox` | Platform adı / tipi (`vcenter`, `proxmox`) / lokasyonu |
+| `env:` / `owner:` / `tag:` / `notes:` | `tag:kritik` | Manuel alanlar (ortam, sahip, etiket, not) |
 | `aciklama:` / `desc:` | `aciklama:bakım` | Platform notu (vCenter annotation / Proxmox description) |
-| `platform:` / `type:` / `location:` | `type:proxmox` | Platforma göre |
-| `tools:` | `tools:yok` | Agent/Tools kurulu olmayanlar |
-| **Sayısal** | `ram:>=16` `cpu:>4` `disk:<100` | Karşılaştırma (RAM/disk GB) |
-| **Dışlama** | `-os:windows` | Önüne `-` koyulan dışlanır |
-| **VEYA** | `os:windows,linux` | Virgülle çoklu değer |
-| **Boş alan** | `ip:yok` `tag:yok` | Alanı boş olanlar (`ip:yok`: ne platform ne elle IP var) |
+| `ptag:` / `petiket:` | `ptag:kritik` | Platform etiketleri (vCenter REST tag / Proxmox tags) |
+| **Sayısal** | `ram:>=16` `cpu:>4` `disk:<100` | `> >= < <= =`; RAM/disk GB. İşaretsiz sayı tam eşitlik |
+| **Anlık kullanım %** | `cpuuse:>=80` `ramuse:>90` `diskuse:>=85` | Son ölçüm; ölçümü olmayan (kapalı / agent'sız disk) VM eşleşmez |
+| **Dışlama** | `-osfam:windows` | Önüne `-` (veya `!`) koyulan dışlanır |
+| **VEYA** | `status:running,stopped` | Aynı alanda virgülle çoklu değer (sayısal ve `yok` değerlerinde değil) |
+| **Boş / dolu** | `owner:yok` · `-owner:yok` | Alanı boş olanlar / dolu olanlar (`ip:yok`: ne platform ne elle IP var) |
 
-Birleştirme örneği: `cluster:production os:linux status:running ram:>=16 -tag:test`
+Birleştirme örneği: `type:proxmox status:running osfam:linux ram:>=16 -tag:test`
 
-Arama kutusundaki **?** butonu bu tabloyu arayüzde gösterir. Sorgu adres çubuğuna yansır — linki kopyalayıp paylaşabilirsiniz. Varsayılan dışı sıralama da linke girer (`&sort=…&order=desc`); sütun başlığı olmayan kullanım sıralamaları (`cpu_usage`, `ram_usage`, `disk_usage`) bir **Sıralama** rozetiyle görünür, X ile kaldırılır.
+Arama kutusundaki **?** butonu bu bilgileri arayüzde, **tıklanınca uygulanan örneklerle** gösterir. **Hızlı filtre çipleri** aynı sözdizimini üretir: aynı gruptaki çipler tek token'da virgülle birleşir (VEYA), Shift+tık `-` ile hariç tutar. **Yer imi** simgesi aramayı (sıralamasıyla) hesaba kaydeder. `/` tuşu arama kutusuna odaklanır. Sorgu adres çubuğuna yansır — linki kopyalayıp paylaşabilirsiniz. Varsayılan dışı sıralama da linke girer (`&sort=…&order=desc`); sütun başlığı olmayan kullanım sıralamaları (`cpu_usage`, `ram_usage`, `disk_usage`) bir **Sıralama** rozetiyle görünür, X ile kaldırılır.
 
 ## 👥 Roller ve Yetkiler
 

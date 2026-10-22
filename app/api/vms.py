@@ -5,7 +5,7 @@ the local DB (never against the platforms).
 """
 import re
 import json
-from fastapi import APIRouter, Depends, HTTPException, Request, Body
+from fastapi import APIRouter, Depends, HTTPException, Request, Body, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
@@ -262,6 +262,27 @@ def _disk_state(total, disks):
         return "diskless", None, "Disksiz VM — disk tanımlı değil (normal)"
     return "detail_missing", None, (f"Disk detayı okunamadı — toplam "
                                     f"platformdan geliyor ({t} GB)")
+
+
+@router.get("/counts")
+def vm_counts(q: list[str] = Query(default=[]), include_hidden: bool = False,
+              db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Result count for each query - quick-filter chip badges and saved searches.
+
+    Same rules as the list endpoint (templates excluded; hidden clusters
+    excluded unless asked for or the query names a cluster), so a badge
+    always equals what a click on it shows.
+    """
+    from .clusters import hidden_vm_filter
+    base = db.query(VirtualMachine).filter_by(is_template=False)
+    hidden_cond = None if include_hidden else hidden_vm_filter(db, VirtualMachine)
+    out = []
+    for one in q[:40]:
+        qq = base
+        if hidden_cond is not None and "cluster:" not in (one or "").lower():
+            qq = qq.filter(hidden_cond)
+        out.append(apply_vm_search(qq, one).count())
+    return {"counts": out}
 
 
 @router.get("/disk-diag")

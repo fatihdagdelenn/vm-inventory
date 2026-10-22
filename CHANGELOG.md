@@ -27,6 +27,29 @@ Sürümleme [Semantic Versioning](https://semver.org/lang/tr/) yaklaşımını i
 
 Henüz release'e girmemiş fazlar (faz142–; dahili v1.7.1 →).
 
+### 🔍 Sanal Makineler filtreleri (faz146)
+- **Hızlı filtreler çoklu seçimli:** önceden bir çipe basmak aramanın tamamını
+  değiştiriyordu. Artık çipler gruplu (Durum · Platform · OS · Eksikler · Kullanım)
+  ve aç/kapa çalışıyor: aynı gruptakiler VEYA (Çalışan + Kapalı =
+  `status:running,stopped`), farklı gruplar VE ile birleşir. **Shift+tık hariç
+  tutar** (kırmızı, `-alan:değer`). Çipler arama kutusundan türetilir; elle
+  yazılan sorgu da çiplerde görünür.
+- Her çipte o filtrenin tek başına döndürdüğü **VM sayısı** (gizli cluster
+  kuralı listeyle aynı). Yeni çipler: Askıda, VMware, Proxmox, Sahipsiz,
+  Etiketsiz, CPU %80+, RAM %80+, Disk %85+.
+- **Kayıtlı aramalar** (yer imi simgesi): sorgu + sıralama ada bağlanıp hesaba
+  kaydedilir, her cihazdan açılır; listede güncel VM sayısı görünür.
+- **Gelişmiş panel arama kutusuyla senkron:** çip ya da elle yazımla değişen
+  durum/cluster/host… seçimleri panelde de görünür (önceden eski seçim kalıyordu).
+- **Arama söz dizimi yardımı baştan yazıldı:** kurallar kartları, gruplu tam alan
+  listesi (takma adlar dahil), değer sözlüğü, ipuçları; 43 örneğin her biri
+  tıklanınca uygulanır. `/` tuşu arama kutusuna odaklanır.
+- **Yeni arama alanları:** `cpuuse:` `ramuse:` `diskuse:` (anlık kullanım %).
+- **Düzeltme:** `osfam:` virgülle VEYA desteklemiyordu (`osfam:windows,ubuntu`
+  sessizce serbest metne düşüp hiçbir şey bulmuyordu); artık çalışıyor ve
+  `osfam:linux` tüm Linux ailelerini kapsıyor. `tools:yok,running` da artık
+  doğru VEYA'lanıyor.
+
 ### 📊 En çok kaynak kullanan VM kartları (faz145)
 - CPU / RAM / Disk kartlarında bar üzerine gelince VM adının altında artık
   **VM'in IP'si** (birden fazlaysa `+N`, elle girilmişse "elle") ve ardından bağlı
