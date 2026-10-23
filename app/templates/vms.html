@@ -16,62 +16,27 @@
     <button class="btn btn-link p-0" id="searchClear" data-i18n-title="vm.clear" title="Temizle"><i class="bi bi-x-lg"></i></button>
   </div>
 
-  <!-- Hızlı filtreler: çoklu seçim. Aynı gruptakiler VEYA, gruplar arası VE;
-       Shift+tık hariç tutar. Her çip arama kutusundaki bir token'dır. -->
-  <div class="qf-bar mt-2" id="quickFilters">
-    <div class="qf-group"><span class="qf-label" data-i18n="vm.qf.status">Durum</span>
-      <button type="button" class="chip qf" data-field="status" data-value="running"><span class="qf-text" data-i18n="vm.chipRunning">Çalışan</span><span class="qf-count"></span></button>
-      <button type="button" class="chip qf" data-field="status" data-value="stopped"><span class="qf-text" data-i18n="vm.chipStopped">Kapalı</span><span class="qf-count"></span></button>
-      <button type="button" class="chip qf" data-field="status" data-value="suspended"><span class="qf-text" data-i18n="st.suspended">Askıda</span><span class="qf-count"></span></button>
-    </div>
-    <div class="qf-group"><span class="qf-label">Platform</span>
-      <button type="button" class="chip qf" data-field="type" data-value="vcenter"><span class="qf-text">VMware</span><span class="qf-count"></span></button>
-      <button type="button" class="chip qf" data-field="type" data-value="proxmox"><span class="qf-text">Proxmox</span><span class="qf-count"></span></button>
-    </div>
-    <div class="qf-group"><span class="qf-label">OS</span>
-      <button type="button" class="chip qf" data-field="osfam" data-value="windows"><span class="qf-text">Windows</span><span class="qf-count"></span></button>
-      <button type="button" class="chip qf" data-field="osfam" data-value="linux"><span class="qf-text">Linux</span><span class="qf-count"></span></button>
-    </div>
-    <div class="qf-group"><span class="qf-label" data-i18n="vm.qf.missing">Eksikler</span>
-      <button type="button" class="chip qf" data-field="ip" data-value="yok"><span class="qf-text" data-i18n="vm.chipNoIp">IP'siz</span><span class="qf-count"></span></button>
-      <button type="button" class="chip qf" data-field="tools" data-value="yok"><span class="qf-text" data-i18n="vm.chipNoAgent">Agent'sız</span><span class="qf-count"></span></button>
-      <button type="button" class="chip qf" data-field="owner" data-value="yok"><span class="qf-text" data-i18n="vm.chipNoOwner">Sahipsiz</span><span class="qf-count"></span></button>
-      <button type="button" class="chip qf" data-field="tag" data-value="yok"><span class="qf-text" data-i18n="vm.chipNoTag">Etiketsiz</span><span class="qf-count"></span></button>
-    </div>
-    <div class="qf-group"><span class="qf-label" data-i18n="vm.qf.usage">Kullanım</span>
-      <button type="button" class="chip qf" data-field="cpuuse" data-value="&gt;=80"><span class="qf-text">CPU %80+</span><span class="qf-count"></span></button>
-      <button type="button" class="chip qf" data-field="ramuse" data-value="&gt;=80"><span class="qf-text">RAM %80+</span><span class="qf-count"></span></button>
-      <button type="button" class="chip qf" data-field="diskuse" data-value="&gt;=85"><span class="qf-text">Disk %85+</span><span class="qf-count"></span></button>
-    </div>
-    <span class="qf-hint" data-i18n="vm.qf.hint">Çoklu seçim · Shift+tık: hariç tut</span>
-  </div>
-
-  <div class="search-chips mt-2">
-    <button class="chip chip-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#advFilters">
-      <i class="bi bi-sliders"></i> <span data-i18n="vm.advanced">Gelişmiş</span> <span id="advCount" class="badge text-bg-primary d-none"></span>
+  <!-- Araç çubuğu (faz147): tek satır. Hızlı filtre grupları açılır menüdür
+       (VMs.renderQuickFilters çizer): menüde çoklu seçim, Shift+tık hariç tutar,
+       düğme seçimi özetler. Her seçim arama kutusundaki bir token'dır. -->
+  <div class="vm-toolbar mt-2">
+    <div class="qf-menus" id="quickFilters"></div>
+    <span class="vm-toolbar-sep"></span>
+    <button class="qf-btn" type="button" data-bs-toggle="collapse" data-bs-target="#advFilters">
+      <i class="bi bi-sliders"></i> <span data-i18n="vm.advanced">Gelişmiş</span>
+      <span id="advCount" class="qf-btn-badge d-none"></span>
     </button>
-    <span class="ms-2 text-muted small me-1" data-i18n="vm.groupBy">Grupla:</span>
-    <select id="groupBy" class="form-select form-select-sm d-inline-block w-auto">
-      <option value="" data-i18n="vm.noGrouping">— Gruplama yok —</option>
-      <option value="cluster" data-i18n="vm.byCluster">Cluster'a göre</option>
-      <option value="os" data-i18n="vm.byOs">İşletim sistemine göre</option>
-      <option value="vlan" data-i18n="vm.byVlan">VLAN'a göre</option>
-      <option value="environment" data-i18n="vm.byEnv">Ortama göre</option>
-      <option value="location" data-i18n="vm.byLocation">Lokasyona göre</option>
-      <option value="tag" data-i18n="vm.byTag">Etikete göre</option>
-    </select>
-    <div class="ms-auto d-inline-flex gap-1">
-      <div class="dropdown">
-        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
-                data-bs-toggle="dropdown" data-bs-auto-close="outside" data-i18n-title="vm.chooseCols" title="Görünür kolonları seç">
-          <i class="bi bi-layout-three-columns"></i> <span data-i18n="vm.columns">Kolonlar</span>
-        </button>
-        <div class="dropdown-menu dropdown-menu-end p-2" id="colChooser"
-             style="max-height:60vh; overflow:auto; min-width:200px"></div>
-      </div>
-      <button class="btn btn-sm btn-outline-success" onclick="VMs.exportNow('xlsx')"><i class="bi bi-file-earmark-excel"></i> Excel</button>
-      <button class="btn btn-sm btn-outline-secondary" onclick="VMs.exportNow('csv')">CSV</button>
-      <button class="btn btn-sm btn-outline-danger" onclick="VMs.exportNow('pdf')">PDF</button>
+    <div class="qf-groupby" data-i18n-title="vm.groupBy" title="Grupla">
+      <i class="bi bi-collection"></i>
+      <select id="groupBy" class="form-select form-select-sm">
+        <option value="" data-i18n="vm.groupNone">Gruplama yok</option>
+        <option value="cluster" data-i18n="vm.byCluster">Cluster'a göre</option>
+        <option value="os" data-i18n="vm.byOs">İşletim sistemine göre</option>
+        <option value="vlan" data-i18n="vm.byVlan">VLAN'a göre</option>
+        <option value="environment" data-i18n="vm.byEnv">Ortama göre</option>
+        <option value="location" data-i18n="vm.byLocation">Lokasyona göre</option>
+        <option value="tag" data-i18n="vm.byTag">Etikete göre</option>
+      </select>
     </div>
   </div>
 
@@ -139,6 +104,32 @@
 <div id="groupResults" class="row g-2 mb-3 d-none"></div>
 
 <div class="card panel">
+  <!-- Tablo başlığı: sonuç sayısı + tablo işlemleri (kolonlar, dışa aktarma) -->
+  <div class="vm-table-head">
+    <span class="vm-count" id="vmCount"></span>
+    <div class="vm-table-actions">
+      <div class="dropdown">
+        <button class="qf-btn" type="button"
+                data-bs-toggle="dropdown" data-bs-popper-config='{"strategy":"fixed"}' data-bs-auto-close="outside" data-i18n-title="vm.chooseCols" title="Görünür kolonları seç">
+          <i class="bi bi-layout-three-columns"></i> <span data-i18n="vm.columns">Kolonlar</span> <i class="bi bi-chevron-down qf-caret"></i>
+        </button>
+        <div class="dropdown-menu dropdown-menu-end p-2" id="colChooser"
+             style="max-height:60vh; overflow:auto; min-width:200px"></div>
+      </div>
+      <div class="dropdown">
+        <button class="qf-btn" type="button" data-bs-toggle="dropdown" data-bs-popper-config='{"strategy":"fixed"}' data-i18n-title="vm.export" title="Dışa aktar">
+          <i class="bi bi-download"></i> <span data-i18n="vm.export">Dışa aktar</span> <i class="bi bi-chevron-down qf-caret"></i>
+        </button>
+        <div class="dropdown-menu dropdown-menu-end">
+          <button class="dropdown-item" type="button" onclick="VMs.exportNow('xlsx')"><i class="bi bi-file-earmark-excel text-success"></i> Excel (.xlsx)</button>
+          <button class="dropdown-item" type="button" onclick="VMs.exportNow('csv')"><i class="bi bi-filetype-csv text-secondary"></i> CSV</button>
+          <button class="dropdown-item" type="button" onclick="VMs.exportNow('pdf')"><i class="bi bi-file-earmark-pdf text-danger"></i> PDF</button>
+          <div class="dropdown-divider"></div>
+          <span class="dropdown-item-text small text-muted" data-i18n="vm.exportHint">Geçerli arama uygulanır</span>
+        </div>
+      </div>
+    </div>
+  </div>
   <div class="table-responsive">
     <table class="table table-hover align-middle mb-0" id="vmTable">
       <thead>
@@ -166,7 +157,6 @@
     </table>
   </div>
   <div class="card-footer d-flex align-items-center">
-    <span class="small text-muted" id="vmCount"></span>
     <nav class="ms-auto"><ul class="pagination pagination-sm mb-0" id="vmPager"></ul></nav>
   </div>
 </div>

@@ -27,6 +27,18 @@ Sürümleme [Semantic Versioning](https://semver.org/lang/tr/) yaklaşımını i
 
 Henüz release'e girmemiş fazlar (faz142–; dahili v1.7.1 →).
 
+### 🧹 Sanal Makineler araç çubuğu sadeleşti (faz147)
+- faz146'nın 14 çipi + sayıları + grup etiketleri tablodan önce 3 satır
+  tutuyordu. Artık **tek satır**: Durum · Platform · OS · Eksikler · Kullanım
+  birer **açılır menü** (onay kutulu, sayılı, çoklu seçim; ⊘ veya Shift+tık
+  hariç tutar, menü altında "Temizle"). Düğme seçimi özetler
+  ("Durum: Çalışan +1"); hariç tutulan kırmızı görünür. Menü seçim sırasında
+  açık kalır. Davranış ve sorgu sözdizimi faz146 ile aynı.
+- **Kolonlar** ve **Dışa aktar** (Excel/CSV/PDF tek menüde) filtre satırından
+  çıkıp tablonun başlığına, sonuç sayısının yanına taşındı.
+- **Düzeltme:** koyu temada tüm sayfalardaki açılır kutuların (select) ok
+  simgesi görünmüyordu; geri geldi.
+
 ### 🔍 Sanal Makineler filtreleri (faz146)
 - **Hızlı filtreler çoklu seçimli:** önceden bir çipe basmak aramanın tamamını
   değiştiriyordu. Artık çipler gruplu (Durum · Platform · OS · Eksikler · Kullanım)

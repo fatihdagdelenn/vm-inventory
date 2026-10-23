@@ -50,7 +50,7 @@ Bu soruların hepsi tek arama kutusundan, saniyeden kısa sürede yanıtlanır. 
 |---|---|
 | 🔍 **Google benzeri arama** | `ip:` `os:` `vlan:` `cluster:` `ram:>=16` `-tag:test` `ip:yok` … kriterler birleştirilebilir |
 | 🎛️ **Gelişmiş filtre paneli** | Mevcut değerlerden (sayılarıyla) seçim, X'le kaldırılabilir filtre rozetleri, tıklanabilir tablo hücreleri |
-| 🏷️ **Çoklu seçimli hızlı filtreler** | Durum / Platform / OS / Eksikler / Kullanım grupları, her çipte VM sayısı; aynı gruptakiler VEYA, gruplar arası VE, Shift+tık hariç tutar |
+| 🏷️ **Çoklu seçimli hızlı filtreler** | Tek satırda Durum / Platform / OS / Eksikler / Kullanım menüleri; seçeneklerde VM sayısı, aynı menüdekiler VEYA, menüler arası VE, ⊘ veya Shift+tık hariç tutar; düğme seçimi özetler |
 | 🔖 **Kayıtlı aramalar** | Sık kullanılan sorgu + sıralama hesaba kaydedilir, her cihazdan tek tıkla açılır |
 | 📊 **Detaylı dashboard** | Kaynak toplamları, OS/ortam/cluster dağılımları, host CPU-RAM grafikleri, depolama, "dikkat gerektirenler" |
 | 🔗 **Çoklu platform** | Sınırsız sayıda vCenter + Proxmox (QEMU VM **ve LXC konteyner**) aynı envanterde |
@@ -360,7 +360,7 @@ yazılır. Mevcut konsol kayıtları aynı ekrandaki butonla toplu silinebilir.
 
 Birleştirme örneği: `type:proxmox status:running osfam:linux ram:>=16 -tag:test`
 
-Arama kutusundaki **?** butonu bu bilgileri arayüzde, **tıklanınca uygulanan örneklerle** gösterir. **Hızlı filtre çipleri** aynı sözdizimini üretir: aynı gruptaki çipler tek token'da virgülle birleşir (VEYA), Shift+tık `-` ile hariç tutar. **Yer imi** simgesi aramayı (sıralamasıyla) hesaba kaydeder. `/` tuşu arama kutusuna odaklanır. Sorgu adres çubuğuna yansır — linki kopyalayıp paylaşabilirsiniz. Varsayılan dışı sıralama da linke girer (`&sort=…&order=desc`); sütun başlığı olmayan kullanım sıralamaları (`cpu_usage`, `ram_usage`, `disk_usage`) bir **Sıralama** rozetiyle görünür, X ile kaldırılır.
+Arama kutusundaki **?** butonu bu bilgileri arayüzde, **tıklanınca uygulanan örneklerle** gösterir. **Hızlı filtre menüleri** aynı sözdizimini üretir: aynı menüdeki seçimler tek token'da virgülle birleşir (VEYA), ⊘ / Shift+tık `-` ile hariç tutar. Kolonlar ve dışa aktarma tablonun başlığındadır. **Yer imi** simgesi aramayı (sıralamasıyla) hesaba kaydeder. `/` tuşu arama kutusuna odaklanır. Sorgu adres çubuğuna yansır — linki kopyalayıp paylaşabilirsiniz. Varsayılan dışı sıralama da linke girer (`&sort=…&order=desc`); sütun başlığı olmayan kullanım sıralamaları (`cpu_usage`, `ram_usage`, `disk_usage`) bir **Sıralama** rozetiyle görünür, X ile kaldırılır.
 
 ## 👥 Roller ve Yetkiler
 

@@ -221,35 +221,71 @@ html.theme-light .app-version { color: rgba(226,232,240,.5); }
 .chip-toggle { font-weight: 600; }
 .chip-toggle .badge { font-size: .65rem; vertical-align: 1px; }
 
-/* ---------- Hızlı filtreler (faz146): gruplu, çoklu seçim, hariç tutma ---------- */
-.qf-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem 1.5rem; }
-/* Gruplar etiketleriyle ayrışır; kenarlık yok (satır kırılınca boşta çizgi kalıyordu) */
-.qf-group { display: inline-flex; align-items: center; flex-wrap: wrap; gap: .3rem; }
-.qf-label {
-  font-size: .66rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
-  color: var(--text-muted); margin-right: .15rem;
+/* ---------- Araç çubuğu + hızlı filtre menüleri (faz147) ---------- */
+.vm-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.qf-menus { display: contents; }
+.vm-toolbar-sep { width: 1px; height: 22px; background: var(--border); margin: 0 .2rem; }
+/* Tablo başlığı: sonuç sayısı + kolon/dışa aktarma (filtre satırından ayrıldı) */
+.vm-table-head {
+  display: flex; align-items: center; gap: .5rem; padding: .55rem .85rem;
+  border-bottom: 1px solid var(--border);
 }
-.chip.qf { display: inline-flex; align-items: center; gap: .35rem; padding: .24rem .5rem .24rem .75rem; }
-.chip.qf.active::before { content: "\f272"; font-family: "bootstrap-icons"; font-size: .75rem; margin-left: -.15rem; }
-.chip.qf.excluded::before { content: "\2212"; font-weight: 700; margin-left: -.1rem; }
-.qf-count {
-  font-size: .68rem; font-weight: 600; min-width: 1.5em; text-align: center; padding: 0 .38rem;
-  border-radius: 99px; background: rgba(100,116,139,.13); color: var(--text-muted);
+.vm-count { font-size: .84rem; font-weight: 600; color: var(--text); }
+.vm-table-actions { margin-left: auto; display: inline-flex; gap: .4rem; }
+.qf-btn {
+  display: inline-flex; align-items: center; gap: .35rem; height: 32px;
+  border: 1px solid var(--border); background: var(--panel); color: var(--text);
+  border-radius: 9px; font-size: .82rem; font-weight: 500; padding: 0 .7rem;
+  transition: border-color .15s, background .15s, color .15s; white-space: nowrap;
 }
-.qf-count:empty { display: none; }
-.chip.qf.zero:not(.active):not(.excluded) { opacity: .5; }
-.chip.qf.active,
-.chip.qf.active:hover {
-  background: var(--accent); border-color: var(--accent); color: #fff;
-  box-shadow: 0 2px 8px rgba(47,129,247,.32); transform: none;
+.qf-btn > i:first-child { color: var(--text-muted); font-size: .85rem; }
+.qf-btn:hover, .qf-btn[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
+.qf-btn:hover > i:first-child, .qf-btn[aria-expanded="true"] > i:first-child { color: var(--accent); }
+.qf-caret { font-size: .62rem; opacity: .6; }
+.qf-btn-text { display: inline-flex; min-width: 0; }
+.qf-btn-val { font-weight: 600; max-width: 125px; overflow: hidden; text-overflow: ellipsis; }
+.qf-btn.has-on { background: var(--accent-soft); border-color: rgba(47,129,247,.45); color: var(--accent); }
+.qf-btn.has-on > i:first-child { color: var(--accent); }
+.qf-btn.has-not { background: rgba(229,83,75,.08); border-color: rgba(229,83,75,.45); color: var(--red); }
+.qf-btn.has-not > i:first-child { color: var(--red); }
+.qf-btn-badge {
+  font-size: .66rem; font-weight: 700; min-width: 1.35rem; height: 1.15rem; line-height: 1.15rem;
+  text-align: center; border-radius: 99px; background: var(--accent); color: #fff; padding: 0 .3rem;
 }
-.chip.qf.active .qf-count { background: rgba(255,255,255,.24); color: #fff; }
-.chip.qf.excluded,
-.chip.qf.excluded:hover { background: rgba(229,83,75,.1); border-color: rgba(229,83,75,.5); color: var(--red); transform: none; }
-.chip.qf.excluded .qf-text { text-decoration: line-through; }
-.chip.qf.excluded .qf-count { background: rgba(229,83,75,.16); color: var(--red); }
-.qf-hint { font-size: .72rem; color: var(--text-muted); margin-left: auto; white-space: nowrap; }
-@media (max-width: 767px) { .qf-hint { margin-left: 0; } }
+.qf-groupby { display: inline-flex; align-items: center; gap: .35rem; height: 32px;
+  border: 1px solid var(--border); border-radius: 9px; padding-left: .65rem; background: var(--panel); }
+.qf-groupby > i { color: var(--text-muted); font-size: .85rem; }
+.qf-groupby .form-select { border: 0; box-shadow: none; background-color: transparent; height: 30px;
+  font-size: .82rem; padding-left: .1rem; color: var(--text); width: auto; max-width: 175px; }
+
+.qf-menu { min-width: 280px; padding: .35rem; }
+.qf-item {
+  display: flex; align-items: center; gap: .55rem; padding: .42rem .55rem; border-radius: 7px;
+  cursor: pointer; font-size: .85rem; user-select: none; color: var(--text);
+}
+.qf-item:hover, .qf-item:focus-visible { background: var(--accent-soft); outline: none; }
+.qf-check {
+  width: 17px; height: 17px; flex: 0 0 17px; border: 1.5px solid var(--border); border-radius: 5px;
+  display: inline-flex; align-items: center; justify-content: center; font-size: .75rem; color: #fff;
+}
+.qf-item.active .qf-check { background: var(--accent); border-color: var(--accent); }
+.qf-item.active .qf-check::before { content: "\f633"; font-family: "bootstrap-icons"; }
+.qf-item.excluded .qf-check { background: var(--red); border-color: var(--red); }
+.qf-item.excluded .qf-check::before { content: "\2212"; font-weight: 700; }
+.qf-item.excluded .qf-text { text-decoration: line-through; color: var(--red); }
+.qf-text { flex: 1; }
+.qf-count { font-size: .74rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.qf-item.zero:not(.active):not(.excluded) .qf-text { color: var(--text-muted); }
+.qf-ex { color: var(--text-muted); opacity: 0; padding: 0 .1rem; transition: opacity .12s; font-size: .8rem; }
+.qf-item:hover .qf-ex, .qf-item.excluded .qf-ex { opacity: 1; }
+.qf-ex:hover, .qf-item.excluded .qf-ex { color: var(--red); }
+.qf-menu-foot {
+  display: flex; justify-content: space-between; align-items: center; gap: .6rem;
+  border-top: 1px solid var(--border); margin-top: .3rem; padding: .4rem .55rem .15rem;
+  font-size: .7rem; color: var(--text-muted); white-space: nowrap;
+}
+.qf-menu-foot .btn { font-size: .74rem; }
+@media (max-width: 767px) { .vm-toolbar-sep { display: none; } }
 
 /* Kayıtlı aramalar menüsü */
 .saved-menu { width: 380px; max-width: 92vw; overflow: hidden; }
@@ -1165,12 +1201,23 @@ html.theme-dark .chip:hover,
 html.theme-dark .chip.active {
   background: rgba(59,155,255,.18); border-color: rgba(59,155,255,.5); color: #cfe4ff;
 }
-html.theme-dark .chip.qf.active,
-html.theme-dark .chip.qf.active:hover { background: #2f81f7; border-color: #3b9bff; color: #fff; }
-html.theme-dark .chip.qf.excluded,
-html.theme-dark .chip.qf.excluded:hover { background: rgba(229,83,75,.16); border-color: rgba(229,83,75,.55); color: #ff9b94; }
-html.theme-dark .chip.qf.excluded .qf-count { color: #ff9b94; }
-html.theme-dark .qf-count { background: rgba(148,163,184,.16); }
+html.theme-dark .qf-btn,
+html.theme-dark .qf-groupby { background: #0f1828; }
+html.theme-dark .qf-btn.has-on { background: rgba(59,155,255,.16); border-color: rgba(59,155,255,.5); }
+html.theme-dark .qf-btn.has-not { background: rgba(229,83,75,.14); color: #ff9b94; }
+html.theme-dark .qf-btn.has-not > i:first-child,
+html.theme-dark .qf-item.excluded .qf-text { color: #ff9b94; }
+html.theme-dark .qf-groupby .form-select option { background: #151f32; }
+/* Koyu tema: yukarıdaki `background:` kısayolları Bootstrap'in açılır ok
+   simgesini de siliyordu (tüm sayfalardaki select'ler oksuz görünüyordu). */
+html.theme-dark .form-select,
+html.theme-dark .form-select:focus,
+html.theme-dark .dash-premium .form-select,
+html.theme-dark .dash-premium .form-select:focus {
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%238aa0bd' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+  background-repeat: no-repeat; background-position: right .75rem center; background-size: 16px 12px;
+}
+html.theme-dark .qf-groupby .form-select { background-color: transparent; }
 html.theme-dark .saved-form { background: rgba(255,255,255,.03); }
 html.theme-dark .help-table tr.help-group td { background: rgba(148,163,184,.1); }
 html.theme-dark .adv-panel {

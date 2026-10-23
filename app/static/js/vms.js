@@ -224,13 +224,75 @@ const VMs = {
     VMs.load();
   },
 
-  /* ---------- Hızlı filtreler (çoklu seçim) ---------- */
+  /* ---------- Hızlı filtreler (çoklu seçim, açılır menüler) ---------- */
 
-  /** Çipin sorgudaki durumu: 'on' (dahil) | 'not' (hariç) | 'off'. */
-  chipState(field, value) {
+  /** Gruplar: [alan, değer, [i18n anahtarı, TR etiket]]. Aynı gruptakiler VEYA. */
+  QF_GROUPS: [
+    {id: 'status', icon: 'bi-power', label: ['vm.qf.status', 'Durum'], items: [
+      ['status', 'running', ['vm.chipRunning', 'Çalışan']],
+      ['status', 'stopped', ['vm.chipStopped', 'Kapalı']],
+      ['status', 'suspended', ['st.suspended', 'Askıda']]]},
+    {id: 'platform', icon: 'bi-hdd-network', label: ['vm.qf.platform', 'Platform'], items: [
+      ['type', 'vcenter', [null, 'VMware']],
+      ['type', 'proxmox', [null, 'Proxmox']]]},
+    {id: 'os', icon: 'bi-pc-display', label: ['vm.qf.os', 'OS'], items: [
+      ['osfam', 'windows', [null, 'Windows']],
+      ['osfam', 'linux', [null, 'Linux']]]},
+    {id: 'missing', icon: 'bi-exclamation-diamond', label: ['vm.qf.missing', 'Eksikler'], items: [
+      ['ip', 'yok', ['vm.chipNoIp', "IP'siz"]],
+      ['tools', 'yok', ['vm.chipNoAgent', "Agent'sız"]],
+      ['owner', 'yok', ['vm.chipNoOwner', 'Sahipsiz']],
+      ['tag', 'yok', ['vm.chipNoTag', 'Etiketsiz']]]},
+    {id: 'usage', icon: 'bi-speedometer2', label: ['vm.qf.usage', 'Kullanım'], items: [
+      ['cpuuse', '>=80', [null, 'CPU %80+']],
+      ['ramuse', '>=80', [null, 'RAM %80+']],
+      ['diskuse', '>=85', [null, 'Disk %85+']]]},
+  ],
+
+  qfLabel(pair) { return pair[0] ? t(pair[0], pair[1]) : pair[1]; },
+
+  /** Menüleri bir kez çiz; durumlar renderChips ile güncellenir (menü açık kalır). */
+  renderQuickFilters() {
+    const wrap = document.getElementById('quickFilters');
+    wrap.innerHTML = VMs.QF_GROUPS.map(g =>
+      '<div class="dropdown qf-dd" data-group="' + g.id + '">' +
+        '<button class="qf-btn" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside">' +
+          '<i class="bi ' + g.icon + '"></i> <span class="qf-btn-text"><span class="qf-btn-label">' +
+          VMs.qfLabel(g.label) + '</span><span class="qf-btn-val"></span></span>' +
+          '<i class="bi bi-chevron-down qf-caret"></i></button>' +
+        '<div class="dropdown-menu qf-menu">' +
+          g.items.map(it =>
+            '<div class="qf qf-item" role="button" tabindex="0" data-field="' + it[0] + '" data-value="' + App.esc(it[1]) + '">' +
+              '<span class="qf-check"></span>' +
+              '<span class="qf-text">' + App.esc(VMs.qfLabel(it[2])) + '</span>' +
+              '<span class="qf-count"></span>' +
+              '<span class="qf-ex" title="' + App.esc(t('vm.qf.exclude', 'Hariç tut')) + '"><i class="bi bi-slash-circle"></i></span>' +
+            '</div>').join('') +
+          '<div class="qf-menu-foot"><span>' + t('vm.qf.hint', 'Çoklu seçim · Shift+tık: hariç tut') + '</span>' +
+            '<button type="button" class="btn btn-link btn-sm p-0 qf-clear">' + t('vm.qf.clearGroup', 'Temizle') + '</button></div>' +
+        '</div>' +
+      '</div>').join('');
+    // Tıklama: satır = dahil et/çıkar, ⊘ veya Shift = hariç tut, Temizle = grubu sıfırla
+    wrap.addEventListener('click', e => {
+      const clr = e.target.closest('.qf-clear');
+      if (clr) { VMs.clearGroup(clr.closest('.qf-dd').dataset.group); return; }
+      const item = e.target.closest('.qf-item'); if (!item) return;
+      const ex = e.shiftKey || !!e.target.closest('.qf-ex');
+      VMs.toggleChip(item.dataset.field, item.dataset.value, ex);
+    });
+    wrap.addEventListener('keydown', e => {
+      const item = e.target.closest('.qf-item');
+      if (item && (e.key === 'Enter' || e.key === ' ')) {
+        e.preventDefault(); VMs.toggleChip(item.dataset.field, item.dataset.value, e.shiftKey);
+      }
+    });
+  },
+
+  /** Çipin bir sorgudaki durumu: 'on' (dahil) | 'not' (hariç) | 'off'. */
+  chipState(field, value, q) {
     const v = value.toLowerCase(), solo = VMs.isSolo(value);
     let state = 'off';
-    VMs.tokenize(VMs.q).forEach(tok => {
+    VMs.tokenize(q == null ? VMs.q : q).forEach(tok => {
       const p = VMs.parseTok(tok);
       if (!p || p.field !== field) return;
       const hit = solo ? p.raw.toLowerCase() === v
@@ -241,17 +303,15 @@ const VMs = {
   },
 
   /**
-   * Çipi aç/kapat. Aynı alanın değerleri tek token'da virgülle birleşir
-   * (status:running,stopped = VEYA); farklı alanlar ayrı token (VE).
-   * exclude=true (Shift+tık) değeri '-field:' token'ına koyar.
+   * Saf fonksiyon: q sorgusunda (alan, değer) çiftini target durumuna getir
+   * ('on' | 'not' | 'off') ve yeni sorguyu döndür. Aynı alanın değerleri tek
+   * token'da virgülle birleşir (VEYA); farklı alanlar ayrı token (VE).
    */
-  toggleChip(field, value, exclude) {
+  withChip(q, field, value, target) {
     const v = value.toLowerCase(), solo = VMs.isSolo(value);
-    const want = exclude ? 'not' : 'on';
-    const before = VMs.chipState(field, value);
     // 1) değeri bu alanın tüm token'larından çıkar (iki işaret için de)
-    let toks = [];
-    VMs.tokenize(VMs.q).forEach(tok => {
+    const toks = [];
+    VMs.tokenize(q).forEach(tok => {
       const p = VMs.parseTok(tok);
       if (!p || p.field !== field) { toks.push(tok); return; }
       if (solo) { if (p.raw.toLowerCase() !== v) toks.push(tok); return; }
@@ -260,30 +320,57 @@ const VMs = {
       if (rest.length === vals.length) { toks.push(tok); return; }
       if (rest.length) toks.push((p.neg ? '-' : '') + field + ':' + rest.join(','));
     });
-    // 2) istenen işaretle yeniden ekle - zaten o durumdaysa bu bir kapatmadır
-    if (before !== want) {
-      const sign = exclude ? '-' : '';
+    // 2) istenen işaretle geri ekle (varsa aynı işaretli token'a virgülle)
+    if (target === 'on' || target === 'not') {
+      const neg = target === 'not';
       const i = solo ? -1 : toks.findIndex(tok => {
         const p = VMs.parseTok(tok);
-        return p && p.field === field && p.neg === !!exclude && !p.quoted && !VMs.isSolo(p.raw);
+        return p && p.field === field && p.neg === neg && !p.quoted && !VMs.isSolo(p.raw);
       });
       if (i >= 0) toks[i] = toks[i] + ',' + value;
-      else toks.push(sign + field + ':' + value);
+      else toks.push((neg ? '-' : '') + field + ':' + value);
     }
-    VMs.applyQuery(toks.join(' '));
+    return toks.join(' ');
   },
 
-  /** Çiplerin görünümünü sorguyla eşitle (kutuya elle yazılanlar da yansır). */
+  /** Aç/kapat: zaten istenen durumdaysa kapatır. exclude = Shift+tık / ⊘. */
+  toggleChip(field, value, exclude) {
+    const want = exclude ? 'not' : 'on';
+    const target = VMs.chipState(field, value) === want ? 'off' : want;
+    VMs.applyQuery(VMs.withChip(VMs.q, field, value, target));
+  },
+
+  /** Bir grubun bütün seçimlerini kaldır. */
+  clearGroup(gid) {
+    const g = VMs.QF_GROUPS.find(x => x.id === gid); if (!g) return;
+    let q = VMs.q;
+    g.items.forEach(it => { q = VMs.withChip(q, it[0], it[1], 'off'); });
+    if (q !== VMs.q) VMs.applyQuery(q);
+  },
+
+  /** Menü satırlarını ve düğme özetlerini sorguyla eşitle (elle yazım da yansır). */
   renderChips() {
-    document.querySelectorAll('#quickFilters .qf').forEach(ch => {
-      const st = VMs.chipState(ch.dataset.field, ch.dataset.value);
-      ch.classList.toggle('active', st === 'on');
-      ch.classList.toggle('excluded', st === 'not');
-      ch.setAttribute('aria-pressed', st === 'off' ? 'false' : 'true');
-      ch.title = st === 'not'
-        ? t('vm.qf.tipExcluded', 'Hariç tutuluyor — kaldırmak için Shift+tık')
-        : t('vm.qf.tip', 'Tık: ekle/kaldır · Shift+tık: hariç tut') +
-          ' — ' + ch.dataset.field + ':' + ch.dataset.value;
+    VMs.QF_GROUPS.forEach(g => {
+      const dd = document.querySelector('#quickFilters .qf-dd[data-group="' + g.id + '"]');
+      if (!dd) return;
+      const on = [], not = [];
+      dd.querySelectorAll('.qf-item').forEach(it => {
+        const st = VMs.chipState(it.dataset.field, it.dataset.value);
+        it.classList.toggle('active', st === 'on');
+        it.classList.toggle('excluded', st === 'not');
+        it.setAttribute('aria-checked', st === 'on' ? 'true' : 'false');
+        const label = it.querySelector('.qf-text').textContent;
+        if (st === 'on') on.push(label);
+        if (st === 'not') not.push('≠ ' + label);
+      });
+      const picked = on.concat(not);
+      const btn = dd.querySelector('.qf-btn');
+      btn.classList.toggle('has-on', on.length > 0);
+      btn.classList.toggle('has-not', !on.length && not.length > 0);
+      dd.querySelector('.qf-btn-val').textContent = picked.length
+        ? ': ' + picked[0] + (picked.length > 1 ? ' +' + (picked.length - 1) : '') : '';
+      btn.title = picked.join(', ');
+      dd.querySelector('.qf-clear').classList.toggle('invisible', !picked.length);
     });
   },
 
@@ -478,8 +565,8 @@ const VMs = {
       [t('vh.v.empty', 'boş değeri'), 'yok · boş · none · empty · null'],
     ];
     const tips = [
-      t('vh.t.chips', 'Hızlı filtreler çoklu seçimlidir: aynı gruptakiler VEYA (Çalışan + Kapalı = status:running,stopped), farklı gruplar VE ile birleşir. Shift+tık hariç tutar (kırmızı); aynı işlem tekrar edilince kaldırılır.'),
-      t('vh.t.counts', 'Çiplerdeki sayı, o filtrenin tek başına kaç VM döndürdüğüdür.'),
+      t('vh.t.chips', 'Durum / Platform / OS / Eksikler / Kullanım menüleri çoklu seçimlidir: aynı menüdekiler VEYA (Çalışan + Kapalı = status:running,stopped), farklı menüler VE ile birleşir. ⊘ simgesi veya Shift+tık hariç tutar (kırmızı); tekrar tıklayınca kalkar. Menü düğmesi seçimi özetler.'),
+      t('vh.t.counts', 'Menülerdeki sayı, o seçeneğin tek başına kaç VM döndürdüğüdür.'),
       t('vh.t.cells', 'Tablodaki Host, Cluster, Pool, Klasör ve VLAN hücrelerine tıklamak o değeri filtre olarak ekler.'),
       t('vh.t.saved', 'Yer imi simgesi: sık kullandığınız sorguyu (sıralamasıyla) hesabınıza kaydeder; her cihazdan erişilir.'),
       t('vh.t.url', 'Sorgu ve sıralama adres çubuğundadır — linki paylaşabilirsiniz. / tuşu arama kutusuna odaklanır.'),
@@ -775,11 +862,8 @@ const VMs = {
     input.value = ''; VMs.q = ''; VMs.page = 1; VMs.load();
   });
 
-  // Hızlı filtreler: tık = ekle/kaldır (çoklu seçim), Shift+tık = hariç tut
-  document.querySelectorAll('#quickFilters .qf').forEach(chip => {
-    chip.addEventListener('click', e =>
-      VMs.toggleChip(chip.dataset.field, chip.dataset.value, e.shiftKey));
-  });
+  // Hızlı filtreler: grup başına açılır menü (çoklu seçim, Shift+tık hariç tutar)
+  VMs.renderQuickFilters();
   VMs.loadChipCounts();
 
   // Kayıtlı aramalar: menü açılırken güncel liste + adetler çizilir
