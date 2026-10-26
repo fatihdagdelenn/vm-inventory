@@ -27,6 +27,31 @@ Sürümleme [Semantic Versioning](https://semver.org/lang/tr/) yaklaşımını i
 
 Henüz release'e girmemiş fazlar (faz142–; dahili v1.7.1 →).
 
+### 👁 Cluster görünürlüğü her yerden (faz148)
+- Cluster gizle/göster ayarı yalnızca dashboard'daki cluster grafiğinin "Yönet"
+  düğmesinde kalıyordu. Artık **Dashboard, Sanal Makineler, Snapshot'lar ve
+  Topoloji** sayfalarının üst çubuğunda **Cluster'lar** düğmesi var (gizli varsa
+  turuncu "N gizli" rozetiyle). Ortak bileşen: `static/js/clusters.js`.
+- Pencere geliştirildi: arama (8+ cluster'da), **Tümünü göster**, satır başına
+  **Yalnız bu** (o cluster görünür, diğerleri gizli), "N görünür · N gizli"
+  özeti, ayarın herkes için geçerli olduğu notu; görüntüleyici rolünde salt okunur.
+  Her anahtarda sayfa yenilenmiyor — değişiklikler kaydedilir, sayfa pencere
+  kapanınca bir kez tazelenir (VM sayfasında yeniden yükleme yok, liste yerinde
+  güncellenir).
+- **Sanal Makineler'e Cluster filtre menüsü:** araç çubuğunun başında, çoklu
+  seçim, VM sayıları, gizli cluster'lar "gizli" işaretli (seçilirse yine
+  listelenir), altta "Görünürlük" kısayolu. Gelişmiş paneldeki cluster seçimi bu
+  menüye taşındı. Tablo hücresi ve grup kartı tıklamaları da aynı tam eşleşmeyi
+  kullanır.
+- **Yeni arama sözdizimi — tam eşleşme:** `=` ile başlayan değer alanın tamamıyla
+  eşleşir (`cluster:=Lab`, Lab2'yi bulmaz); virgül ve tırnakla birleşir
+  (`cluster:"=Ankara Prod,=Lab"`). Kısmi eşleşme varsayılan olarak aynen duruyor.
+- Toplu görünürlük uç noktası: `POST /api/clusters/visibility/bulk`
+  (`all` / `only` / `names`); her değişen cluster için ayrı denetim kaydı,
+  değişmeyenler için kayıt yazılmaz.
+- **Güvenlik düzeltmesi:** `POST /api/clusters/visibility` CSRF doğrulaması
+  yapmıyordu (diğer tüm yazma uçları yapıyor); eklendi.
+
 ### 🧹 Sanal Makineler araç çubuğu sadeleşti (faz147)
 - faz146'nın 14 çipi + sayıları + grup etiketleri tablodan önce 3 satır
   tutuyordu. Artık **tek satır**: Durum · Platform · OS · Eksikler · Kullanım

@@ -49,8 +49,6 @@
       <div class="row g-2">
         <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1">Platform</label>
           <select class="form-select form-select-sm adv-sel" data-field="platform"></select></div>
-        <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1">Cluster</label>
-          <select class="form-select form-select-sm adv-sel" data-field="cluster"></select></div>
         <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1">Host / Node</label>
           <select class="form-select form-select-sm adv-sel" data-field="host"></select></div>
         <div class="col-6 col-md-4 col-xl-2"><label class="form-label small mb-1" data-i18n="th.status">Durum</label>
@@ -162,4 +160,4 @@
 </div>
 
 {% endblock %}
-{% block scripts %}<script src="/static/js/vms.js?v={{ asset_version }}"></script>{% endblock %}
+{% block scripts %}<script src="/static/js/clusters.js?v={{ asset_version }}"></script><script src="/static/js/vms.js?v={{ asset_version }}"></script>{% endblock %}

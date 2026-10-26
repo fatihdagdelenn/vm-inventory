@@ -4,7 +4,7 @@ Cluster management API.
 Clusters are derived from the inventory (a string field on VM/Host); this
 module only manages their visibility.
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import VirtualMachine, Host, ClusterSetting, AuditLog
 from ..models.user import User
-from ..core.security import get_current_user, require_role
+from ..core.security import get_current_user, require_role, validate_csrf
 from ..core.audit import log_audit
 
 router = APIRouter(prefix="/api/clusters", tags=["clusters"])
@@ -104,21 +104,71 @@ class VisibilityPayload(BaseModel):
     visible: bool
 
 
+def _set_one(db, name: str, visible: bool) -> bool:
+    """Upsert one visibility row; True when the value actually changed."""
+    setting = db.query(ClusterSetting).filter_by(name=name).first()
+    if setting is None:
+        if visible:
+            return False            # no row = visible already
+        setting = ClusterSetting(name=name)
+        db.add(setting)
+    elif bool(setting.visible) == visible:
+        return False
+    setting.visible = visible
+    return True
+
+
+def _display(name: str) -> str:
+    return "(Cluster'sız)" if name == NONE_SENTINEL else name
+
+
 @router.post("/visibility")
-def set_visibility(payload: VisibilityPayload,
+def set_visibility(payload: VisibilityPayload, request: Request,
                    db: Session = Depends(get_db),
                    user: User = Depends(require_role("operator"))):
-    """Show/hide a cluster. Operator and above."""
+    """Show/hide a cluster. Operator and above. Global: affects every user."""
+    # CSRF was not checked here before phase 148 (every other write endpoint does).
+    validate_csrf(request, None)
     if not payload.name.strip():
         raise HTTPException(400, "Cluster adı boş olamaz")
     # NONE_SENTINEL is a valid name: represents the virtual "(No cluster)" group
-    setting = db.query(ClusterSetting).filter_by(name=payload.name).first()
-    if setting is None:
-        setting = ClusterSetting(name=payload.name)
-        db.add(setting)
-    setting.visible = payload.visible
-    display = "(Cluster'sız)" if payload.name == NONE_SENTINEL else payload.name
-    log_audit(db, user, "cluster_visibility", target=display,
-              new=("görünür" if payload.visible else "gizli"))
+    if _set_one(db, payload.name, payload.visible):
+        log_audit(db, user, "cluster_visibility", target=_display(payload.name),
+                  new=("görünür" if payload.visible else "gizli"), request=request)
     db.commit()
     return {"ok": True, "name": payload.name, "visible": payload.visible}
+
+
+class BulkVisibilityPayload(BaseModel):
+    visible: bool
+    names: list[str] = []
+    all: bool = False          # apply to every known cluster (incl. the blank group)
+    only: str | None = None    # "show only this one": it becomes visible, all others hidden
+
+
+@router.post("/visibility/bulk")
+def set_visibility_bulk(payload: BulkVisibilityPayload, request: Request,
+                        db: Session = Depends(get_db),
+                        user: User = Depends(require_role("operator"))):
+    """Several clusters at once: "show all", "show only X", or an explicit list.
+
+    One audit row per changed cluster, so the log reads the same as single toggles.
+    """
+    validate_csrf(request, None)
+    known = [i["name"] for i in list_clusters(db=db, user=user)["items"]]
+    if payload.only is not None:
+        if payload.only not in known:
+            raise HTTPException(404, "Cluster bulunamadı")
+        plan = [(n, n == payload.only) for n in known]
+    elif payload.all:
+        plan = [(n, payload.visible) for n in known]
+    else:
+        plan = [(n, payload.visible) for n in payload.names if n.strip()]
+    changed = []
+    for name, vis in plan:
+        if _set_one(db, name, vis):
+            changed.append(name)
+            log_audit(db, user, "cluster_visibility", target=_display(name),
+                      new=("görünür" if vis else "gizli"), request=request)
+    db.commit()
+    return {"ok": True, "changed": changed}

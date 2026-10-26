@@ -287,6 +287,49 @@ html.theme-light .app-version { color: rgba(226,232,240,.5); }
 .qf-menu-foot .btn { font-size: .74rem; }
 @media (max-width: 767px) { .vm-toolbar-sep { display: none; } }
 
+/* Cluster menüsü (dinamik): arama + kaydırılabilir liste + gizli işareti */
+.qf-menu-dyn { min-width: 300px; }
+.qf-search { margin: .1rem .1rem .35rem; width: calc(100% - .2rem); }
+.qf-dyn-items { max-height: 46vh; overflow-y: auto; }
+.qf-item.is-hidden .qf-text { color: var(--text-muted); }
+.qf-hidden-tag {
+  font-size: .66rem; font-weight: 600; color: var(--text-muted); white-space: nowrap;
+  border: 1px solid var(--border); border-radius: 99px; padding: 0 .4rem;
+}
+.qf-foot-actions { display: inline-flex; gap: .7rem; }
+
+/* Cluster görünürlüğü: üst çubuk düğmesi + modal (faz148, clusters.js) */
+.cv-pill {
+  display: inline-flex; align-items: center; gap: .35rem;
+  border: 1px solid var(--border); background: var(--panel); color: var(--text);
+  border-radius: 9px; font-size: .82rem; font-weight: 500;
+}
+.cv-pill:hover { border-color: var(--accent); color: var(--accent); }
+.cv-pill.has-hidden { border-color: rgba(232,161,60,.6); }
+.cv-pill.has-hidden > i { color: var(--amber); }
+.cv-pill-badge {
+  font-size: .68rem; font-weight: 700; border-radius: 99px; padding: .05rem .45rem;
+  background: rgba(232,161,60,.18); color: #a8650a;
+}
+.cv-scope {
+  background: var(--accent-soft); color: var(--text); border-radius: 8px; padding: .45rem .6rem;
+}
+.cv-scope i { color: var(--accent); }
+.cv-tools { display: flex; gap: .5rem; margin-bottom: .5rem; }
+.cv-tools .form-control { flex: 1; }
+.cv-tools .btn { white-space: nowrap; margin-left: auto; }
+.cv-summary { margin-bottom: .4rem; }
+.cv-row { display: flex; align-items: center; gap: .6rem; }
+.cv-main { flex: 1; min-width: 0; }
+.cv-name { font-weight: 600; font-size: .88rem; overflow-wrap: anywhere; }
+.cv-meta { font-size: .74rem; color: var(--text-muted); }
+.cv-row.is-hidden .cv-name { color: var(--text-muted); }
+.cv-only { font-size: .74rem; text-decoration: none; opacity: 0; transition: opacity .12s; white-space: nowrap; }
+.cv-row:hover .cv-only, .cv-only:focus { opacity: 1; }
+.cv-state { font-size: .7rem; font-weight: 600; border-radius: 99px; padding: .1rem .5rem; white-space: nowrap; }
+.cv-state.on { background: rgba(10,168,129,.12); color: var(--teal); }
+.cv-state.off { background: rgba(100,116,139,.14); color: var(--text-muted); }
+
 /* Kayıtlı aramalar menüsü */
 .saved-menu { width: 380px; max-width: 92vw; overflow: hidden; }
 .saved-head { padding: .55rem .85rem; font-weight: 600; font-size: .85rem; border-bottom: 1px solid var(--border); }
@@ -1218,6 +1261,8 @@ html.theme-dark .dash-premium .form-select:focus {
   background-repeat: no-repeat; background-position: right .75rem center; background-size: 16px 12px;
 }
 html.theme-dark .qf-groupby .form-select { background-color: transparent; }
+html.theme-dark .cv-pill { background: #0f1828; }
+html.theme-dark .cv-pill-badge { color: #f3c37a; }
 html.theme-dark .saved-form { background: rgba(255,255,255,.03); }
 html.theme-dark .help-table tr.help-group td { background: rgba(148,163,184,.1); }
 html.theme-dark .adv-panel {

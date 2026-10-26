@@ -56,7 +56,8 @@
   <div id="cy"></div>
 </div>
 {% endblock %}
-{% block scripts %}
+{% block scripts %}<script src="/static/js/clusters.js?v={{ asset_version }}"></script>
+
 <script src="/static/vendor/cytoscape/cytoscape.min.js"></script>
 <script src="/static/vendor/cytoscape/layout-base.js"></script>
 <script src="/static/vendor/cytoscape/cose-base.js"></script>

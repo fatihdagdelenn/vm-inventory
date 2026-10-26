@@ -50,7 +50,7 @@ Bu soruların hepsi tek arama kutusundan, saniyeden kısa sürede yanıtlanır. 
 |---|---|
 | 🔍 **Google benzeri arama** | `ip:` `os:` `vlan:` `cluster:` `ram:>=16` `-tag:test` `ip:yok` … kriterler birleştirilebilir |
 | 🎛️ **Gelişmiş filtre paneli** | Mevcut değerlerden (sayılarıyla) seçim, X'le kaldırılabilir filtre rozetleri, tıklanabilir tablo hücreleri |
-| 🏷️ **Çoklu seçimli hızlı filtreler** | Tek satırda Durum / Platform / OS / Eksikler / Kullanım menüleri; seçeneklerde VM sayısı, aynı menüdekiler VEYA, menüler arası VE, ⊘ veya Shift+tık hariç tutar; düğme seçimi özetler |
+| 🏷️ **Çoklu seçimli hızlı filtreler** | Tek satırda Cluster / Durum / Platform / OS / Eksikler / Kullanım menüleri; seçeneklerde VM sayısı, aynı menüdekiler VEYA, menüler arası VE, ⊘ veya Shift+tık hariç tutar; düğme seçimi özetler |
 | 🔖 **Kayıtlı aramalar** | Sık kullanılan sorgu + sıralama hesaba kaydedilir, her cihazdan tek tıkla açılır |
 | 📊 **Detaylı dashboard** | Kaynak toplamları, OS/ortam/cluster dağılımları, host CPU-RAM grafikleri, depolama, "dikkat gerektirenler" |
 | 🔗 **Çoklu platform** | Sınırsız sayıda vCenter + Proxmox (QEMU VM **ve LXC konteyner**) aynı envanterde |
@@ -274,7 +274,7 @@ Dashboard'daki **"Dikkat Gerektirenler"** kartından *"Agent/Tools kurulu olmaya
 
 | Ekran | Ne yapılır? |
 |---|---|
-| **Dashboard** | Genel durum: sayılar, kaynak toplamları, grafikler (dilime tıklayınca filtreli liste açılır), son değişiklikler, platform sağlığı. Cluster grafiğindeki **Yönet** butonu görünürlük ayarlarını açar. **En Çok CPU / RAM / Disk Kullanan VM** kartlarında bar üzerine gelince VM'in IP'si ve bağlı olduğu host görünür; bara tıklayınca Sanal Makineler listesi çalışan VM'lerle, **aynı metriğe göre büyükten küçüğe sıralı** açılır ve tıklanan VM vurgulanır |
+| **Dashboard** | Genel durum: sayılar, kaynak toplamları, grafikler (dilime tıklayınca filtreli liste açılır), son değişiklikler, platform sağlığı. Cluster görünürlüğü üst çubuktaki **Cluster'lar** düğmesinden (veya cluster grafiğindeki **Yönet**'ten) yönetilir. **En Çok CPU / RAM / Disk Kullanan VM** kartlarında bar üzerine gelince VM'in IP'si ve bağlı olduğu host görünür; bara tıklayınca Sanal Makineler listesi çalışan VM'lerle, **aynı metriğe göre büyükten küçüğe sıralı** açılır ve tıklanan VM vurgulanır |
 | **Sanal Makineler** | Arama + gelişmiş filtre + gruplama. CPU/RAM/disk kolonlarında anlık kullanım çubukları (sarı %75+, kırmızı %90+); ayrıca VM ID, Pool, Klasör, Tags ve Uptime kolonları. **Kolonlar** menüsünden görünür sütunları seçebilirsiniz (tercih tarayıcıda saklanır). Satıra tıklayınca detay paneli; not/sahip/etiket buradan düzenlenir. Host/cluster/VLAN/pool/klasör hücreleri tıklanabilir filtredir |
 | **Host'lar** | ESXi/PVE node'ları tek tabloda: Host adı, Yönetim IP, OS/hipervizör sürümü, CPU modeli, çekirdek sayısı, CPU/RAM/Disk kullanım çubukları, cluster, VM sayısı, çalışma süresi (uptime) ve durum. **Tüm sütun başlıkları tıklanabilir** — metin (A-Z), sayısal, IP ve durum bazlı sıralama. **VM sayısına tıklayınca** o host'taki VM'leri (ad, IP, güç durumu, anlık CPU/RAM) listeleyen bir pencere açılır; listedeki bir VM'e tıklayınca **aynı sayfada** VM detay paneli açılır (Sanal Makineler ekranındaki panelle aynı) |
 | **Datastore'lar** | Depolama alanları: kapasite, doluluk, tip, bağlı host'lar, çözümlenmiş cluster'lar. Kart / tip / node / tablo görünümleri; **yerel diskleri gizle** filtresi (paylaşımlı kapasiteyi ayrı görmek için), çok-cluster'lı paylaşımlı depolarda **kapasite çakışma uyarısı**, kart üzerinde son yedek yaşı rozeti |
@@ -345,7 +345,7 @@ yazılır. Mevcut konsol kayıtları aynı ekrandaki butonla toplu silinebilir.
 | `status:` | `status:running,stopped` | running / stopped / suspended (TR: `çalışan`, `kapalı`, `askıda`) |
 | `tools:` / `agent:` | `tools:yok` | `running` = çalışıyor; `yok` = kurulu değil veya çalışmıyor |
 | `host:` / `node:` | `host:esx01` | Bağlı ESXi host / Proxmox node |
-| `cluster:` / `datastore:` | `cluster:"Ankara Prod"` | Boşluklu değerler tırnaklanır; sorguda `cluster:` varsa gizli cluster'lar da aranır |
+| `cluster:` / `datastore:` | `cluster:"Ankara Prod"` `cluster:=Lab` | Boşluklu değerler tırnaklanır; `=` ile başlayan değer tam eşleşir (`cluster:=Lab`, Lab2'yi bulmaz). Sorguda `cluster:` varsa gizli cluster'lar da aranır |
 | `pool:` / `havuz:` | `pool:Prod` | Resource pool (vCenter) / pool (Proxmox) |
 | `folder:` / `klasor:` | `folder:Web` | VM klasörü (vCenter); Proxmox'ta yok |
 | `platform:` / `type:` / `location:` | `type:proxmox` | Platform adı / tipi (`vcenter`, `proxmox`) / lokasyonu |
@@ -460,7 +460,7 @@ vm-inventory/
 
 **Verileri ne kadar güncel?** Envanter en fazla `SYNC_INTERVAL_MINUTES` kadar geride (varsayılan 15 dk); CPU/RAM/disk **kullanım oranları** ise ayrı hafif bir görevle `USAGE_SYNC_INTERVAL_MINUTES` aralığında (varsayılan 3 dk) tazelenir. "Tümünü Yenile" ile her şey anında güncellenir.
 
-**Cluster gizleme nasıl çalışır?** Dashboard'da cluster grafiğinin yanındaki **Yönet** butonundan istediğiniz cluster'ı kapatın: sayılara/grafiklere girmez, VM listesinde varsayılan görünmez. Veri silinmez — gelişmiş paneldeki "gizli cluster'ları dahil et" kutusu veya doğrudan `cluster:` araması yine erişir; anahtarı açınca her şey geri gelir.
+**Cluster gizleme nasıl çalışır?** Dashboard, Sanal Makineler, Snapshot'lar ve Topoloji sayfalarının üst çubuğundaki **Cluster'lar** düğmesi (gizli sayısını gösterir) görünürlük penceresini açar; arama, **Tümünü göster** ve **Yalnız bu** (yalnızca o cluster görünür kalır) seçenekleri vardır. Kapattığınız cluster sayılara/grafiklere girmez, VM listesinde, snapshot listesinde ve topolojide varsayılan görünmez. Ayar **herkes için** geçerlidir (operatör ve üstü değiştirir). Veri silinmez — Sanal Makineler sayfasındaki **Cluster** filtre menüsünden (gizliler işaretlidir) seçilen cluster, gelişmiş paneldeki "gizli cluster'ları dahil et" kutusu veya doğrudan `cluster:` araması yine erişir; anahtarı açınca her şey geri gelir.
 
 **Kaç platform eklenebilir?** Sınır yok; her platform bağımsız senkronize edilir, hepsi aynı envanterde birleşir.
 

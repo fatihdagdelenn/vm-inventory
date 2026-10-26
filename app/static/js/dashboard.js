@@ -1014,42 +1014,4 @@ const Kiosk = {
 })();
 
 /* ============================ Cluster görünürlük yönetimi ============================ */
-const Clusters = {
-  async open() {
-    bootstrap.Modal.getOrCreateInstance(document.getElementById('clusterModal')).show();
-    await Clusters.render();
-  },
-  async render() {
-    let data;
-    try { data = await App.api('/api/clusters'); } catch (e) { return; }
-    const ul = document.getElementById('clusterList');
-    if (!data.items.length) {
-      ul.innerHTML = '<li class="list-group-item text-muted">' + t('cl.noData','Henüz cluster verisi yok — önce bir platform senkronize edin.') + '</li>';
-      return;
-    }
-    ul.innerHTML = data.items.map(c => {
-      const label = c.is_none ? t('cl.noCluster',"(Cluster'sız)") : c.name;
-      return '<li class="list-group-item d-flex align-items-center gap-2">' +
-      '<div class="form-check form-switch mb-0">' +
-      '<input class="form-check-input" type="checkbox" role="switch" ' + (c.visible ? 'checked ' : '') +
-      'onchange="Clusters.toggle(\'' + App.esc(c.name).replace(/'/g, "\\'") + '\', this.checked)"></div>' +
-      '<div class="flex-grow-1"><strong>' + App.esc(label) +
-      (c.is_none ? ' <i class="bi bi-info-circle text-muted"></i>' : '') + '</strong>' +
-      (!c.in_inventory ? ' <span class="badge text-bg-light border">' + t('cl.notInInv','envanterde yok') + '</span>' : '') +
-      '<br><small class="text-muted">' + c.vm_count + ' VM · ' + c.host_count + ' host</small></div>' +
-      (c.visible ? '<span class="badge text-bg-success">' + t('cl.visible','Görünür') + '</span>'
-                 : '<span class="badge text-bg-secondary">' + t('cl.hidden','Gizli') + '</span>') + '</li>';
-    }).join('');
-  },
-  async toggle(name, visible) {
-    try {
-      await App.api('/api/clusters/visibility', {method: 'POST', body: {name, visible}});
-      const label = name === '__none__' ? t('cl.noCluster',"(Cluster'sız)") : name;
-      App.toast('"' + label + '" ' + (visible ? t('cl.madeVisible','görünür yapıldı') : t('cl.hiddenDone','gizlendi')) + ' — ' + t('cl.updating','güncelleniyor'), 'info');
-      await Clusters.render();
-      setTimeout(() => location.reload(), 900);
-    } catch (e) { Clusters.render(); }
-  },
-};
-const _btnClusters = document.getElementById('btnClusters');
-if (_btnClusters) _btnClusters.addEventListener('click', Clusters.open);
+/* Cluster görünürlüğü artık ortak bileşen: static/js/clusters.js (ClusterVis). */

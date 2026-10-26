@@ -165,7 +165,7 @@
     <div class="dash-widget" data-widget="chartCluster" data-w="6" data-title="Cluster Bazında VM Dağılımı">
       <div class="card panel h-100"><div class="card-header d-flex align-items-center"><span data-i18n="dash.vmByCluster">Cluster Bazında VM Dağılımı</span>
           <span id="hiddenInfo" class="badge text-bg-secondary ms-2 d-none"></span>
-          <button class="btn btn-sm btn-outline-secondary ms-auto" id="btnClusters" onclick="Clusters.open()"
+          <button class="btn btn-sm btn-outline-secondary ms-auto" id="btnClusters" onclick="ClusterVis.open()"
                   title="Cluster görünürlüğünü yönet"><i class="bi bi-eye"></i> <span data-i18n="dash.manage">Yönet</span></button></div>
         <div class="card-body chart-box"><canvas id="chartCluster"></canvas></div></div>
     </div>
@@ -223,20 +223,5 @@
   </div>
 </div>
 
-<!-- Cluster görünürlük yönetimi modalı -->
-<div class="modal fade" id="clusterModal" tabindex="-1">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header"><h5 class="modal-title"><i class="bi bi-eye"></i> <span data-i18n="dash.clusterVisibility">Cluster Görünürlüğü</span></h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-      <div class="modal-body">
-        <p class="text-muted small mb-3" data-i18n="dash.clusterVisibilityDesc">Kapattığınız cluster'lar dashboard sayılarına ve grafiklerine dahil edilmez, VM listesinde varsayılan olarak görünmez. Veri silinmez — anahtarı açınca her şey geri gelir.</p>
-        <ul class="list-group" id="clusterList">
-          <li class="list-group-item text-muted"><span data-i18n="common.loading">Yükleniyor…</span></li>
-        </ul>
-      </div>
-    </div>
-  </div>
-</div>
 {% endblock %}
-{% block scripts %}<script src="/static/js/dashboard.js?v={{ asset_version }}"></script>{% endblock %}
+{% block scripts %}<script src="/static/js/clusters.js?v={{ asset_version }}"></script><script src="/static/js/dashboard.js?v={{ asset_version }}"></script>{% endblock %}

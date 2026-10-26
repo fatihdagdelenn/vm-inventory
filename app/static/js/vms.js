@@ -180,7 +180,9 @@ const VMs = {
     const fieldMap = {cluster: 'cluster', os: 'os', vlan: 'vlan',
                       environment: 'env', location: 'location', tag: 'tag'};
     const field = fieldMap[groupBy] || groupBy;
-    const value = key.includes(' ') ? '"' + key + '"' : key;
+    let raw = key;
+    if (field === 'cluster') raw = key === '(boş)' ? 'yok' : '=' + key;   // tam eşleşme
+    const value = raw.includes(' ') ? '"' + raw + '"' : raw;
     document.getElementById('groupBy').value = '';
     document.getElementById('vmSearch').value = field + ':' + value;
     VMs.q = field + ':' + value;
@@ -213,7 +215,8 @@ const VMs = {
 
   /** Virgülle VEYA'lanamayan değerler: boş/dolu kelimeleri ve sayısal karşılaştırmalar. */
   isSolo(value) {
-    return /^(yok|bos|boş|none|empty|null|var|dolu)$/i.test(value || '') || /^[<>=]/.test(value || '');
+    const v = value || '';
+    return /^(yok|bos|boş|none|empty|null|var|dolu)$/i.test(v) || /^(>=|<=|>|<)/.test(v) || /^=\d/.test(v);
   },
 
   /** Arama kutusuna yeni sorgu yaz ve listeyi yükle. */
@@ -228,6 +231,10 @@ const VMs = {
 
   /** Gruplar: [alan, değer, [i18n anahtarı, TR etiket]]. Aynı gruptakiler VEYA. */
   QF_GROUPS: [
+    // Dinamik: seçenekler facets'ten gelir (setClusterItems). Değerler '=ad' →
+    // tam eşleşme (Lab seçimi Lab2'yi getirmez). Filtredir; küresel görünürlüğü
+    // değiştirmez — gizli bir cluster seçilirse o da listelenir.
+    {id: 'cluster', icon: 'bi-diagram-3', label: ['vm.qf.cluster', 'Cluster'], dynamic: true, items: []},
     {id: 'status', icon: 'bi-power', label: ['vm.qf.status', 'Durum'], items: [
       ['status', 'running', ['vm.chipRunning', 'Çalışan']],
       ['status', 'stopped', ['vm.chipStopped', 'Kapalı']],
@@ -251,6 +258,33 @@ const VMs = {
 
   qfLabel(pair) { return pair[0] ? t(pair[0], pair[1]) : pair[1]; },
 
+  /** Tek menü satırı. it = [alan, değer, [i18n, etiket], sayı?, gizli?] */
+  qfItemHtml(it, dyn) {
+    return '<div class="qf qf-item' + (dyn ? ' qf-dyn' : '') + (it[4] ? ' is-hidden' : '') +
+        '" role="button" tabindex="0" data-field="' + it[0] + '" data-value="' + App.esc(it[1]) + '">' +
+      '<span class="qf-check"></span>' +
+      '<span class="qf-text">' + App.esc(VMs.qfLabel(it[2])) + '</span>' +
+      (it[4] ? '<span class="qf-hidden-tag" title="' + App.esc(t('vm.qf.hiddenTip',
+        'Dashboard ve listede gizli; seçerseniz yine listelenir')) + '"><i class="bi bi-eye-slash"></i> ' +
+        t('vm.hiddenMark', 'gizli') + '</span>' : '') +
+      '<span class="qf-count">' + (it[3] != null ? it[3] : '') + '</span>' +
+      '<span class="qf-ex" title="' + App.esc(t('vm.qf.exclude', 'Hariç tut')) + '"><i class="bi bi-slash-circle"></i></span>' +
+    '</div>';
+  },
+
+  /** Cluster menüsünü facets'ten doldur (sayılar dahil; gizliler işaretli). */
+  setClusterItems(clusters) {
+    const g = VMs.QF_GROUPS.find(x => x.id === 'cluster');
+    g.items = (clusters || []).map(c => ['cluster', '=' + c.key, [null, c.key], c.count, !!c.hidden]);
+    const box = document.querySelector('#quickFilters .qf-dd[data-group="cluster"] .qf-dyn-items');
+    if (!box) return;
+    box.innerHTML = g.items.length ? g.items.map(it => VMs.qfItemHtml(it, true)).join('')
+      : '<div class="text-muted small px-2 py-1">' + t('cl.noData', 'Henüz cluster verisi yok — önce bir platform senkronize edin.') + '</div>';
+    const search = document.querySelector('#quickFilters .qf-dd[data-group="cluster"] .qf-search');
+    search.classList.toggle('d-none', g.items.length < 8);
+    VMs.renderChips();
+  },
+
   /** Menüleri bir kez çiz; durumlar renderChips ile güncellenir (menü açık kalır). */
   renderQuickFilters() {
     const wrap = document.getElementById('quickFilters');
@@ -260,25 +294,36 @@ const VMs = {
           '<i class="bi ' + g.icon + '"></i> <span class="qf-btn-text"><span class="qf-btn-label">' +
           VMs.qfLabel(g.label) + '</span><span class="qf-btn-val"></span></span>' +
           '<i class="bi bi-chevron-down qf-caret"></i></button>' +
-        '<div class="dropdown-menu qf-menu">' +
-          g.items.map(it =>
-            '<div class="qf qf-item" role="button" tabindex="0" data-field="' + it[0] + '" data-value="' + App.esc(it[1]) + '">' +
-              '<span class="qf-check"></span>' +
-              '<span class="qf-text">' + App.esc(VMs.qfLabel(it[2])) + '</span>' +
-              '<span class="qf-count"></span>' +
-              '<span class="qf-ex" title="' + App.esc(t('vm.qf.exclude', 'Hariç tut')) + '"><i class="bi bi-slash-circle"></i></span>' +
-            '</div>').join('') +
+        '<div class="dropdown-menu qf-menu' + (g.dynamic ? ' qf-menu-dyn' : '') + '">' +
+          (g.dynamic
+            ? '<input type="search" class="form-control form-control-sm qf-search d-none" placeholder="' +
+                App.esc(t('cv.search', 'Cluster ara…')) + '">' +
+              '<div class="qf-dyn-items"><div class="text-muted small px-2 py-1">' + t('common.loading', 'Yükleniyor…') + '</div></div>'
+            : g.items.map(it => VMs.qfItemHtml(it, false)).join('')) +
           '<div class="qf-menu-foot"><span>' + t('vm.qf.hint', 'Çoklu seçim · Shift+tık: hariç tut') + '</span>' +
-            '<button type="button" class="btn btn-link btn-sm p-0 qf-clear">' + t('vm.qf.clearGroup', 'Temizle') + '</button></div>' +
+            '<span class="qf-foot-actions">' +
+            (g.id === 'cluster' && typeof ClusterVis !== 'undefined'
+              ? '<button type="button" class="btn btn-link btn-sm p-0 qf-manage" title="' +
+                  App.esc(t('vm.qf.manageTip', "Cluster'ları dashboard ve listelerde herkes için gizle/göster")) + '">' +
+                  '<i class="bi bi-eye"></i> ' + t('vm.qf.manage', 'Görünürlük') + '</button>' : '') +
+            '<button type="button" class="btn btn-link btn-sm p-0 qf-clear">' + t('vm.qf.clearGroup', 'Temizle') + '</button>' +
+            '</span></div>' +
         '</div>' +
       '</div>').join('');
     // Tıklama: satır = dahil et/çıkar, ⊘ veya Shift = hariç tut, Temizle = grubu sıfırla
     wrap.addEventListener('click', e => {
+      if (e.target.closest('.qf-manage')) { ClusterVis.open(); return; }
       const clr = e.target.closest('.qf-clear');
       if (clr) { VMs.clearGroup(clr.closest('.qf-dd').dataset.group); return; }
       const item = e.target.closest('.qf-item'); if (!item) return;
       const ex = e.shiftKey || !!e.target.closest('.qf-ex');
       VMs.toggleChip(item.dataset.field, item.dataset.value, ex);
+    });
+    wrap.addEventListener('input', e => {
+      const s = e.target.closest('.qf-search'); if (!s) return;
+      const needle = s.value.trim().toLowerCase();
+      s.closest('.qf-menu').querySelectorAll('.qf-item').forEach(it =>
+        it.classList.toggle('d-none', !!needle && !it.querySelector('.qf-text').textContent.toLowerCase().includes(needle)));
     });
     wrap.addEventListener('keydown', e => {
       const item = e.target.closest('.qf-item');
@@ -309,6 +354,9 @@ const VMs = {
    */
   withChip(q, field, value, target) {
     const v = value.toLowerCase(), solo = VMs.isSolo(value);
+    // Boşluk içeren değer (ör. "Ankara Prod") varsa token'ın tamamı tırnaklanır
+    const fmt = (neg, vals) => (neg ? '-' : '') + field + ':' +
+      (vals.some(x => /\s/.test(x)) ? '"' + vals.join(',') + '"' : vals.join(','));
     // 1) değeri bu alanın tüm token'larından çıkar (iki işaret için de)
     const toks = [];
     VMs.tokenize(q).forEach(tok => {
@@ -318,17 +366,19 @@ const VMs = {
       const vals = p.raw.split(',').map(x => x.trim()).filter(Boolean);
       const rest = vals.filter(x => x.toLowerCase() !== v);
       if (rest.length === vals.length) { toks.push(tok); return; }
-      if (rest.length) toks.push((p.neg ? '-' : '') + field + ':' + rest.join(','));
+      if (rest.length) toks.push(fmt(p.neg, rest));
     });
     // 2) istenen işaretle geri ekle (varsa aynı işaretli token'a virgülle)
     if (target === 'on' || target === 'not') {
       const neg = target === 'not';
       const i = solo ? -1 : toks.findIndex(tok => {
         const p = VMs.parseTok(tok);
-        return p && p.field === field && p.neg === neg && !p.quoted && !VMs.isSolo(p.raw);
+        return p && p.field === field && p.neg === neg && !VMs.isSolo(p.raw);
       });
-      if (i >= 0) toks[i] = toks[i] + ',' + value;
-      else toks.push((neg ? '-' : '') + field + ':' + value);
+      if (i >= 0) {
+        const p = VMs.parseTok(toks[i]);
+        toks[i] = fmt(neg, p.raw.split(',').map(x => x.trim()).filter(Boolean).concat([value]));
+      } else toks.push(fmt(neg, [value]));
     }
     return toks.join(' ');
   },
@@ -376,7 +426,7 @@ const VMs = {
 
   /** Her çipin tek başına kaç VM döndürdüğü (aynı gizli-cluster kuralıyla). */
   async loadChipCounts() {
-    const chips = [...document.querySelectorAll('#quickFilters .qf')];
+    const chips = [...document.querySelectorAll('#quickFilters .qf:not(.qf-dyn)')];
     const sp = new URLSearchParams();
     chips.forEach(ch => sp.append('q', ch.dataset.field + ':' + ch.dataset.value));
     if (VMs.includeHidden) sp.set('include_hidden', '1');
@@ -503,8 +553,8 @@ const VMs = {
        t('vh.r.orD', 'Aynı alanda değerlerden herhangi biri. Sayısal ve yok/var değerlerinde virgül kullanılmaz.')],
       ['bi-dash-circle', t('vh.r.not', 'Hariç — eksi'), ['-cluster:test', '-osfam:windows'],
        t('vh.r.notD', 'Başına - (veya !) koyulan kriter dışlanır. Virgüllü değerle: hiçbiri olmayanlar.')],
-      ['bi-quote', t('vh.r.quote', 'Tırnak'), ['cluster:"Ankara Prod"'],
-       t('vh.r.quoteD', 'Boşluk içeren değerler çift tırnak içine alınır.')],
+      ['bi-quote', t('vh.r.quote', 'Tırnak ve tam eşleşme'), ['cluster:"Ankara Prod"', 'cluster:=Lab'],
+       t('vh.r.quoteD', 'Boşluk içeren değerler çift tırnak içine alınır. = ile başlayan değer alanın tamamıyla eşleşir (cluster:=Lab, Lab2\'yi bulmaz).')],
       ['bi-circle', t('vh.r.empty', 'Boş / dolu'), ['owner:yok', '-owner:yok'],
        t('vh.r.emptyD', 'yok (boş, none, empty, null) alanı boş olanları bulur; başına - koyunca dolu olanları.')],
       ['bi-123', t('vh.r.num', 'Sayısal'), ['ram:>=16', 'cpu:>4', 'cpuuse:>=80'],
@@ -529,7 +579,7 @@ const VMs = {
       ]],
       [t('vh.g.infra', 'Altyapı ve platform'), [
         F(['host', 'node'], 'host:esx01', t('vh.f.host', 'Bağlı ESXi host / Proxmox node. host:yok = host\'u bilinmeyen.')),
-        F(['cluster'], 'cluster:prod', t('vh.f.cluster', 'Cluster. Sorguda cluster: varsa gizli cluster\'lar da aranır.')),
+        F(['cluster'], 'cluster:prod', t('vh.f.cluster', 'Cluster (kısmi; tam eşleşme için cluster:=ad). Sorguda cluster: varsa gizli cluster\'lar da aranır.')),
         F(['datastore'], 'datastore:ssd', t('vh.f.datastore', 'Disklerin bulunduğu datastore / storage.')),
         F(['pool', 'havuz'], 'pool:prod', t('vh.f.pool', 'Resource pool (vCenter) / pool (Proxmox).')),
         F(['folder', 'klasor'], 'folder:web', t('vh.f.folder', 'VM klasörü (yalnız vCenter).')),
@@ -570,7 +620,7 @@ const VMs = {
       t('vh.t.cells', 'Tablodaki Host, Cluster, Pool, Klasör ve VLAN hücrelerine tıklamak o değeri filtre olarak ekler.'),
       t('vh.t.saved', 'Yer imi simgesi: sık kullandığınız sorguyu (sıralamasıyla) hesabınıza kaydeder; her cihazdan erişilir.'),
       t('vh.t.url', 'Sorgu ve sıralama adres çubuğundadır — linki paylaşabilirsiniz. / tuşu arama kutusuna odaklanır.'),
-      t('vh.t.hidden', 'Gizli cluster\'lardaki VM\'ler listelenmez; sorguda cluster: geçerse veya Gelişmiş\'te "Gizli cluster\'ları dahil et" açıksa dahil edilir.'),
+      t('vh.t.hidden', 'Gizli cluster\'lardaki VM\'ler listelenmez. Hangi cluster\'ların gizli olduğu üst çubuktaki Cluster\'lar düğmesinden yönetilir (herkes için). Cluster menüsünden ya da sorguda cluster: ile seçilen cluster gizli olsa da listelenir; Gelişmiş\'teki "Gizli cluster\'ları dahil et" hepsini katar.'),
       t('vh.t.unknown', 'Tanınmayan alan adı (ör. abc:x) serbest metin olarak aranır.'),
     ];
     document.getElementById('helpBody').innerHTML =
@@ -616,14 +666,8 @@ const VMs = {
         App.esc(labelFn ? labelFn(i.key) : i.key) + ' (' + i.count + ')</option>').join('');
     };
     fill('platform', f.platforms);
-    fill('cluster', f.clusters.map(c => ({key: c.key,
-      count: c.count}))); // gizli cluster'lar da listede — seçilirse otomatik dahil edilir
-    // gizli olanları işaretle
-    const cSel = document.querySelector('.adv-sel[data-field="cluster"]');
-    if (cSel) f.clusters.forEach((c, i) => {
-      if (c.hidden && cSel.options[i + 1])
-        cSel.options[i + 1].text += ' · ' + t('vm.hiddenMark','gizli');
-    });
+    // Cluster seçimi araç çubuğundaki Cluster menüsünde (gizliler işaretli, tam eşleşme)
+    VMs.setClusterItems(f.clusters);
     fill('host', f.hosts);
     fill('env', f.environments);
     fill('vlan', f.vlans);
@@ -823,7 +867,7 @@ const VMs = {
   cellFilter(event, field, value) {
     event.stopPropagation();    // satırın detay açmasını önle
     if (!value || value === '—') return;
-    VMs.setToken(field, value);
+    VMs.setToken(field, field === 'cluster' ? '=' + value : value);   // cluster: tam eşleşme
   },
 };
 
@@ -864,6 +908,8 @@ const VMs = {
 
   // Hızlı filtreler: grup başına açılır menü (çoklu seçim, Shift+tık hariç tutar)
   VMs.renderQuickFilters();
+  // Cluster görünürlüğü (üst çubuk / Cluster menüsü) değişince sayfayı yenilemeden tazele
+  if (typeof ClusterVis !== 'undefined') ClusterVis.onChange = () => { VMs.loadFacets(); VMs.loadChipCounts(); VMs.load(); };
   VMs.loadChipCounts();
 
   // Kayıtlı aramalar: menü açılırken güncel liste + adetler çizilir

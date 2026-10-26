@@ -9,6 +9,7 @@ Supported syntax:
   MANUAL IP      : ip: also matches operator-entered IPs; manuelip:var lists them
   EXCLUSION      : -cluster:test  !os:windows
   OR             : os:ubuntu,centos
+  EXACT          : cluster:=Lab   (whole value, case-insensitive; Lab2 not matched)
   FREE TEXT      : plain words search across common fields (AND)
 """
 import re
@@ -123,9 +124,17 @@ def parse_query(q: str):
 
 
 def _ilike_or(column, value: str):
-    """Build an OR'ed ilike condition for comma-separated values."""
+    """Build an OR'ed condition for comma-separated values.
+
+    Each part matches partially (ilike); a part starting with '=' matches the
+    whole value exactly, case-insensitively (cluster:=Lab does not match Lab2).
+    """
+    def one(p):
+        if p.startswith("=") and len(p) > 1:
+            return func.lower(func.coalesce(column, "")) == p[1:].lower()
+        return _like(column, f"%{p}%")
     parts = [p.strip() for p in value.split(",") if p.strip()]
-    return or_(*[_like(column, f"%{p}%") for p in parts]) if parts else None
+    return or_(*[one(p) for p in parts]) if parts else None
 
 
 def _field_condition(field: str, value: str):
