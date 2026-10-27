@@ -29,7 +29,7 @@
   <nav class="sidebar" id="sidebar">
     <div class="sidebar-brand">
       <i class="bi bi-hdd-network"></i>
-      <span>VM Envanter</span>
+      <span data-i18n="app.name">VM Envanter</span>
     </div>
     <ul class="sidebar-nav">
       <li><a href="/" class="{{ 'active' if active == '/' }}"><i class="bi bi-speedometer2"></i> <span data-i18n="nav.dashboard">Dashboard</span></a></li>
@@ -51,7 +51,7 @@
     <div class="sidebar-footer">
       <div class="small text-truncate"><i class="bi bi-person-circle"></i> {{ user.full_name or user.username }}</div>
       <div class="d-flex justify-content-between align-items-center mt-1">
-        <span class="badge role-badge" data-i18n="role.{{ user.role }}">{{ {'admin':'Admin','operator':'Operatör','viewer':'Görüntüleyici'}[user.role] }}</span>
+        <span class="badge role-badge" data-role="{{ user.role }}" data-i18n="role.{{ user.role }}">{{ {'admin':'Admin','operator':'Operatör','viewer':'Görüntüleyici'}[user.role] }}</span>
         <a href="/logout" class="text-decoration-none small text-light"><i class="bi bi-box-arrow-right"></i> <span data-i18n="action.logout">Çıkış</span></a>
       </div>
       <div class="app-version mt-1" data-i18n-title="version.title" title="Uygulama sürümü">

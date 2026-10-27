@@ -350,6 +350,10 @@ html.theme-light .app-version { color: rgba(226,232,240,.5); }
 .cv-alias-foot { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin-top: .6rem; }
 @media (max-width: 575px) { .cv-ah-input { width: 150px; } .cv-ag-bulk .form-control { width: 130px; } }
 
+/* Giriş sayfası dil düğmesi */
+.login-card { position: relative; }
+.login-card .login-lang { position: absolute; top: .8rem; right: .8rem; }
+
 /* Kayıtlı aramalar menüsü */
 .saved-menu { width: 380px; max-width: 92vw; overflow: hidden; }
 .saved-head { padding: .55rem .85rem; font-weight: 600; font-size: .85rem; border-bottom: 1px solid var(--border); }

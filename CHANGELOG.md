@@ -1,156 +1,176 @@
-# Değişiklik Günlüğü (Changelog)
+# Changelog
 
-Bu projedeki tüm önemli değişiklikler bu dosyada belgelenir.
-Sürümleme [Semantic Versioning](https://semver.org/lang/tr/) yaklaşımını izler.
+All notable changes to this project are documented in this file.
+Versioning follows [Semantic Versioning](https://semver.org/).
 
-### Sürümleme & release politikası
+> **Language:** from v1.8.0 on, release sections and GitHub release notes are
+> written in **English**. Sections up to and including v1.7.0 are kept in their
+> original Turkish as the historical record.
 
-- **Faz sürümü** (`app/core/version.py`, footer'da görünür) her fazda artar; bu
-  *dahili* bir damgadır, release değildir.
-- **Release** = bu dosyadaki bir `## [vX.Y.Z]` bölümü + aynı adda **git tag** +
-  GitHub release. Bu üçü birbirinden ayrılmaz; biri varsa üçü de olmalı.
-  Release notu (`RELEASE_vX.Y.Z.md`) yalnız GitHub'a yapıştırılır, repoya
-  **commit'lenmez** (`.gitignore`'da).
-- **Ne zaman release?** Şu üçünden biri olduğunda: *(a)* son tag'den beri **10+ faz**
-  birikti, *(b)* **yeni bir sayfa / yeni bir veri kaynağı** eklendi, *(c)* kullanıcıyı
-  etkileyen **kırıcı bir değişiklik** veya veri göçü var. Takvim değil, birikim belirler.
-- **Numaralandırma:** yeni sayfa veya belirgin yetenek → minor (`1.6` → `1.7`);
-  yalnız düzeltme/iyileştirme → patch. Dahili faz damgaları release numarası ile
-  aynı olmak zorunda değildir; her bölümün alt başlığı hangi dahili aralığı
-  kapsadığını yazar.
-- Her bölüm **dürüst sınırları** da yazar — bir şeyin platform yüzünden
-  yapılamadığı, yapılabilmiş gibi görünmesin.
+### Versioning & release policy
+
+- **Phase version** (`app/core/version.py`, shown in the footer) is bumped on
+  every phase; it is an *internal* stamp, not a release.
+- **Release** = a `## [vX.Y.Z]` section in this file + a **git tag** of the same
+  name + a GitHub release. The three always go together. Release notes
+  (`RELEASE_vX.Y.Z.md`) are pasted on GitHub only and **never committed**
+  (they are in `.gitignore`).
+- **When to release?** When any one of these holds: *(a)* **10+ phases** since the
+  last tag, *(b)* a **new page or new data source** shipped, *(c)* a user-visible
+  **breaking change** or data migration. Accumulation decides, not the calendar.
+- **Numbering:** a new page or notable capability → minor (`1.7` → `1.8`); fixes
+  and polish only → patch. Internal phase stamps need not match the release
+  number; each section states which internal range it covers.
+- Every section also states the **honest limits**, so nothing reads as more
+  capable than it is.
 
 ---
 
-## [Yayınlanmamış]
+## [Unreleased]
 
-Henüz release'e girmemiş fazlar (faz142–; dahili v1.7.1 →).
+Phases not yet in a release (phase 142 →; internal v1.7.1 →).
 
-### 🏷️ Cluster'sız host'lara takma ad (faz149)
-- Standalone ESXi host'ların (platform cluster bildirmiyor) VM'leri tek bir
-  "(Cluster'sız)" grubunda toplanıyordu ve Sanal Makineler'deki Cluster
-  menüsünde hiç görünmüyordu. Artık menüde **(Cluster'sız)** seçeneği var
-  (yeni sözdizimi `cluster:=` = cluster'ı boş; `cluster:=,=Lab` ile birleşir).
-- Görünürlük penceresinde **Ad ver**: host bazında (platform başlığında
-  "Tümüne aynı ad") takma ad. Ad senkronda host'a ve VM'lerine cluster olarak
-  yazılır (`cluster_is_alias` işaretiyle), kaydedince beklemeden uygulanır;
-  arama, filtre, gizleme, dashboard grafikleri, gruplama, raporlar ve
-  topoloji onu normal bir cluster olarak görür. Listelerde "takma ad" etiketi.
-- **Platform kazanır:** host için gerçek bir cluster bildirildiğinde o ad
-  kullanılır; host cluster'dan çıkarsa takma ad geri gelir. Takma ad
-  Değişiklik Geçmişi'ne "cluster değişti" gürültüsü yazmaz (denetim kaydı yazılır).
-- Gizli "(Cluster'sız)" grubuna (ya da gizli eski bir ada) verilen yeni ad
-  **gizli başlar** — ad vermek grubu habersizce dashboard'a geri getirmez.
-  Gerçek bir cluster adı takma ad olarak kullanılamaz (409). Artık kullanılmayan
-  takma adın görünürlük kaydı silinir. Platform silinince kuralları da silinir.
-- **Düzeltme:** dashboard'daki en çok CPU/RAM/Disk ve datastore kartları veri
-  boşken tarayıcı konsoluna hata yazıyordu (renk fonksiyonu); giderildi.
+### 🌐 English README, screenshots, globalisation (phase 150)
+- **README is now English** (`README.md`); the Turkish version moved to
+  `README.tr.md`, with a language switch at the top of both. Both were brought
+  up to date: default port `18443`, new features, current troubleshooting.
+- **Screenshots** (`docs/screenshots/`): dashboard, VM list with filter menus,
+  VM detail, search help, change history, topology — taken from a fictional
+  demo inventory.
+- `tools/demo_data.py` fills a **throwaway SQLite** database with that demo
+  inventory (refuses any other database), so anyone can try the UI without a
+  real vCenter / Proxmox; `tools/screenshots.py` re-takes the README images.
+- **English UI completed:** VM detail panel, dashboard forecast ("% of
+  physical", "/day", default page name), change-history range buttons, snapshot
+  age filter, platform "Sync now" button and a few placeholders were still
+  Turkish in English mode; the sidebar shows "VM Inventory". In English the
+  quick filters and search help use `none` / `any` instead of `yok` / `var`
+  (both keep working everywhere).
+- **Default language follows the browser** when the user has never picked one
+  (Turkish browser → Turkish, anything else → English); an explicit choice is
+  remembered and always wins. The **login page** is now translated too and has
+  its own TR / EN switch.
+- **Fix:** permission checks in the UI compared the *translated* role label
+  with the Turkish word "Görüntüleyici", so in English mode **viewers saw edit
+  controls** (the server still refused the changes). The checks now use the
+  role itself (`data-role`).
+- The remaining Turkish log lines (backup scan, empty cluster log, sampling
+  failure) are now English. If you grep logs for the old Turkish text, use
+  `Cluster log came back EMPTY` / `Backup scan` instead.
+- New installs name the default admin "Administrator" (existing installs keep
+  their stored name).
+- Honest limits: server-side messages (API errors, backup diagnostics, report
+  sheet titles) and the percent style (`%61.3`) are still Turkish-flavoured.
 
-### 👁 Cluster görünürlüğü her yerden (faz148)
-- Cluster gizle/göster ayarı yalnızca dashboard'daki cluster grafiğinin "Yönet"
-  düğmesinde kalıyordu. Artık **Dashboard, Sanal Makineler, Snapshot'lar ve
-  Topoloji** sayfalarının üst çubuğunda **Cluster'lar** düğmesi var (gizli varsa
-  turuncu "N gizli" rozetiyle). Ortak bileşen: `static/js/clusters.js`.
-- Pencere geliştirildi: arama (8+ cluster'da), **Tümünü göster**, satır başına
-  **Yalnız bu** (o cluster görünür, diğerleri gizli), "N görünür · N gizli"
-  özeti, ayarın herkes için geçerli olduğu notu; görüntüleyici rolünde salt okunur.
-  Her anahtarda sayfa yenilenmiyor — değişiklikler kaydedilir, sayfa pencere
-  kapanınca bir kez tazelenir (VM sayfasında yeniden yükleme yok, liste yerinde
-  güncellenir).
-- **Sanal Makineler'e Cluster filtre menüsü:** araç çubuğunun başında, çoklu
-  seçim, VM sayıları, gizli cluster'lar "gizli" işaretli (seçilirse yine
-  listelenir), altta "Görünürlük" kısayolu. Gelişmiş paneldeki cluster seçimi bu
-  menüye taşındı. Tablo hücresi ve grup kartı tıklamaları da aynı tam eşleşmeyi
-  kullanır.
-- **Yeni arama sözdizimi — tam eşleşme:** `=` ile başlayan değer alanın tamamıyla
-  eşleşir (`cluster:=Lab`, Lab2'yi bulmaz); virgül ve tırnakla birleşir
-  (`cluster:"=Ankara Prod,=Lab"`). Kısmi eşleşme varsayılan olarak aynen duruyor.
-- Toplu görünürlük uç noktası: `POST /api/clusters/visibility/bulk`
-  (`all` / `only` / `names`); her değişen cluster için ayrı denetim kaydı,
-  değişmeyenler için kayıt yazılmaz.
-- **Güvenlik düzeltmesi:** `POST /api/clusters/visibility` CSRF doğrulaması
-  yapmıyordu (diğer tüm yazma uçları yapıyor); eklendi.
+### 🏷️ Aliases for cluster-less hosts (phase 149)
+- VMs on standalone ESXi hosts (the platform reports no cluster) were lumped into
+  one "(No cluster)" group that did not appear in the VM page's Cluster menu at
+  all. The menu now lists **(No cluster)** (new syntax `cluster:=` = empty
+  cluster; combinable: `cluster:=,=Lab`).
+- **Name it** in the visibility window gives a per-host alias (with "same name
+  for all" per platform). The sync writes it into the host's and its VMs'
+  cluster (`cluster_is_alias` flag) and it applies immediately; search, filters,
+  hiding, dashboard charts, grouping, reports and topology treat it like a real
+  cluster. Lists mark it "alias".
+- **The platform wins:** once a real cluster is reported for the host, that name
+  is used; if the host leaves the cluster, the alias returns. Aliases write no
+  "cluster changed" noise into the change history (the audit log records them).
+- A new name given to a hidden "(No cluster)" group (or a hidden old alias)
+  **starts hidden** — naming does not silently put the group back on the
+  dashboard. A real cluster name cannot be used as an alias (409). The visibility
+  row of an alias nobody uses any more is removed; deleting a platform removes
+  its alias rules.
+- **Fix:** the dashboard's top CPU / RAM / disk and datastore cards wrote errors
+  to the browser console when their data was empty.
 
-### 🧹 Sanal Makineler araç çubuğu sadeleşti (faz147)
-- faz146'nın 14 çipi + sayıları + grup etiketleri tablodan önce 3 satır
-  tutuyordu. Artık **tek satır**: Durum · Platform · OS · Eksikler · Kullanım
-  birer **açılır menü** (onay kutulu, sayılı, çoklu seçim; ⊘ veya Shift+tık
-  hariç tutar, menü altında "Temizle"). Düğme seçimi özetler
-  ("Durum: Çalışan +1"); hariç tutulan kırmızı görünür. Menü seçim sırasında
-  açık kalır. Davranış ve sorgu sözdizimi faz146 ile aynı.
-- **Kolonlar** ve **Dışa aktar** (Excel/CSV/PDF tek menüde) filtre satırından
-  çıkıp tablonun başlığına, sonuç sayısının yanına taşındı.
-- **Düzeltme:** koyu temada tüm sayfalardaki açılır kutuların (select) ok
-  simgesi görünmüyordu; geri geldi.
+### 👁 Cluster visibility from everywhere (phase 148)
+- Hiding / showing clusters lived only behind the "Manage" button of the
+  dashboard's cluster chart. Now the **Dashboard, Virtual Machines, Snapshots and
+  Topology** pages have a **Clusters** button in the top bar (with an orange
+  "N hidden" badge when something is hidden). Shared component:
+  `static/js/clusters.js`.
+- The window gained search (8+ clusters), **Show all**, per-row **Only this**
+  (that cluster visible, all others hidden), a "N visible · N hidden" summary and
+  a note that the setting applies to everyone; read-only for viewers. Toggling no
+  longer reloads the page each time — changes are saved and the page refreshes
+  once when the window closes (the VM page refreshes in place).
+- **Cluster filter menu on Virtual Machines:** first in the toolbar, multi-select,
+  VM counts, hidden clusters marked (still listed when selected), "Visibility"
+  shortcut at the bottom. The advanced panel's cluster picker moved here. Table
+  cell and group-card clicks use the same exact match.
+- **New search syntax — exact match:** a value starting with `=` must match the
+  whole field (`cluster:=Lab` does not find Lab2); combines with commas and quotes
+  (`cluster:"=DC East,=Lab"`). Partial matching stays the default.
+- Bulk visibility endpoint `POST /api/clusters/visibility/bulk`
+  (`all` / `only` / `names`); one audit row per changed cluster, none for no-ops.
+- **Security fix:** `POST /api/clusters/visibility` did not check the CSRF token
+  (every other write endpoint does); it does now.
 
-### 🔍 Sanal Makineler filtreleri (faz146)
-- **Hızlı filtreler çoklu seçimli:** önceden bir çipe basmak aramanın tamamını
-  değiştiriyordu. Artık çipler gruplu (Durum · Platform · OS · Eksikler · Kullanım)
-  ve aç/kapa çalışıyor: aynı gruptakiler VEYA (Çalışan + Kapalı =
-  `status:running,stopped`), farklı gruplar VE ile birleşir. **Shift+tık hariç
-  tutar** (kırmızı, `-alan:değer`). Çipler arama kutusundan türetilir; elle
-  yazılan sorgu da çiplerde görünür.
-- Her çipte o filtrenin tek başına döndürdüğü **VM sayısı** (gizli cluster
-  kuralı listeyle aynı). Yeni çipler: Askıda, VMware, Proxmox, Sahipsiz,
-  Etiketsiz, CPU %80+, RAM %80+, Disk %85+.
-- **Kayıtlı aramalar** (yer imi simgesi): sorgu + sıralama ada bağlanıp hesaba
-  kaydedilir, her cihazdan açılır; listede güncel VM sayısı görünür.
-- **Gelişmiş panel arama kutusuyla senkron:** çip ya da elle yazımla değişen
-  durum/cluster/host… seçimleri panelde de görünür (önceden eski seçim kalıyordu).
-- **Arama söz dizimi yardımı baştan yazıldı:** kurallar kartları, gruplu tam alan
-  listesi (takma adlar dahil), değer sözlüğü, ipuçları; 43 örneğin her biri
-  tıklanınca uygulanır. `/` tuşu arama kutusuna odaklanır.
-- **Yeni arama alanları:** `cpuuse:` `ramuse:` `diskuse:` (anlık kullanım %).
-- **Düzeltme:** `osfam:` virgülle VEYA desteklemiyordu (`osfam:windows,ubuntu`
-  sessizce serbest metne düşüp hiçbir şey bulmuyordu); artık çalışıyor ve
-  `osfam:linux` tüm Linux ailelerini kapsıyor. `tools:yok,running` da artık
-  doğru VEYA'lanıyor.
+### 🧹 Leaner Virtual Machines toolbar (phase 147)
+- Phase 146's 14 chips + counts + group labels took three rows above the table.
+  Now it is **one row**: Status · Platform · OS · Missing · Usage are **dropdown
+  menus** (checkboxes, counts, multi-select; ⊘ or Shift+click excludes, "Clear"
+  at the bottom). The button summarises the choice ("Status: Running +1");
+  exclusions show in red. The menu stays open while choosing.
+- **Columns** and **Export** (Excel / CSV / PDF in one menu) moved from the filter
+  row to the table header, next to the result count.
+- **Fix:** in the dark theme the arrow of every select box was missing on all pages.
 
-### 📊 En çok kaynak kullanan VM kartları (faz145)
-- CPU / RAM / Disk kartlarında bar üzerine gelince VM adının altında artık
-  **VM'in IP'si** (birden fazlaysa `+N`, elle girilmişse "elle") ve ardından bağlı
-  olduğu **host** görünüyor. Önceden yalnız host vardı.
-- Bara tıklamak artık Sanal Makineler sayfasını **çalışan VM'ler, aynı metriğe
-  göre büyükten küçüğe sıralı** açıyor ve tıklanan VM'in satırını vurguluyor
-  (önceden yalnız o VM'in adıyla arama yapıyordu). Kart ile liste aynı SQL
-  ifadesiyle sıralandığı için ilk satırlar karttaki sırayla birebir aynıdır.
-- VM listesine kullanım sıralamaları eklendi (`sort=cpu_usage|ram_usage|disk_usage`);
-  ölçümü olmayan VM'ler her iki yönde de sona düşer. Etkin olduğunda X'le
-  kaldırılabilen bir **Sıralama** rozeti görünür; varsayılan dışı sıralama
-  adres çubuğuna yazılır, sayfa yenilense de korunur.
-- Bar üzerinde el imleci çıkıyor (tıklanabilir olduğu belli).
+### 🔍 Virtual Machines filters (phase 146)
+- **Multi-select quick filters:** a chip used to replace the whole search. Chips
+  are now grouped and toggle: same group = OR (Running + Stopped =
+  `status:running,stopped`), different groups = AND. **Shift+click excludes**
+  (`-field:value`). Chips are derived from the search box, so typed queries light
+  them up too.
+- Each chip shows how many VMs it returns on its own (same hidden-cluster rule as
+  the list).
+- **Saved searches** (bookmark icon): query + sort order stored per account,
+  reopened from any device, with live VM counts.
+- **Advanced panel in sync with the search box** (it used to keep stale picks).
+- **Search help rewritten:** rule cards, the full field list with aliases, a value
+  dictionary and tips; every example is clickable. `/` focuses the search box.
+- **New search fields:** `cpuuse:` `ramuse:` `diskuse:` (live usage %).
+- **Fix:** `osfam:` did not support comma OR (`osfam:windows,ubuntu` silently fell
+  back to free text and found nothing); `osfam:linux` now covers every Linux
+  family. `tools:none,running` ORs correctly too.
 
-### 📸 Dashboard snapshot kartı (faz144)
-- **Düzeltme:** Kart "0/1 — Hiç snapshot yok" gösterirken Snapshot'lar sayfası
-  snapshot'ı listeliyordu. Sebep: kart en fazla 1000 kayıt alıyor, gizli cluster
-  filtresini ise **bu 1000'i aldıktan sonra** uyguluyordu. Gizli (ör. cluster'sız
-  Veeam replica restore point'leri) 1000+ snapshot olunca pencere tamamen onlarla
-  doluyor, görünür snapshot dışarıda kalıyordu. Filtre artık limitten önce, SQL'de
-  uygulanıyor; liste de limitten önce en eskiden yeniye sıralanıyor.
-- **Düzeltme:** "30 günden eski snapshot" sayacı gizli cluster'ları da sayıyordu
-  (tıklanınca açılan sayfa saymıyordu). Artık ikisi aynı kuralı kullanıyor.
+### 📊 Top resource VM cards (phase 145)
+- Hovering a bar on the CPU / RAM / disk cards shows the **VM's IP** (with `+N`
+  for more, "manual" for a typed IP) and then its **host**. Before, only the host.
+- Clicking a bar opens Virtual Machines with **running VMs sorted by the same
+  metric** and highlights that VM (it used to search by name only). Card and list
+  use the same SQL expression, so the first rows match the card exactly.
+- VM list usage sorts (`sort=cpu_usage|ram_usage|disk_usage`); VMs without a
+  sample go last in both directions. A removable **Sorted by** badge shows the
+  sort; a non-default sort is kept in the address bar.
 
-### ✍️ Elle IP (faz143)
-- Agent kurulamayan VM'ler için (özel/kapalı yapılandırılmış OS) VM detayındaki
-  **Manuel Bilgiler** bölümüne **Elle IP** alanı eklendi. Birden fazla IP virgül,
-  noktalı virgül veya boşlukla girilebilir; geçersiz adres reddedilir, `/24` gibi
-  önek atılır.
-- Elle IP; VM listesinin IP kolonunda **"elle"** rozetiyle, VM detayında, host /
-  datastore VM listelerinde, topolojide ve Excel/CSV/PDF dışa aktarımlarında görünür.
-- Arama: `ip:` ve serbest metin elle IP'yi de bulur; `manuelip:var` elle IP
-  girilmiş VM'leri listeler. `ip:yok` ve dashboard'daki "IP adresi alınamayan VM"
-  sayacı artık elle IP'si olanları saymaz (ikisi aynı kuralı kullanır).
-- **Platform her zaman kazanır:** agent kurulup IP bildirdiğinde elle IP otomatik
-  temizlenir; silinen değer Değişiklik Geçmişi'nde "Elle IP" satırı olarak kalır.
-  Platform zaten IP bildiren bir VM'e elle IP girilemez (alan kilitli, API 409).
-- **Düzeltme:** Proxmox'ta canlı migration sonrası VM yeni node'da yeni kayıt olarak
-  oluştuğu için **sahip, notlar, ortam ve etiketler kayboluyordu**. Artık bu manuel
-  alanlar (elle IP dahil) yeni kayda taşınıyor. Daha önce migration'da kaybolmuş
-  değerler geri gelmez.
+### 📸 Dashboard snapshot card (phase 144)
+- **Fix:** the card showed "0/1 — No snapshots" while the Snapshots page listed
+  one. The card took at most 1000 rows and applied the hidden-cluster filter
+  **after** the limit; with 1000+ hidden snapshots (e.g. Veeam replica restore
+  points on cluster-less VMs) the window filled with them. The filter now runs in
+  SQL before the limit, oldest first.
+- **Fix:** the "snapshots older than 30 days" counter included hidden clusters
+  (the page it links to did not). Both use the same rule now.
 
-### 🧹 Repo (faz142)
-- Commit'lenmiş `RELEASE_v1.7.0.md` kaldırıldı; `RELEASE_*.md` `.gitignore`'a eklendi.
+### ✍️ Manual IP (phase 143)
+- A **Manual IP** field in the VM detail panel for VMs whose agent cannot be
+  installed. Several IPs separated by commas, semicolons or spaces; invalid
+  addresses are refused, a `/24` suffix is dropped.
+- Shown with a **"manual"** badge in the VM list, in the detail panel, host /
+  datastore VM lists, topology and Excel / CSV / PDF exports.
+- Search: `ip:` and free text find manual IPs; `manuelip:any` lists them. `ip:none`
+  and the dashboard "no IP" counter no longer count VMs with a manual IP.
+- **The platform always wins:** when an agent reports an IP, the manual one is
+  cleared and kept in the change history; a VM that already reports IPs cannot
+  get a manual one (field locked, API 409).
+- **Fix:** after a Proxmox live migration the VM is a new record on the new node,
+  and its **owner, notes, environment and tags were lost**. These manual fields
+  (manual IP included) are now carried over. Values lost in earlier migrations do
+  not come back.
+
+### 🧹 Repository (phase 142)
+- The committed `RELEASE_v1.7.0.md` was removed; `RELEASE_*.md` is in `.gitignore`.
 
 ---
 

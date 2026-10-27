@@ -18,8 +18,8 @@ const Platforms = {
         t('pl.empty','Henüz platform eklenmemiş. Sağ üstteki Platform Ekle butonuyla ilk vCenter veya Proxmox bağlantınızı oluşturun.') + '</div></div>';
       return;
     }
-    const isAdmin = document.querySelector('.role-badge')?.textContent.trim() === 'Admin';
-    const isViewer = document.querySelector('.role-badge')?.textContent.trim() === t('role.viewer','Görüntüleyici');
+    const isAdmin = App.role() === 'admin';
+    const isViewer = App.role() === 'viewer';
 
     wrap.innerHTML = data.items.map(p => {
       const icon = p.type === 'vcenter'
@@ -47,7 +47,7 @@ const Platforms = {
         '</div></div>' +
         '<div class="card-footer d-flex gap-1">' +
         (!isViewer ? '<button class="btn btn-sm btn-outline-primary" onclick="Platforms.sync(' + p.id + ',this)">' +
-          '<i class="bi bi-arrow-repeat"></i> Senkronize Et</button>' : '') +
+          '<i class="bi bi-arrow-repeat"></i> ' + t('pl.syncNow', 'Senkronize Et') + '</button>' : '') +
         '<button class="btn btn-sm btn-outline-secondary" onclick="Platforms.logs(' + p.id + ')">' +
           '<i class="bi bi-journal-text"></i> Loglar</button>' +
         (isAdmin ? '<button class="btn btn-sm btn-outline-secondary ms-auto" onclick="Platforms.openModal(' + p.id + ')">' +

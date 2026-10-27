@@ -6,6 +6,12 @@
  *  - Offcanvas detay paneli + not/sahip/ortam/etiket düzenleme (operator+)
  *  - Filtrelenmiş Excel / CSV / PDF dışa aktarma
  */
+// Arayüz diline göre boş/dolu anahtar kelimesi (arama motoru ikisini de kabul eder:
+// yok/boş/none/empty/null ve var/dolu/any/set).
+const QF_EN = (typeof I18N !== 'undefined' && I18N.lang === 'en');
+const QF_NONE = QF_EN ? 'none' : 'yok';
+const QF_ANY = QF_EN ? 'any' : 'var';
+
 const VMs = {
   q: '', page: 1, perPage: 50, sort: 'name', order: 'asc', total: 0,
   currentId: null, includeHidden: false, focusId: null, highlightId: null,
@@ -246,10 +252,10 @@ const VMs = {
       ['osfam', 'windows', [null, 'Windows']],
       ['osfam', 'linux', [null, 'Linux']]]},
     {id: 'missing', icon: 'bi-exclamation-diamond', label: ['vm.qf.missing', 'Eksikler'], items: [
-      ['ip', 'yok', ['vm.chipNoIp', "IP'siz"]],
-      ['tools', 'yok', ['vm.chipNoAgent', "Agent'sız"]],
-      ['owner', 'yok', ['vm.chipNoOwner', 'Sahipsiz']],
-      ['tag', 'yok', ['vm.chipNoTag', 'Etiketsiz']]]},
+      ['ip', QF_NONE, ['vm.chipNoIp', "IP'siz"]],
+      ['tools', QF_NONE, ['vm.chipNoAgent', "Agent'sız"]],
+      ['owner', QF_NONE, ['vm.chipNoOwner', 'Sahipsiz']],
+      ['tag', QF_NONE, ['vm.chipNoTag', 'Etiketsiz']]]},
     {id: 'usage', icon: 'bi-speedometer2', label: ['vm.qf.usage', 'Kullanım'], items: [
       ['cpuuse', '>=80', [null, 'CPU %80+']],
       ['ramuse', '>=80', [null, 'RAM %80+']],
@@ -559,9 +565,9 @@ const VMs = {
        t('vh.r.orD', 'Aynı alanda değerlerden herhangi biri. Sayısal ve yok/var değerlerinde virgül kullanılmaz.')],
       ['bi-dash-circle', t('vh.r.not', 'Hariç — eksi'), ['-cluster:test', '-osfam:windows'],
        t('vh.r.notD', 'Başına - (veya !) koyulan kriter dışlanır. Virgüllü değerle: hiçbiri olmayanlar.')],
-      ['bi-quote', t('vh.r.quote', 'Tırnak ve tam eşleşme'), ['cluster:"Ankara Prod"', 'cluster:=Lab'],
+      ['bi-quote', t('vh.r.quote', 'Tırnak ve tam eşleşme'), ['cluster:"DC East"', 'cluster:=Lab'],
        t('vh.r.quoteD', 'Boşluk içeren değerler çift tırnak içine alınır. = ile başlayan değer alanın tamamıyla eşleşir (cluster:=Lab, Lab2\'yi bulmaz).')],
-      ['bi-circle', t('vh.r.empty', 'Boş / dolu'), ['owner:yok', '-owner:yok'],
+      ['bi-circle', t('vh.r.empty', 'Boş / dolu'), ['owner:' + QF_NONE, '-owner:' + QF_NONE],
        t('vh.r.emptyD', 'yok (boş, none, empty, null) alanı boş olanları bulur; başına - koyunca dolu olanları.')],
       ['bi-123', t('vh.r.num', 'Sayısal'), ['ram:>=16', 'cpu:>4', 'cpuuse:>=80'],
        t('vh.r.numD', '> >= < <= = ile karşılaştırır; işaretsiz sayı tam eşitliktir (ram:16 = tam 16 GB).')],
@@ -571,8 +577,8 @@ const VMs = {
       [t('vh.g.id', 'Kimlik ve ağ'), [
         F(['name', 'vm'], 'name:web', t('vh.f.name', 'VM adı.')),
         F(['vmid', 'id'], 'vmid:105', t('vh.f.vmid', 'VM ID — Proxmox sayısal, VMware MoRef (vm-123).')),
-        F(['ip'], 'ip:10.10.', t('vh.f.ip', 'IP adresi (kısmi; elle girilen IP de aranır). ip:yok = ne platform ne elle IP var.')),
-        F(['manuelip', 'ipmanuel'], 'manuelip:var', t('vh.f.manualip', 'Elle girilen IP. manuelip:var = elle IP girilmiş VM\'ler.')),
+        F(['ip'], 'ip:10.20.', t('vh.f.ip', 'IP adresi (kısmi; elle girilen IP de aranır). ip:yok = ne platform ne elle IP var.')),
+        F(['manuelip', 'ipmanuel'], 'manuelip:' + QF_ANY, t('vh.f.manualip', 'Elle girilen IP. manuelip:var = elle IP girilmiş VM\'ler.')),
         F(['mac'], 'mac:00:50:56', t('vh.f.mac', 'MAC adresi (kısmi).')),
         F(['vlan'], 'vlan:100', t('vh.f.vlan', 'VLAN — kısmi eşleşir: vlan:10, 100 ve 110\'u da bulur.')),
         F(['network'], 'network:vmbr0', t('vh.f.network', 'Bağlı ağ / portgroup / köprü adı.')),
@@ -581,7 +587,7 @@ const VMs = {
         F(['os'], 'os:ubuntu', t('vh.f.os', 'OS adı (kısmi). os:linux ve os:windows tüm dağıtımları/sürümleri bulur.')),
         F(['osfam', 'osailesi'], 'osfam:redhat', t('vh.f.osfam', 'OS ailesi — dashboard pastasıyla aynı sınıflandırma. Değerler aşağıda.')),
         F(['status'], 'status:running', t('vh.f.status', 'Güç durumu: running, stopped, suspended (TR: çalışan, kapalı, askıda).')),
-        F(['tools', 'agent'], 'tools:yok', t('vh.f.tools', 'VMware Tools / QEMU Agent: running = çalışıyor; yok = kurulu değil veya çalışmıyor.')),
+        F(['tools', 'agent'], 'tools:' + QF_NONE, t('vh.f.tools', 'VMware Tools / QEMU Agent: running = çalışıyor; yok = kurulu değil veya çalışmıyor.')),
       ]],
       [t('vh.g.infra', 'Altyapı ve platform'), [
         F(['host', 'node'], 'host:esx01', t('vh.f.host', 'Bağlı ESXi host / Proxmox node. host:yok = host\'u bilinmeyen.')),
@@ -589,16 +595,16 @@ const VMs = {
         F(['datastore'], 'datastore:ssd', t('vh.f.datastore', 'Disklerin bulunduğu datastore / storage.')),
         F(['pool', 'havuz'], 'pool:prod', t('vh.f.pool', 'Resource pool (vCenter) / pool (Proxmox).')),
         F(['folder', 'klasor'], 'folder:web', t('vh.f.folder', 'VM klasörü (yalnız vCenter).')),
-        F(['platform'], 'platform:"Ankara vCenter"', t('vh.f.platform', 'Platform (bağlantı) adı.')),
+        F(['platform'], 'platform:"East vCenter"', t('vh.f.platform', 'Platform (bağlantı) adı.')),
         F(['type'], 'type:proxmox', t('vh.f.type', 'Platform tipi: vcenter veya proxmox.')),
-        F(['location', 'lokasyon'], 'location:ankara', t('vh.f.location', 'Platformun lokasyonu.')),
+        F(['location', 'lokasyon'], 'location:frankfurt', t('vh.f.location', 'Platformun lokasyonu.')),
       ]],
       [t('vh.g.manual', 'Manuel ve platform bilgileri'), [
         F(['env', 'environment'], 'env:production', t('vh.f.env', 'Ortam: production, test, development.')),
-        F(['owner'], 'owner:fatih', t('vh.f.owner', 'Sahip. owner:yok = sahibi atanmamış.')),
-        F(['tag'], 'tag:kritik', t('vh.f.tag', 'Manuel etiket. tag:yok = etiketsiz.')),
-        F(['notes', 'not'], 'notes:bakım', t('vh.f.notes', 'Manuel notlar.')),
-        F(['aciklama', 'desc'], 'aciklama:yedek', t('vh.f.desc', 'Platform notu (vCenter annotation / Proxmox description).')),
+        F(['owner'], 'owner:alice', t('vh.f.owner', 'Sahip. owner:yok = sahibi atanmamış.')),
+        F(['tag'], 'tag:critical', t('vh.f.tag', 'Manuel etiket. tag:yok = etiketsiz.')),
+        F(['notes', 'not'], 'notes:patch', t('vh.f.notes', 'Manuel notlar.')),
+        F(['desc', 'aciklama'], 'desc:backup', t('vh.f.desc', 'Platform notu (vCenter annotation / Proxmox description).')),
         F(['ptag', 'petiket'], 'ptag:backup', t('vh.f.ptag', 'Platform etiketleri (vCenter tag / Proxmox tags).')),
       ]],
       [t('vh.g.res', 'Kaynak (sayısal)'), [
@@ -613,12 +619,13 @@ const VMs = {
       ]],
     ];
     const values = [
-      ['status', 'running · stopped · suspended — çalışan · kapalı · askıda'],
-      ['tools', 'running (var, ok) · yok (notrunning, kapalı)'],
+      ['status', QF_EN ? 'running · stopped · suspended' : 'running · stopped · suspended — çalışan · kapalı · askıda'],
+      ['tools', QF_EN ? 'running · none (not installed / not running)' : 'running (var, ok) · yok (notrunning, kapalı)'],
       ['osfam', 'windows · linux · ubuntu · debian · redhat · suse · otherlinux · bsd · vmware · macos · other'],
       ['type', 'vcenter · proxmox'],
       ['env', 'production · test · development'],
-      [t('vh.v.empty', 'boş değeri'), 'yok · boş · none · empty · null'],
+      [t('vh.v.empty', 'boş değeri'), QF_EN ? 'none · empty · null (Turkish: yok, boş)' : 'yok · boş · none · empty · null'],
+      [t('vh.v.any', 'dolu değeri'), QF_EN ? 'any · set (manuelip:any); for other fields use -field:none' : 'var · dolu (manuelip:var); diğer alanlarda -alan:yok'],
     ];
     const tips = [
       t('vh.t.chips', 'Durum / Platform / OS / Eksikler / Kullanım menüleri çoklu seçimlidir: aynı menüdekiler VEYA (Çalışan + Kapalı = status:running,stopped), farklı menüler VE ile birleşir. ⊘ simgesi veya Shift+tık hariç tutar (kırmızı); tekrar tıklayınca kalkar. Menü düğmesi seçimi özetler.'),

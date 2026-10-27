@@ -7,6 +7,10 @@
  */
 const App = {
 
+  /** Oturumdaki rol: admin | operator | viewer (base.html .role-badge[data-role]).
+   *  Rozet METNİ çevrilir (TR/EN) — yetki kontrolünde asla metne bakmayın. */
+  role() { return document.querySelector('.role-badge')?.dataset.role || 'viewer'; },
+
   /** Çerezden değer oku (CSRF token için). */
   getCookie(name) {
     const m = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
@@ -210,11 +214,11 @@ const App = {
         '</div>'
       : '—';
 
-    const canEdit = document.querySelector('.role-badge')?.textContent.trim() !== 'Görüntüleyici';
+    const canEdit = App.role() !== 'viewer';
 
-    const agentMap = {running: ['Çalışıyor', 'text-bg-success'],
-                      stopped: ['Kurulu, durmuş', 'text-bg-warning text-dark'],
-                      none: ['Kurulu değil', 'text-bg-secondary']};
+    const agentMap = {running: [t('vd.agentRunning', 'Çalışıyor'), 'text-bg-success'],
+                      stopped: [t('vd.agentStopped', 'Kurulu, durmuş'), 'text-bg-warning text-dark'],
+                      none: [t('vd.agentNone', 'Kurulu değil'), 'text-bg-secondary']};
     const ab = agentMap[v.agent_state] || ['—', 'text-bg-light text-dark border'];
     const agentBadge = '<span class="badge ' + ab[1] + '">' + ab[0] + '</span>';
 
@@ -223,14 +227,14 @@ const App = {
       let c = 'text-bg-light text-dark border';
       if (a >= 30) c = 'text-bg-danger'; else if (a >= 14) c = 'text-bg-warning text-dark';
       else if (a >= 7) c = 'text-bg-info text-dark';
-      return ' <span class="badge ' + c + '">' + a + ' gün</span>';
+      return ' <span class="badge ' + c + '">' + a + ' ' + t('unit.day', 'gün') + '</span>';
     };
     const snapHtml = (v.snapshots && v.snapshots.length)
-      ? '<h6 class="mb-2 mt-1"><i class="bi bi-camera"></i> Snapshot\'lar (' + v.snapshots.length + ')</h6>' +
+      ? '<h6 class="mb-2 mt-1"><i class="bi bi-camera"></i> ' + t('vd.snapshots', 'Snapshot\'lar') + ' (' + v.snapshots.length + ')</h6>' +
         '<div class="mb-3 small">' + v.snapshots.map(s =>
           '<div class="d-flex justify-content-between align-items-center border-bottom py-1 gap-2">' +
           '<span>' + App.esc(s.name) +
-            (s.is_current ? ' <span class="badge text-bg-success">aktif</span>' : '') +
+            (s.is_current ? ' <span class="badge text-bg-success">' + t('vd.current', 'aktif') + '</span>' : '') +
             (s.parent ? ' <small class="text-muted">← ' + App.esc(s.parent) + '</small>' : '') + '</span>' +
           '<span class="text-muted text-nowrap">' + (s.created_at ? App.fmtDate(s.created_at) : '') +
             snapAge(s.age_days) + '</span></div>').join('') + '</div>'
@@ -242,41 +246,41 @@ const App = {
       '<div class="detail-grid">' +
       row('VM ID', App.esc(v.vmid)) +
       row(t('vm.ipAddresses', 'IP Adresleri'), App.ipHtml(v)) +
-      row('MAC Adresleri', App.esc(v.mac_addresses).split(',').join('<br>')) +
+      row(t('vd.mac', 'MAC Adresleri'), App.esc(v.mac_addresses).split(',').join('<br>')) +
       row(t('vm.dns','DNS Sunucuları'), App.esc(v.dns_servers).split(',').join('<br>')) +
-      row('İşletim Sistemi', App.esc(v.guest_os)) +
-      row('Çekirdek / Mimari',
+      row(t('vm.os', 'İşletim Sistemi'), App.esc(v.guest_os)) +
+      row(t('vd.kernelArch', 'Çekirdek / Mimari'),
           [App.esc(v.kernel), App.esc(v.arch)].filter(Boolean).join(' · ') || '—') +
       row('CPU', (v.cpu_count || '—') +
-          (v.cpu_usage_pct != null ? ' <small class="text-muted">(anlık %' +
+          (v.cpu_usage_pct != null ? ' <small class="text-muted">(' + t('vd.now', 'anlık') + ' %' +
            Math.round(v.cpu_usage_pct) + ')</small>' : '')) +
       row('RAM', App.fmtRam(v.ram_mb) +
-          (v.ram_usage_mb ? ' <small class="text-muted">(anlık ' +
+          (v.ram_usage_mb ? ' <small class="text-muted">(' + t('vd.now', 'anlık') + ' ' +
            App.fmtRam(v.ram_usage_mb) + ')</small>' : '')) +
-      row('Diskler', disks +
+      row(t('vd.disks', 'Diskler'), disks +
           (v.disk_used_gb ? '<div class="disk-used-note"><i class="bi bi-info-circle"></i> ' +
            t('vm.diskUsedTotal', 'Gerçek kullanım (VM geneli)') + ': ' +
            App.fmtGb(v.disk_used_gb) + '</div>' : '')) +
       row('Host', App.esc(v.host)) +
       row('Cluster', App.esc(v.cluster)) +
       row('Pool', App.esc(v.pool)) +
-      row('Klasör', App.esc(v.folder)) +
+      row(t('vm.folder', 'Klasör'), App.esc(v.folder)) +
       row('Datastore', App.esc(v.datastore)) +
       row('VLAN', App.esc(v.vlans)) +
-      row('Ağlar', App.esc(v.networks)) +
-      row('Oluşturulma', App.fmtDate(v.created_date)) +
-      row('Son Açılış', App.fmtDate(v.last_boot)) +
-      row('Çalışma Süresi', App.fmtUptime(v.last_boot)) +
+      row(t('vd.networks', 'Ağlar'), App.esc(v.networks)) +
+      row(t('vd.created', 'Oluşturulma'), App.fmtDate(v.created_date)) +
+      row(t('vd.lastBoot', 'Son Açılış'), App.fmtDate(v.last_boot)) +
+      row(t('vd.uptime', 'Çalışma Süresi'), App.fmtUptime(v.last_boot)) +
       row('Tools / Agent', agentBadge) +
-      row('Platform Notu', App.esc(v.guest_notes).split('\n').join('<br>')) +
+      row(t('vd.platformNote', 'Platform Notu'), App.esc(v.guest_notes).split('\n').join('<br>')) +
       row('Tags', v.platform_tags
         ? v.platform_tags.split(',').map(tg => tg.trim()).filter(Boolean).map(tg =>
             '<span class="badge bg-info-subtle text-info-emphasis border me-1">' + App.esc(tg) + '</span>').join('')
         : '—') +
-      row('Son Güncelleme', App.fmtDate(v.updated_at)) +
+      row(t('vd.updated', 'Son Güncelleme'), App.fmtDate(v.updated_at)) +
       '</div>' + snapHtml + '<hr>' +
-      '<h6 class="mb-3"><i class="bi bi-pencil-square"></i> Manuel Bilgiler</h6>' +
-      '<div class="mb-2"><label class="form-label small">Sahip</label>' +
+      '<h6 class="mb-3"><i class="bi bi-pencil-square"></i> ' + t('vd.manual', 'Manuel Bilgiler') + '</h6>' +
+      '<div class="mb-2"><label class="form-label small">' + t('vd.owner', 'Sahip') + '</label>' +
       '<input id="vmdOwner" class="form-control form-control-sm" value="' + App.esc(v.owner) + '"' + (canEdit ? '' : ' disabled') + '></div>' +
       '<div class="mb-2"><label class="form-label small">' + t('vm.ipManual', 'Elle IP') + '</label>' +
       '<input id="vmdIpManual" class="form-control form-control-sm" placeholder="10.0.0.5, 10.0.0.6" value="' +
@@ -285,19 +289,19 @@ const App = {
         ? t('vm.ipManualLocked', 'Platform bu VM için IP bildiriyor; elle IP gerekmez.')
         : t('vm.ipManualHint', 'Agent IP bildirmeyen VM\'ler için. Agent kurulup IP bildirdiğinde bu değer onun yerine geçer ve temizlenir.')) +
       '</div></div>' +
-      '<div class="mb-2"><label class="form-label small">Ortam</label>' +
+      '<div class="mb-2"><label class="form-label small">' + t('vm.env', 'Ortam') + '</label>' +
       '<select id="vmdEnv" class="form-select form-select-sm"' + (canEdit ? '' : ' disabled') + '>' +
       ['production', 'test', 'development'].map(e =>
         '<option value="' + e + '"' + (v.environment === e ? ' selected' : '') + '>' +
         e.charAt(0).toUpperCase() + e.slice(1) + '</option>').join('') + '</select></div>' +
-      '<div class="mb-2"><label class="form-label small">Etiketler (virgülle ayırın)</label>' +
+      '<div class="mb-2"><label class="form-label small">' + t('vd.tagsHint', 'Etiketler (virgülle ayırın)') + '</label>' +
       '<input id="vmdTags" class="form-control form-control-sm" value="' +
       App.esc(v.tags.map(tg => tg.name).join(', ')) + '"' + (canEdit ? '' : ' disabled') + '></div>' +
-      '<div class="mb-3"><label class="form-label small">Notlar</label>' +
+      '<div class="mb-3"><label class="form-label small">' + t('vd.notes', 'Notlar') + '</label>' +
       '<textarea id="vmdNotes" class="form-control form-control-sm" rows="3"' + (canEdit ? '' : ' disabled') + '>' +
       App.esc(v.notes) + '</textarea></div>' +
       (canEdit ? '<button class="btn btn-primary btn-sm" onclick="App.saveVmMeta()">' +
-                 '<i class="bi bi-check-lg"></i> Kaydet</button>' : '');
+                 '<i class="bi bi-check-lg"></i> ' + t('action.save', 'Kaydet') + '</button>' : '');
 
     bootstrap.Offcanvas.getOrCreateInstance(document.getElementById('vmDetail')).show();
   },
@@ -314,7 +318,7 @@ const App = {
     if (ipEl && !ipEl.disabled) payload.ip_manual = ipEl.value;   // locked when the platform has IPs
     try {
       await App.api('/api/vms/' + App._vmDetailId, {method: 'PATCH', body: payload});
-      App.toast('VM bilgileri güncellendi');
+      App.toast(t('vd.saved', 'VM bilgileri güncellendi'));
       const cb = App._vmDetailOnSaved;
       if (typeof cb === 'function') cb();
       App.vmDetail(App._vmDetailId, {onSaved: cb});   // show the normalized values

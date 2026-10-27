@@ -1,0 +1,518 @@
+<div align="center">
+
+# 🖥️ VM Inventory — VM Envanter Yönetim Sistemi
+
+**VMware vCenter ve Proxmox VE ortamlarınızı tek panelden izleyin**
+
+[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
+[![Arayüz](https://img.shields.io/badge/Aray%C3%BCz-T%C3%BCrk%C3%A7e%20%7C%20English-blue)](#)
+[![Lisans](https://img.shields.io/badge/Lisans-MIT-green)](LICENSE)
+
+*500+ VM ve 20+ host ölçeğinde milisaniye hızında arama — tüm veriler lokal cache'den, canlı API çağrısı yok.*
+
+[English](README.md) · **Türkçe**
+
+<img src="docs/screenshots/dashboard.png" alt="Dashboard" width="900">
+
+</div>
+
+---
+
+## 📑 İçindekiler
+
+- [Ne İşe Yarar?](#-ne-i̇şe-yarar)
+- [Ekran Görüntüleri](#-ekran-görüntüleri)
+- [Özellikler](#-özellikler)
+- [Mimari: Nasıl Çalışır?](#-mimari-nasıl-çalışır)
+- [Gereksinimler](#-gereksinimler)
+- [Kurulum (Adım Adım)](#-kurulum-adım-adım)
+- [İlk Yapılandırma](#-i̇lk-yapılandırma)
+- [Kullanım Kılavuzu](#-kullanım-kılavuzu)
+- [Değişiklik Geçmişi: Kim, Neyi, Ne Zaman?](#-değişiklik-geçmişi-kim-neyi-ne-zaman)
+- [Arama Söz Dizimi](#-arama-söz-dizimi)
+- [Roller ve Yetkiler](#-roller-ve-yetkiler)
+- [LDAP / Active Directory](#-ldap--active-directory-opsiyonel)
+- [Üretim Ortamı Notları](#-üretim-ortamı-notları)
+- [Sorun Giderme](#-sorun-giderme)
+- [Proje Yapısı](#-proje-yapısı)
+- [SSS](#-sss)
+
+---
+
+## 🎯 Ne İşe Yarar?
+
+Birden fazla **VMware vCenter** ve **Proxmox VE** ortamı işleten ekipler için merkezi envanter:
+
+> *"10.10.10.15 IP'li makine hangi host'ta?"* — *"VLAN 100'de kaç Windows sunucu var?"* — *"Geçen hafta hangi VM'lerin RAM'i değişti?"* — *"Agent kurulu olmayan VM'ler hangileri?"*
+
+Bu soruların hepsi tek arama kutusundan, saniyeden kısa sürede yanıtlanır. SSH erişimi veya misafir ajan dağıtımı **gerekmez** — yalnızca platformların resmî API'leri kullanılır.
+
+## 📸 Ekran Görüntüleri
+
+*Yerleşik demo envanterden (`tools/demo_data.py`) alınmıştır — tüm adlar ve adresler kurgudur. Görüntüler İngilizce arayüzdendir; arayüz Türkçe de kullanılabilir.*
+
+| | |
+|---|---|
+| <img src="docs/screenshots/vm-list.png" alt="Sanal makineler" width="440"><br>**Sanal Makineler** — sayılı, çoklu seçimli filtre menüleri, anlık kullanım çubukları | <img src="docs/screenshots/vm-detail.png" alt="VM detayı" width="440"><br>**VM detayı** — tek VM'in tüm bilgileri; sahip / etiket / not / elle IP |
+| <img src="docs/screenshots/search-help.png" alt="Arama söz dizimi" width="440"><br>**Arama söz dizimi** — `alan:değer` sorguları; her örnek tıklanabilir | <img src="docs/screenshots/change-history.png" alt="Değişiklik geçmişi" width="440"><br>**Değişiklik geçmişi** — eski → yeni ve *kim yaptı*, platformun kendi kaydından |
+| <img src="docs/screenshots/topology.png" alt="Topoloji" width="440"><br>**Topoloji** — platform → cluster → host → VM haritası | <img src="docs/screenshots/dashboard.png" alt="Dashboard" width="440"><br>**Dashboard** — kapasite öngörüsü, boşta (zombi) VM'ler, dikkat listesi |
+
+## ✨ Özellikler
+
+| | |
+|---|---|
+| 🔍 **Google benzeri arama** | `ip:` `os:` `vlan:` `cluster:` `ram:>=16` `-tag:test` `ip:yok` … kriterler birleştirilebilir |
+| 🎛️ **Gelişmiş filtre paneli** | Mevcut değerlerden (sayılarıyla) seçim, X'le kaldırılabilir filtre rozetleri, tıklanabilir tablo hücreleri |
+| 🏷️ **Çoklu seçimli hızlı filtreler** | Tek satırda Cluster / Durum / Platform / OS / Eksikler / Kullanım menüleri; seçeneklerde VM sayısı, aynı menüdekiler VEYA, menüler arası VE, ⊘ veya Shift+tık hariç tutar; düğme seçimi özetler |
+| 🔖 **Kayıtlı aramalar** | Sık kullanılan sorgu + sıralama hesaba kaydedilir, her cihazdan tek tıkla açılır |
+| 📊 **Detaylı dashboard** | Kaynak toplamları, OS/ortam/cluster dağılımları, host CPU-RAM grafikleri, depolama, "dikkat gerektirenler" |
+| 🔗 **Çoklu platform** | Sınırsız sayıda vCenter + Proxmox (QEMU VM **ve LXC konteyner**) aynı envanterde |
+| 📄 **Raporlama** | Filtrelenmiş Excel / CSV / PDF; her gün otomatik üretilen zamanlanmış raporlar |
+| 🕵️ **Değişiklik takibi + "kim yaptı"** | Her senkronizasyonda fark analizi: ne, ne zaman, neyden neye (eski→yeni) değişti **ve kim yaptı**. Kategorilere ayrılır (Donanım/Disk/Ağ/Güç/Göç/Yaşam Döngüsü); kaynak (platform/cluster/host/VM ID), işlem tipi ve kullanıcı gösterilir. "Kim" bilgisi platformun kendi görev/olay kaydından gelir (vCenter olayları, Proxmox görev + cluster log) |
+| 🔀 **Canlı göç & yaşam döngüsü** | vMotion / Proxmox göç **hangi host'tan hangi host'a** + kullanıcı; VM oluşturma, **klonlama**, silme, şablona dönüştürme ayrı kategoride izlenir |
+| 🖥️ **Konsol erişimi denetimi** *(opsiyonel)* | VM konsoluna (noVNC/SPICE/MKS) erişen kullanıcılar — Yönetim'den açılır (varsayılan kapalı), 30 dk pencereyle toplanır |
+| 👁️ **Cluster göster/gizle** | Eski/test cluster'ları — standalone host'lardaki "(Cluster'sız)" VM'ler dahil — dashboard sayılarından tek anahtarla çıkarın; veri silinmez |
+| ⚡ **Anlık kullanım oranları** | VM ve host CPU/RAM kullanımı + gerçek disk doluluğu (thin-provision farkındalıklı); hafif görevle ~3 dk'da bir ve her açılışta tazelenir |
+| 🐧 **Tam OS sürümü** | VMware'de ayrıntılı misafir OS verisi (ör. *"Ubuntu 24.04.1 LTS"*) — vSphere 8.0 U2+ ve VMware Tools 11.2+ ile; Proxmox'ta QEMU Guest Agent ile |
+| 🆔 **VM ID & çalışma süresi** | VM ID (Proxmox sayısal / VMware MoRef) ve host+VM **uptime** kolonları; host'larda CPU/RAM/Disk kullanım çubukları |
+| 🖧 **Host detayı & sıralama** | Host tablosunda tüm kolonlar tıklanabilir sıralanır (metin/sayı/IP/durum); VM sayısına tıklayınca host'un VM listesi açılır, oradan VM detayı **aynı sayfada** görüntülenir |
+| 🏢 **Fiziksel envanter** | Sanallaştırma dışı donanım (fiziksel sunucu, storage, SAN switch, yedekleme ünitesi) elle girilir; lokasyon / yönetim IP / iLO-BMC IP / marka / model / seri no / rol. Sanallaştırma host'ları buraya otomatik akar, elle eklenen alanlar senkronizasyonda korunur |
+| 💽 **Disk disk görünürlük** | Çok diskli VM'lerde her diskin boyutu ayrı listelenir; export'ta ayrı "Diskler" sayfası. *(Kullanım oranı platformlarda yalnız VM geneli verilir — disk başına değil; arayüzde böyle etiketlidir)* |
+| ⏱️ **Göç-farkında uptime** | Proxmox'un uptime sayacı canlı göçte sıfırlanır (bugzilla #499). Gerçek misafir uptime'ı mümkünse QEMU ajanından okunur, değilse göç boyunca boot zamanı taşınır — gerçek yeniden başlatmada sıfırlanır |
+| 🗂️ **Pool / klasör / etiket** | vCenter resource pool & klasör, Proxmox pool; platform etiketleri (vCenter REST tag / Proxmox tags) — hepsi aranır, filtrelenir ve gösterilir |
+| 🧰 **Kolon seçici** | VM listesinde görünür kolonları tek menüden seçme (tercih tarayıcıda hatırlanır) |
+| 👥 **Rol bazlı yetki** | Admin / Operatör / Görüntüleyici + opsiyonel LDAP/AD girişi |
+| 🏷️ **Manuel zenginleştirme** | VM'lere not, sahip, ortam ve etiket atama; ayrıca platformdan gelen açıklama (vCenter annotation / Proxmox description) "Platform Notu" olarak gösterilir |
+| 🔐 **Güvenlik** | Fernet ile şifreli kimlik bilgisi saklama, bcrypt, CSRF koruması, kayan oturum (son hareketten itibaren zaman aşımı), audit log |
+| 🌐 **İki dilli arayüz** | Türkçe ve İngilizce (üst çubuktan geçiş); kod yorumları, loglar ve release notları İngilizce. CDN'siz, internetsiz çalışır |
+
+## 🏗 Mimari: Nasıl Çalışır?
+
+```
+┌─────────────┐   zamanlanmış görevler     ┌──────────────────┐
+│  vCenter(s) │◄──────(APScheduler)────────┤                  │
+└─────────────┘     15 dk'da bir,          │     FastAPI      │
+┌─────────────┐     pyVmomi/proxmoxer      │   + SQLAlchemy   │──► PostgreSQL
+│ Proxmox(es) │◄───────────────────────────┤                  │    (lokal cache)
+└─────────────┘                            └────────┬─────────┘
+                                                    │  tüm aramalar lokal DB'den
+                                             ┌──────▼─────────┐
+                                             │  Bootstrap 5   │
+                                             │  + Chart.js    │
+                                             └────────────────┘
+```
+
+**Temel ilke:** Kullanıcı aramaları **asla** vCenter/Proxmox'a gitmez.
+
+1. **Toplayıcı** — Arka plandaki zamanlayıcı her 15 dakikada (ayarlanabilir) tüm platformlara bağlanır. vCenter'da `ContainerView` ile tek seferde toplu okuma, Proxmox'ta tek `cluster/resources` çağrısı yapılır — host/VM başına ayrı istek atılmaz.
+2. **Cache** — VM adı, IP, MAC, OS, CPU/RAM/disk, VLAN, cluster, güç durumu, Tools/Agent durumu… hepsi indeksli tablolara yazılır. Önceki kayıtla fark varsa **Değişiklik Geçmişi**'ne işlenir.
+3. **Arayüz** — Aramalar, raporlar ve grafikler lokal veritabanından sunulur; 500+ VM'de dahi anlık yanıt verir. "Tümünü Yenile" butonu acil durumda anında senkronizasyon tetikler.
+
+## 📋 Gereksinimler
+
+| Bileşen | Gereksinim |
+|---|---|
+| Sunucu | Linux (Ubuntu 22.04+ önerilir), 2 vCPU / 2 GB RAM yeterli |
+| Yazılım | Docker + Docker Compose **veya** Python 3.11+ |
+| Ağ | Sunucudan vCenter'a `443/tcp`, Proxmox'a `8006/tcp` erişimi |
+| vCenter | 6.7+ (8.x test edildi) — salt-okunur hesap yeterli |
+| Proxmox | 7.x / 8.x — API token; temel envanter için `PVEAuditor` yeterli. **"Kim yaptı" / yedek içeriği** için ek yetki: `Sys.Syslog` + `Datastore.Audit` (aşağıda) |
+| Misafirler | IP/OS detayı için: VMware Tools veya QEMU Guest Agent *(opsiyonel)* |
+
+## 🚀 Kurulum (Adım Adım)
+
+### Yöntem A — Docker Compose (önerilen)
+
+**1. Projeyi indirin**
+
+```bash
+git clone https://github.com/fatihdagdelenn/vm-inventory.git
+cd vm-inventory
+```
+
+**2. Ortam dosyasını oluşturun**
+
+```bash
+cp .env.example .env
+```
+
+**3. Güvenlik anahtarlarını üretin** ve `.env` içine yapıştırın:
+
+```bash
+# ENCRYPTION_KEY için (platform parolalarını şifreler):
+python3 -c "import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())"
+
+# SECRET_KEY için (oturum çerezlerini imzalar):
+python3 -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+`.env` dosyanız şöyle görünmeli:
+
+```ini
+SECRET_KEY=ürettiğiniz-secret-key
+ENCRYPTION_KEY=ürettiğiniz-fernet-anahtarı
+SYNC_INTERVAL_MINUTES=15
+USAGE_SYNC_INTERVAL_MINUTES=3
+SESSION_TIMEOUT_MINUTES=480
+APP_TIMEZONE=Europe/Istanbul
+```
+
+> ⚠️ **ENCRYPTION_KEY'i yedekleyin!** Bu anahtar kaybedilirse kayıtlı platform parolaları/token'ları çözülemez ve yeniden girilmesi gerekir.
+
+**4. (İsteğe bağlı) Portu değiştirin** — `docker-compose.yml` içinde:
+
+```yaml
+    ports:
+      - "18443:8000"     # dış port : konteyner portu (sadece soldakini değiştirin)
+```
+
+**5. Başlatın**
+
+```bash
+docker compose up -d --build
+```
+
+İlk build 2-3 dakika sürer. Durumu izlemek için: `docker compose logs -f app`
+
+**6. Giriş yapın** — Tarayıcıda `http://sunucu-adresi:18443` (veya seçtiğiniz port)
+
+> 🔑 Varsayılan giriş: **admin / admin123**
+
+### Yöntem B — Manuel Kurulum (Docker'sız)
+
+```bash
+# Python 3.11+ ve venv gerekir (sistem paketleriyle çakışmayı önler)
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+
+cp .env.example .env          # anahtarları yukarıdaki gibi üretin
+# Küçük kurulumlar için SQLite yeterli; .env içinde:
+#   DATABASE_URL=sqlite:///./data/vminventory.db
+mkdir -p data/reports
+
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+PostgreSQL kullanacaksanız önce veritabanını hazırlayın:
+
+```sql
+CREATE USER vminv WITH PASSWORD 'guclu_parola';
+CREATE DATABASE vminventory OWNER vminv;
+```
+
+ve `.env`'de: `DATABASE_URL=postgresql+psycopg2://vminv:guclu_parola@localhost:5432/vminventory`
+
+Tablolar ilk açılışta otomatik oluşturulur, migration gerekmez.
+
+### Sadece göz atmak mı istiyorsunuz?
+
+Ekran görüntülerindeki kurgusal demo envanteri geçici bir SQLite dosyasına yükleyin:
+
+```bash
+DATABASE_URL=sqlite:///./data/demo.db SECRET_KEY=demo ENCRYPTION_KEY=demo python3 tools/demo_data.py
+DATABASE_URL=sqlite:///./data/demo.db SECRET_KEY=demo ENCRYPTION_KEY=demo uvicorn app.main:app --port 8000
+```
+
+(Betik SQLite dışında bir veritabanına yazmayı reddeder; gerçek veritabanına dokunamaz.)
+
+## ⚙️ İlk Yapılandırma
+
+### Adım 1 — Admin parolasını değiştirin
+
+**Yönetim → Kullanıcılar** sekmesinden `admin` kullanıcısını düzenleyip yeni parola verin.
+
+### Adım 2 — vCenter ekleyin
+
+Önce vCenter tarafında salt-okunur servis hesabı açın *(önerilen — kişisel hesap kullanmayın)*:
+
+1. vSphere Client → **Administration → Users and Groups** → yeni kullanıcı: `svc-envanter@vsphere.local`
+2. **Administration → Global Permissions** → bu kullanıcıya **Read-only** rolü verin, *"Propagate to children"* işaretli olsun
+
+Sonra envanter arayüzünde **Platformlar → Platform Ekle**:
+
+| Alan | Değer |
+|---|---|
+| Tip | VMware vCenter |
+| API Adresi | `vcenter.sirket.local` veya IP — **https:// ve port olmadan** |
+| Port | `443` |
+| Kullanıcı / Parola | servis hesabı bilgileri |
+| SSL doğrula | self-signed sertifikada **kapalı** |
+
+**Bağlantıyı Test Et** → başarılıysa **Kaydet**.
+
+### Adım 3 — Proxmox ekleyin
+
+Proxmox node'unda (SSH veya web Shell) API token üretin:
+
+```bash
+pveum user add svc-envanter@pve --comment "Envanter servis hesabı"
+pveum acl modify / --users svc-envanter@pve --roles PVEAuditor
+pveum user token add svc-envanter@pve envanter --privsep 0
+```
+
+> ⚠️ Son komutun çıktısındaki **`value`** satırını hemen kaydedin — bir daha gösterilmez!
+
+
+> ⚠️ `--privsep 0` zorunludur; verilmezse token VM'leri göremez (sadece node adları gelir).
+
+**(Önerilen) "Kim yaptı" ve yedek içeriği için ek yetkiler.** `PVEAuditor` içinde `Sys.Audit`
+ve `VM.Audit` vardır (görev kaydını ve VM'leri okur), ama **`Sys.Syslog` ve `Datastore.Audit`
+yoktur** ve PVEAuditor yerleşik rol olduğundan düzenlenemez. Bunları ayrı küçük bir rolle ekleyin:
+
+```bash
+# Sys.Syslog = config (RAM/CPU/ağ) değişikliklerinin KULLANICISI cluster log'dan okunur.
+# Datastore.Audit = yedek (backup) içeriği listelenir.
+pveum role add EnvanterEk -privs "Sys.Syslog Datastore.Audit"
+pveum acl modify / --users svc-envanter@pve --roles EnvanterEk
+# Token ayrıcalık ayrımı (privsep) AÇIKSA aynı ACL'yi token'a da verin:
+pveum acl modify / --tokens 'svc-envanter@pve!envanter' --roles EnvanterEk
+```
+
+> ℹ️ Bu ek yetki olmadan envanter çalışır; yalnızca Değişiklik Geçmişi'nde **config
+> değişikliklerinin "Kullanıcı" sütunu boş ("—")** kalır ve yedek içerik dökümü gelmez.
+> vCenter tarafında "kim yaptı" için ek bir şey gerekmez (**Read-only / System.View** yeterli).
+
+Arayüzde **Platformlar → Platform Ekle**:
+
+| Alan | Değer |
+|---|---|
+| Tip | Proxmox VE |
+| API Adresi | herhangi bir node'un adresi (cluster verisi tek node'dan gelir) |
+| Port | `8006` |
+| Kimlik doğrulama | **API Token** |
+| Token adı | `svc-envanter@pve!envanter` |
+| Token değeri | kaydettiğiniz `value` |
+
+### Adım 4 — İlk senkronizasyon
+
+Platform kartındaki **"Senkronize Et"** butonuna basın. Arka planda çalışır, arayüz kilitlenmez; ortam büyüklüğüne göre 1-5 dakika sürer. Tamamlanınca Dashboard ve VM listesi dolar. Sonrası otomatiktir (15 dk'da bir).
+
+### Adım 5 — (Önerilen) Misafir ajanlarını kontrol edin
+
+Dashboard'daki **"Dikkat Gerektirenler"** kartından *"Agent/Tools kurulu olmayan"* listesine bakın. Bu VM'lerin IP'si ve gerçek OS adı alınamaz:
+
+- **vCenter VM'leri** → VMware Tools / open-vm-tools kurun
+- **Proxmox VM'leri** → `apt install qemu-guest-agent` + VM Options'ta *QEMU Guest Agent: Enabled* + VM'i yeniden başlatın
+
+## 📖 Kullanım Kılavuzu
+
+| Ekran | Ne yapılır? |
+|---|---|
+| **Dashboard** | Genel durum: sayılar, kaynak toplamları, grafikler (dilime tıklayınca filtreli liste açılır), son değişiklikler, platform sağlığı. Cluster görünürlüğü üst çubuktaki **Cluster'lar** düğmesinden (veya cluster grafiğindeki **Yönet**'ten) yönetilir. **En Çok CPU / RAM / Disk Kullanan VM** kartlarında bar üzerine gelince VM'in IP'si ve bağlı olduğu host görünür; bara tıklayınca Sanal Makineler listesi çalışan VM'lerle, **aynı metriğe göre büyükten küçüğe sıralı** açılır ve tıklanan VM vurgulanır |
+| **Sanal Makineler** | Arama + gelişmiş filtre + gruplama. CPU/RAM/disk kolonlarında anlık kullanım çubukları (sarı %75+, kırmızı %90+); ayrıca VM ID, Pool, Klasör, Tags ve Uptime kolonları. **Kolonlar** menüsünden görünür sütunları seçebilirsiniz (tercih tarayıcıda saklanır). Satıra tıklayınca detay paneli; not/sahip/etiket buradan düzenlenir. Host/cluster/VLAN/pool/klasör hücreleri tıklanabilir filtredir |
+| **Host'lar** | ESXi/PVE node'ları tek tabloda: Host adı, Yönetim IP, OS/hipervizör sürümü, CPU modeli, çekirdek sayısı, CPU/RAM/Disk kullanım çubukları, cluster, VM sayısı, çalışma süresi (uptime) ve durum. **Tüm sütun başlıkları tıklanabilir** — metin (A-Z), sayısal, IP ve durum bazlı sıralama. **VM sayısına tıklayınca** o host'taki VM'leri (ad, IP, güç durumu, anlık CPU/RAM) listeleyen bir pencere açılır; listedeki bir VM'e tıklayınca **aynı sayfada** VM detay paneli açılır (Sanal Makineler ekranındaki panelle aynı) |
+| **Datastore'lar** | Depolama alanları: kapasite, doluluk, tip, bağlı host'lar, çözümlenmiş cluster'lar. Kart / tip / node / tablo görünümleri; **yerel diskleri gizle** filtresi (paylaşımlı kapasiteyi ayrı görmek için), çok-cluster'lı paylaşımlı depolarda **kapasite çakışma uyarısı**, kart üzerinde son yedek yaşı rozeti |
+| **Snapshot'lar** | Tüm snapshot'lar tek listede: VM, ad, açıklama, yaş, boyut. Uzun süredir duran snapshot'ları bulmak için yaş sıralaması; gizli cluster'lar listeden düşer |
+| **Yedekler** | Proxmox / PBS yedekleri: VM başına arşivler, depo, boyut, yaş. İzin veya yapılandırma eksikse **sebebini söyleyen tanılama notu** verir (sessiz boş liste yok). *vCenter'ın yedek API'si olmadığı için bu ekran yalnız Proxmox içindir* |
+| **Ağlar** | Port group / bridge / SDN vnet ve host fiziksel kartları (NIC). Açılır-kapanır gruplama: Host'a göre, Cluster'a göre, VLAN'a göre veya Fiziksel Kartlar; ad/VLAN/vSwitch/subnet/MAC araması |
+| **Topoloji** | Cytoscape tabanlı canlı harita: platform → cluster → host → VM katmanları, katman filtreleri, sürüklenen düğüm konumları hesapta saklanır, VM erişim kabloları (yeşil/kırmızı) |
+| **Fiziksel Envanter** | Sanallaştırma dışındaki donanım: fiziksel sunucu, storage, SAN switch, yedekleme ünitesi. Lokasyon, yönetim IP, iLO/BMC IP, marka, model, seri no, CPU, RAM, rol, durum. **Cihaz tipi zorunludur** ve alanlar tipe göre değişir (storage/SAN switch'te CPU/RAM sorulmaz). Sanallaştırma host'ları buraya **salt-okunur** olarak akar; onlara iLO/lokasyon/seri no/rol gibi alanları siz eklersiniz, senkronizasyon bu eklemeleri ezmez. Yanlış gelen marka/model elle düzeltilebilir |
+| **Raporlar** | Anlık Excel/CSV/PDF (filtre destekler) + her gün belirli saatte çalışan zamanlanmış raporlar (`data/reports/` klasörüne yazılır). Kapsam seçilir: **VM / Host / Datastore / Fiziksel / Tüm Envanter**. VM export'unda tahsis **ve** kullanım kolonları (CPU/RAM/disk), Pool, Çalışma Süresi; çok diskli VM'ler için ayrı **"Diskler"** sayfası (disk başına bir satır) |
+| **Geçmiş** | Envanter değişiklikleri: eklenen/silinen/klonlanan/göç eden VM'ler, alan bazında **eski→yeni** değerler, **kategori** (Donanım/Disk/Ağ/Güç/Göç/Yaşam Döngüsü), **kaynak** (platform/cluster/host/VM ID) ve **kim yaptı** (kullanıcı). Kategori ve varlık türüne göre filtrelenir. Ayrıntı için aşağıdaki "[Değişiklik Geçmişi: Kim, Neyi, Ne Zaman?](#-değişiklik-geçmişi-kim-neyi-ne-zaman)" bölümüne bakın |
+| **Platformlar** | Bağlantı yönetimi, manuel senkronizasyon, API hata logları |
+| **Yönetim** *(admin)* | Kullanıcı CRUD + audit log (kim, ne zaman, ne yaptı) + **Senkronizasyon** sekmesi: tam ve kullanım senkron aralıklarını (1–1440 dk) arayüzden ayarlama (anında yeniden zamanlanır, restart gerekmez), **konsol erişimi takibi** anahtarı ve **konsol geçmişini temizle** |
+
+## 🕵️ Değişiklik Geçmişi: Kim, Neyi, Ne Zaman?
+
+Her senkronizasyonda envanterin önceki haliyle farkı alınır ve **Geçmiş** ekranına işlenir.
+Her satırda şunlar bulunur:
+
+| Sütun | İçerik |
+|---|---|
+| **Tarih** | Değişikliğin tespit edildiği zaman |
+| **Kaynak** | Platform (vCenter/Proxmox) · Cluster · Host/Node · VM ID |
+| **Varlık** | VM veya host adı |
+| **Kategori** | Donanım (vCPU/RAM) · Disk · Ağ · Güç · Göç · Yaşam Döngüsü · İşletim Sistemi · Konsol |
+| **İşlem** | Eklendi / Güncellendi / Silindi / Göç / Erişim + ham platform işlemi (ör. `qmclone`, `VmReconfiguredEvent`) |
+| **Alan / Değer** | Değişen alan ve **eski → yeni** (ör. RAM `8 GB → 16 GB`, Host `esx01 → esx02`) |
+| **Kullanıcı** | İşlemi platformda yapan kişi |
+
+İzlenen değişiklikler: **Donanım** (vCPU, RAM, OS tipi), **Disk & Depolama** (boyut, datastore),
+**Ağ** (köprü/portgrup, VLAN, MAC, NIC), **Güç** (aç/kapa/askıya al/yeniden başlat),
+**Yaşam Döngüsü** (oluşturma, klonlama, silme, şablon), **Göç** (canlı göç — kaynak→hedef host).
+
+**"Kim yaptı" nereden gelir?** Uygulamanın kendi kullanıcısı değil — **platformun kendi
+görev/olay kaydından**:
+- **vCenter:** Olay Yöneticisi (`eventManager`) olayları — yeniden yapılandırma, göç, güç, oluşturma vb.
+- **Proxmox:** node görev kayıtları (`/nodes/{node}/tasks`) + cluster log (`/cluster/log`).
+  Config değişiklikleri (RAM/CPU/ağ) Proxmox'ta görev üretmediğinden kullanıcıları **yalnızca
+  cluster log'dan** okunur → token rolünde **`Sys.Syslog`** gerekir (kurulum Adım 3'e bakın).
+
+**Doğru kişi ataması:** Her alan değişimi yalnızca **uygun kategorideki** işlemle eşlenir
+(ör. RAM değişimi yalnız "config" işlemiyle, güç değişimi yalnız "power" işlemiyle). Eşleşen
+işlem yoksa kullanıcı boş bırakılır — **yanlış kişi yazılmaz**.
+
+**Konsol erişimi** *(opsiyonel, varsayılan kapalı)* — Yönetim → Senkronizasyon'dan açılır.
+VM konsoluna erişen kullanıcılar ayrı "Erişim" satırı olarak, 30 dk'lık pencerelerle toplanarak
+yazılır. Mevcut konsol kayıtları aynı ekrandaki butonla toplu silinebilir.
+
+> **Dürüst sınırlar:**
+> - İşlemi yapanın **istemci IP / User-Agent** bilgisi vCenter olaylarında ve Proxmox görev/log
+>   kayıtlarında **bulunmaz** → bu kolonlar altyapı değişikliklerinde çoğunlukla boştur.
+>   (Uygulama-içi işlemler için IP/UA'lı ayrı **Audit Log** vardır — Yönetim ekranı.)
+> - "Kim yaptı" düzeltmesinden **önce** kaydedilmiş eski satırlarda kullanıcı `—` kalır;
+>   yalnızca yeni değişiklikler zenginleşir.
+> - Yakalama gecikmesi = tam senkronizasyon aralığı kadardır (Yönetim → Senkronizasyon).
+
+## 🔍 Arama Söz Dizimi
+
+| Sözdizimi | Örnek | Açıklama |
+|---|---|---|
+| serbest metin | `web01` | Ad, VM ID, IP (elle girilen dahil), MAC, OS, cluster, VLAN, ağ, pool, klasör, sahip, notlar, platform notu ve platform etiketlerinde arar (etiket ve host için `tag:` / `host:`) |
+| `name:` / `vm:` | `name:web` | VM adı |
+| `vmid:` / `id:` | `vmid:100` | VM ID (Proxmox sayısal / VMware MoRef) |
+| `ip:` | `ip:10.10.10.` | IP'ye göre (kısmi eşleşir); elle girilen IP'leri de bulur |
+| `manuelip:` | `manuelip:var` `-manuelip:var` | Elle IP girilmiş VM'ler (agent IP bildirmiyor) |
+| `mac:` / `vlan:` / `network:` | `vlan:100` | MAC, VLAN (kısmi: `vlan:10` 100'ü de bulur), bağlı ağ/portgroup/köprü |
+| `os:` | `os:linux` | OS adı; `linux`/`windows` tüm dağıtım ve sürümleri bulur |
+| `osfam:` | `osfam:windows,linux` `osfam:redhat` | OS ailesi (dashboard pastasıyla aynı): `windows` `linux` `ubuntu` `debian` `redhat` `suse` `otherlinux` `bsd` `vmware` `macos` `other` |
+| `status:` | `status:running,stopped` | running / stopped / suspended (TR: `çalışan`, `kapalı`, `askıda`) |
+| `tools:` / `agent:` | `tools:yok` | `running` = çalışıyor; `yok` = kurulu değil veya çalışmıyor |
+| `host:` / `node:` | `host:esx01` | Bağlı ESXi host / Proxmox node |
+| `cluster:` / `datastore:` | `cluster:"Ankara Prod"` `cluster:=Lab` | Boşluklu değerler tırnaklanır; `=` ile başlayan değer tam eşleşir (`cluster:=Lab`, Lab2'yi bulmaz); yalnız `=` boş değer demektir (`cluster:=` cluster'sız VM'ler, `cluster:=,=Lab` ikisi birden). Sorguda `cluster:` varsa gizli cluster'lar da aranır |
+| `pool:` / `havuz:` | `pool:Prod` | Resource pool (vCenter) / pool (Proxmox) |
+| `folder:` / `klasor:` | `folder:Web` | VM klasörü (vCenter); Proxmox'ta yok |
+| `platform:` / `type:` / `location:` | `type:proxmox` | Platform adı / tipi (`vcenter`, `proxmox`) / lokasyonu |
+| `env:` / `owner:` / `tag:` / `notes:` | `tag:kritik` | Manuel alanlar (ortam, sahip, etiket, not) |
+| `aciklama:` / `desc:` | `aciklama:bakım` | Platform notu (vCenter annotation / Proxmox description) |
+| `ptag:` / `petiket:` | `ptag:kritik` | Platform etiketleri (vCenter REST tag / Proxmox tags) |
+| **Sayısal** | `ram:>=16` `cpu:>4` `disk:<100` | `> >= < <= =`; RAM/disk GB. İşaretsiz sayı tam eşitlik |
+| **Anlık kullanım %** | `cpuuse:>=80` `ramuse:>90` `diskuse:>=85` | Son ölçüm; ölçümü olmayan (kapalı / agent'sız disk) VM eşleşmez |
+| **Dışlama** | `-osfam:windows` | Önüne `-` (veya `!`) koyulan dışlanır |
+| **VEYA** | `status:running,stopped` | Aynı alanda virgülle çoklu değer (sayısal ve `yok` değerlerinde değil) |
+| **Boş / dolu** | `owner:yok` · `-owner:yok` | Alanı boş olanlar / dolu olanlar (`ip:yok`: ne platform ne elle IP var) |
+
+Birleştirme örneği: `type:proxmox status:running osfam:linux ram:>=16 -tag:test`
+
+Arama kutusundaki **?** butonu bu bilgileri arayüzde, **tıklanınca uygulanan örneklerle** gösterir. **Hızlı filtre menüleri** aynı sözdizimini üretir: aynı menüdeki seçimler tek token'da virgülle birleşir (VEYA), ⊘ / Shift+tık `-` ile hariç tutar. Kolonlar ve dışa aktarma tablonun başlığındadır. **Yer imi** simgesi aramayı (sıralamasıyla) hesaba kaydeder. `/` tuşu arama kutusuna odaklanır. Sorgu adres çubuğuna yansır — linki kopyalayıp paylaşabilirsiniz. Varsayılan dışı sıralama da linke girer (`&sort=…&order=desc`); sütun başlığı olmayan kullanım sıralamaları (`cpu_usage`, `ram_usage`, `disk_usage`) bir **Sıralama** rozetiyle görünür, X ile kaldırılır.
+
+## 👥 Roller ve Yetkiler
+
+| Rol | Yetkiler |
+|---|---|
+| **Görüntüleyici** | Tüm ekranları ve raporları görüntüleme |
+| **Operatör** | + Not/sahip/etiket/elle IP düzenleme, manuel senkronizasyon, zamanlanmış rapor |
+| **Admin** | + Platform yönetimi, kullanıcı yönetimi, audit log |
+
+## 🔗 LDAP / Active Directory (opsiyonel)
+
+`.env` dosyasına:
+
+```ini
+LDAP_ENABLED=true
+LDAP_SERVER=ldap://dc01.sirket.local
+LDAP_USER_DN_TEMPLATE={username}@sirket.local
+LDAP_DEFAULT_ROLE=viewer
+```
+
+LDAP kullanıcıları ilk girişte otomatik oluşturulur (varsayılan rol: viewer); rolleri Yönetim ekranından yükseltilir. Lokal `admin` hesabı LDAP'tan bağımsız çalışmaya devam eder.
+
+## 🏭 Üretim Ortamı Notları
+
+**HTTPS** — Uygulamanın önüne reverse proxy koyun (nginx örneği):
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name envanter.sirket.local;
+    ssl_certificate     /etc/ssl/certs/envanter.crt;
+    ssl_certificate_key /etc/ssl/private/envanter.key;
+    location / {
+        proxy_pass http://127.0.0.1:18443;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+}
+```
+
+**Yedekleme** — İki şey yeterli: PostgreSQL veritabanı (`docker compose exec db pg_dump -U vminv vminventory > yedek.sql`) ve `.env` dosyası (özellikle `ENCRYPTION_KEY`).
+
+**Güncelleme** — Yeni sürümü açın, ardından `docker compose up -d --build`; tarayıcıda Ctrl+F5. Veriler volume'lerde korunur.
+
+**Diğer** — `docker-compose.yml` içindeki PostgreSQL parolasını değiştirin; senkronizasyon aralığını ortamınıza göre ayarlayın (`SYNC_INTERVAL_MINUTES`); güvenlik duvarında yalnızca seçtiğiniz portu açın.
+
+## 🔧 Sorun Giderme
+
+| Belirti | Çözüm |
+|---|---|
+| `Name or service not known` | API adresini `https://` ve port **olmadan** yazın. Hostname konteynerden çözülemiyorsa IP kullanın veya compose'a `extra_hosts` ekleyin |
+| `CERTIFICATE_VERIFY_FAILED` | Self-signed sertifika: platformda "SSL doğrula" anahtarını kapatın |
+| Proxmox sadece host adları geliyor, VM yok | Token `--privsep 0` ile üretilmemiş. Çözüm: `pveum acl modify / --tokens 'kullanici@realm!tokenadi' --roles PVEAuditor` |
+| `pveum user token list` çalışmıyor | Komuta yalnızca kullanıcıyı verin: `pveum user token list kullanici@realm` (`!tokenadi` kısmı yazılmaz) |
+| Geçmiş'te **config değişiminde "Kullanıcı" boş ("—")** | Proxmox config (RAM/CPU/ağ) değişiklikleri görev üretmez; kullanıcı cluster log'dan gelir → token rolüne **`Sys.Syslog`** ekleyin (Kurulum Adım 3). Logda doğrulama: `docker compose logs --since 30m \| grep "Cluster log came back EMPTY"` — bu satır çıkıyorsa yetki eksiktir |
+| Geçmiş'te **göç/klon kullanıcısı boş** | İlgili görev penceresinden düşmüş ya da çok eski olabilir. Logda teşhis: `docker compose logs \| grep -iE "actor not found"` |
+| Geçmiş'te **istemci IP / User-Agent boş** | Beklenen davranış — vCenter/Proxmox altyapı kayıtları operatör IP/UA'sı tutmaz. IP/UA'lı denetim için uygulama-içi **Audit Log**'a (Yönetim) bakın |
+| **Konsol erişimi satırları çok fazla** | Yönetim → Senkronizasyon'dan "Konsol erişimi takibi"ni kapatın (varsayılan kapalı) ve "Mevcut konsol geçmişini temizle"yi kullanın |
+| **Değişiklikler geç/eksik geliyor** | Yakalama gecikmesi = tam senkron aralığı. Yönetim → Senkronizasyon'dan aralığı düşürün (3–5 dk önerilir); "Tümünü Yenile" anında tetikler |
+| VM IP'leri boş | Misafirde QEMU Guest Agent / VMware Tools kurulu ve çalışır olmalı. `ip:yok` aramasıyla eksikleri listeleyin. Agent kurulamıyorsa (özel/kapalı OS) VM detayındaki **Elle IP** alanına yazın — listede "elle" rozetiyle görünür, aramada ve raporlarda yer alır; agent sonradan IP bildirirse onun yerine geçer |
+| OS "Linux (2.6+ çekirdek)" görünüyor | O VM'de agent yok — Proxmox yalnızca kaba OS tipini bilir. Agent kurulunca tam ad gelir ("Ubuntu 22.04.3 LTS" gibi) |
+| Platform kartında "Hata" | Karttaki **Loglar** butonu API hatasının tam mesajını gösterir |
+| Cluster "(Cluster'sız)" / "—" görünüyor | Cluster'a bağlı olmayan (standalone ESXi host) VM'lerdir. Üst çubuktaki **Cluster'lar** → **(Cluster'sız)** → **Ad ver** ile bu host'lara cluster adı verin ya da grubu orada gizleyin; `cluster:=` aramasıyla listelenir |
+| Kullanım çubukları boş | Veri açılıştan ~30 sn sonra ve her `USAGE_SYNC_INTERVAL_MINUTES` aralığında dolar. Kapalı VM'lerde çubuk çizilmez (anlık kullanım yoktur) |
+| Güncelleme sonrası arayüz eski görünüyor | Statik dosyalar otomatik sürümlenir; sorun sürerse bir kez Ctrl+F5 yapın |
+| `ENCRYPTION_KEY` hatası | `.env`'de geçerli bir Fernet anahtarı olmalı (üretme komutu yukarıda) |
+| cryptography ImportError (host'ta) | Sistem paketi bozuk; anahtar üretiminde `base64+os.urandom` komutunu kullanın veya venv açın |
+
+## 📂 Proje Yapısı
+
+```
+vm-inventory/
+├── app/
+│   ├── main.py              # FastAPI uygulaması, sayfa rotaları, başlangıç
+│   ├── config.py            # Ortam değişkenleri (pydantic-settings)
+│   ├── database.py          # SQLAlchemy engine/session
+│   ├── models/              # ORM: User, Platform, Host, VM, Network, Tag, ChangeHistory, AuditLog, PhysicalDevice
+│   ├── core/                # security (Fernet/bcrypt/CSRF), search (sorgu motoru), scheduler, version
+│   ├── collectors/          # vmware_collector (pyVmomi), proxmox_collector (proxmoxer)
+│   ├── services/            # sync (fark analizi), report (xlsx/csv/pdf), ldap
+│   ├── api/                 # REST endpoint'leri (auth, vms, hosts, platforms, physical, reports, admin…)
+│   ├── templates/           # Jinja2 HTML şablonları
+│   └── static/              # custom.css + sayfa başına JS + i18n.js (TR/EN) + vendor/ (CDN'siz yerel varlıklar)
+├── tools/                   # demo_data.py (kurgusal envanter), screenshots.py (README görselleri)
+├── docs/screenshots/        # README'deki görseller
+├── tests/                   # Aktör tespiti regresyon testleri (vmware/proxmox)
+├── Dockerfile
+├── docker-compose.yml       # app + PostgreSQL 16
+├── requirements.txt
+├── .env.example
+└── CHANGELOG.md             # sürüm bazlı değişiklik günlüğü
+```
+
+## ❓ SSS
+
+**Canlı ortama yük bindirir mi?** Hayır. 15 dakikada bir, toplu-okuma API çağrıları yapılır (vCenter'da tek ContainerView, Proxmox'ta tek cluster/resources). Kullanıcı trafiği platformlara hiç ulaşmaz.
+
+**Verileri ne kadar güncel?** Envanter en fazla `SYNC_INTERVAL_MINUTES` kadar geride (varsayılan 15 dk); CPU/RAM/disk **kullanım oranları** ise ayrı hafif bir görevle `USAGE_SYNC_INTERVAL_MINUTES` aralığında (varsayılan 3 dk) tazelenir. "Tümünü Yenile" ile her şey anında güncellenir.
+
+**Cluster gizleme nasıl çalışır?** Dashboard, Sanal Makineler, Snapshot'lar ve Topoloji sayfalarının üst çubuğundaki **Cluster'lar** düğmesi (gizli sayısını gösterir) görünürlük penceresini açar; arama, **Tümünü göster** ve **Yalnız bu** (yalnızca o cluster görünür kalır) seçenekleri vardır. Kapattığınız cluster sayılara/grafiklere girmez, VM listesinde, snapshot listesinde ve topolojide varsayılan görünmez. Ayar **herkes için** geçerlidir (operatör ve üstü değiştirir). Veri silinmez — Sanal Makineler sayfasındaki **Cluster** filtre menüsünden (gizliler işaretlidir) seçilen cluster, gelişmiş paneldeki "gizli cluster'ları dahil et" kutusu veya doğrudan `cluster:` araması yine erişir; anahtarı açınca her şey geri gelir.
+
+**Cluster'sız host'lara ad verme:** vCenter'da bir cluster'a bağlı olmayan (standalone) ESXi host'ların VM'leri "(Cluster'sız)" altında toplanır. Görünürlük penceresinde bu satırdaki **Ad ver** ile host bazında (ya da platformdaki tümüne aynı) bir takma ad verin: ad host'a ve VM'lerine cluster adı olarak yazılır, arama/filtre/gizleme/grafik/gruplama/raporlarda normal bir cluster gibi davranır ("takma ad" etiketiyle görünür). Aynı adı birden çok host'a vererek birleştirebilirsiniz. Platform ileride o host için gerçek bir cluster bildirirse **gerçek ad kazanır**; host cluster'dan çıkarsa takma ad geri gelir. Gizli "(Cluster'sız)" grubuna verilen ad gizli başlar. Gerçek bir cluster'ın adı takma ad olarak kullanılamaz.
+
+**Kaç platform eklenebilir?** Sınır yok; her platform bağımsız senkronize edilir, hepsi aynı envanterde birleşir.
+
+**VM'lere müdahale edebilir mi (başlat/durdur)?** Hayır — bu bilinçli bir tasarım kararı. Sistem salt-okunur çalışır; bu yüzden platform hesapları da salt-okunur (Read-only / PVEAuditor) olabilir.
+
+**SQLite mi PostgreSQL mi?** Tek kullanıcılı küçük kurulumda SQLite yeterli; ekip kullanımı ve 500+ VM için PostgreSQL önerilir (Docker Compose varsayılanı).
+
+**Linux VM'lerinin tam sürümü neden bazen gelmiyor?** Tam sürüm (ör. "Ubuntu 24.04.1 LTS") VMware'de **vSphere 8.0 U2+ ve misafirde VMware Tools / open-vm-tools 11.2+** gerektirir; Proxmox'ta ise **QEMU Guest Agent**. Bunlar yoksa katalog adı ("Ubuntu Linux (64-bit)") gösterilir — yanlış değil, yalnızca yama sürümü içermez.
+
+**vCenter etiketleri (Tags) gelmiyor?** vSphere etiketleri pyVmomi/SOAP ile alınamaz; ayrı bir vCenter REST (vAPI tagging) oturumu kullanılır. Servis hesabının etiketleri okuma yetkisi olmalı. REST erişimi başarısız olursa etiketler boş kalır, senkronizasyonun geri kalanı etkilenmez (Platform → Loglar'da uyarı görünür). Proxmox etiketleri (VM `tags` alanı) için ek yetki gerekmez.
+
+**"Kim değiştirdi" bilgisini nereden alıyor?** Uygulamanın kendi kullanıcısından değil —
+platformun kendi kayıtlarından: vCenter olay yöneticisi, Proxmox görev kaydı + cluster log.
+Proxmox'ta RAM/CPU/ağ gibi config değişiklikleri görev üretmediğinden kullanıcı yalnızca
+cluster log'dan okunur; bunun için token rolünde **`Sys.Syslog`** gerekir (Kurulum Adım 3).
+İşlemi yapanın **IP/User-Agent**'ı bu altyapı kayıtlarında bulunmaz; uygulama-içi işlemler
+için IP/UA'lı ayrı **Audit Log** vardır. Ayrıntı: "[Değişiklik Geçmişi](#-değişiklik-geçmişi-kim-neyi-ne-zaman)" bölümü.
+
+**Senkronizasyon sıklığını arayüzden değiştirebilir miyim?** Evet. **Yönetim → Senkronizasyon**
+sekmesinden tam ve kullanım senkron aralıklarını (1–1440 dk) değiştirebilirsiniz; anında yeniden
+zamanlanır, yeniden başlatma gerekmez. `.env`'deki `SYNC_INTERVAL_MINUTES` yalnızca ilk varsayılandır.
+
+**Arayüz hangi dilleri destekliyor?** Türkçe ve İngilizce. Siz seçmedikçe tarayıcı dilini izler (Türkçe tarayıcı → Türkçe, diğerleri → İngilizce); üst çubuktaki veya giriş sayfasındaki dil düğmesi değiştirir, seçim tarayıcıda hatırlanır. Kod yorumları, loglar ve release notları İngilizcedir.
+
+**LXC konteynerleri görünüyor mu?** Evet. Proxmox QEMU VM'lerinin yanı sıra LXC konteynerleri de toplanır; OS, IP (çalışırken `interfaces` ucundan), disk, ağ ve etiketleri envantere girer (konteynerlerde agent gerekmez).

@@ -3,7 +3,14 @@
 // Dynamic JS strings: use window.t('key', 'Turkish fallback').
 // Switching language stores the choice and reloads (guarantees JS-built text updates too).
 const I18N = {
-  lang: (function () { try { return localStorage.getItem('vmi-lang') || 'tr'; } catch (e) { return 'tr'; } })(),
+  // Saved choice wins; otherwise follow the browser (Turkish browser -> TR, anything else -> EN).
+  lang: (function () {
+    let saved = null;
+    try { saved = localStorage.getItem('vmi-lang'); } catch (e) { /* storage blocked */ }
+    if (saved === 'tr' || saved === 'en') return saved;
+    const nav = ((navigator.languages && navigator.languages[0]) || navigator.language || 'tr').toLowerCase();
+    return nav.indexOf('tr') === 0 ? 'tr' : 'en';
+  })(),
   EN: {
     // Navigation
     'nav.dashboard': 'Dashboard', 'nav.vms': 'Virtual Machines', 'nav.hosts': 'Hosts',
@@ -119,7 +126,7 @@ const I18N = {
     'zb.none2': 'No idle running VMs. (Based on the latest sample)',
     'zb.recoverable': 'Recoverable', 'zb.score': 'Score', 'zb.class': 'Class', 'zb.confidence': 'confidence',
     // Units
-    'unit.year': 'yr', 'unit.month': 'mo', 'unit.day': 'days', 'unit.min': 'min',
+    'unit.perDay': 'day', 'unit.year': 'yr', 'unit.month': 'mo', 'unit.day': 'days', 'unit.min': 'min',
     // Widget tools
     'wt.move': 'Move (drag)', 'wt.page': 'Move to page', 'wt.width': 'Quick width change',
     'wt.hide': 'Hide card', 'wt.resize': 'Resize (drag: right/down)',
@@ -182,7 +189,22 @@ const I18N = {
     'cv.summary': '{v} visible \u00b7 {h} hidden', 'cv.readOnly': 'operator role required to change',
     'cv.only': 'Only this', 'cv.onlyTip': 'Show this one and hide every other cluster',
     'cv.noMatch': 'No matching cluster',
-    'cv.aliasTag': 'alias', 'vm.qf.aliasTip': 'The platform reports no cluster; this is the alias given to the host',
+    'cv.aliasTag': 'alias',
+    'app.name': 'VM Inventory', 'app.fullName': 'VM Inventory',
+    'login.tab': 'Sign in', 'login.user': 'Username', 'login.pass': 'Password', 'login.submit': 'Sign in',
+    'login.bad': 'Wrong username or password.', 'dash.pageGeneral': 'General', 'fc.ofPhysical': '{p}% of physical',
+    'hi.q7': '7d', 'hi.q30': '30d', 'hi.q90': '90d',
+    'sn.age7': '7+ days', 'sn.age14': '14+ days', 'sn.age30': '30+ days',
+    'pl.namePh': 'e.g. East vCenter', 'pl.syncNow': 'Sync now',
+    'rp.queryPh': 'e.g. os:windows vlan:100', 'rp.cleanupTitle': 'Delete old files',
+    // VM detail panel (phase 150)
+    'vd.agentRunning': 'Running', 'vd.agentStopped': 'Installed, stopped', 'vd.agentNone': 'Not installed',
+    'vd.snapshots': 'Snapshots', 'vd.current': 'current', 'vd.mac': 'MAC Addresses',
+    'vd.kernelArch': 'Kernel / Arch', 'vd.now': 'now', 'vd.disks': 'Disks', 'vd.networks': 'Networks',
+    'vd.created': 'Created', 'vd.lastBoot': 'Last boot', 'vd.uptime': 'Uptime',
+    'vd.platformNote': 'Platform note', 'vd.updated': 'Last updated', 'vd.manual': 'Manual details',
+    'vd.owner': 'Owner', 'vd.tagsHint': 'Tags (comma separated)', 'vd.notes': 'Notes',
+    'vd.saved': 'VM details updated', 'vm.qf.aliasTip': 'The platform reports no cluster; this is the alias given to the host',
     'cv.nameIt': 'Name it', 'cv.renameIt': 'Rename', 'cv.back': 'Back',
     'cv.aliasTitle': 'Name cluster-less hosts',
     'cv.aliasDesc': 'These hosts belong to no cluster on the platform (e.g. standalone ESXi), so they are grouped under "(No cluster)". The name you give is written to the host and its VMs as their cluster: it behaves like a normal cluster in search, filters, hiding and charts. Give several hosts the same name to merge them. If the platform later reports a real cluster, that name is used. Leave empty to remove the name.',
@@ -205,12 +227,12 @@ const I18N = {
     'vh.r.fieldD': 'Searches one field. Case-insensitive; most fields match partially (host:esx → esx01, esx02).',
     'vh.r.and': 'AND — space', 'vh.r.andD': 'All space-separated criteria must match.',
     'vh.r.or': 'OR — comma',
-    'vh.r.orD': 'Any of the values in the same field. Not for numeric or yok/var values.',
+    'vh.r.orD': 'Any of the values in the same field. Not for numeric or none/any values.',
     'vh.r.not': 'Exclude — minus',
     'vh.r.notD': 'A criterion prefixed with - (or !) is excluded. With a comma list: none of them.',
     'vh.r.quote': 'Quotes and exact match', 'vh.r.quoteD': 'Wrap values containing spaces in double quotes. A value starting with = must match the whole field (cluster:=Lab does not find Lab2).',
     'vh.r.empty': 'Empty / set',
-    'vh.r.emptyD': 'yok (empty, none, null) finds VMs where the field is empty; prefix - to find VMs where it is set.',
+    'vh.r.emptyD': 'none (also empty, null; Turkish yok) finds VMs where the field is empty; prefix - to find VMs where it is set.',
     'vh.r.num': 'Numeric',
     'vh.r.numD': 'Compare with > >= < <= =; a bare number means exactly equal (ram:16 = exactly 16 GB).',
     'vh.g.id': 'Identity and network', 'vh.g.sys': 'System and state',
@@ -218,16 +240,16 @@ const I18N = {
     'vh.g.res': 'Resources (numeric)', 'vh.g.use': 'Live usage (%)',
     'vh.f.name': 'VM name.',
     'vh.f.vmid': 'VM ID — numeric on Proxmox, MoRef on VMware (vm-123).',
-    'vh.f.ip': 'IP address (partial; manual IPs included). ip:yok = neither a platform nor a manual IP.',
-    'vh.f.manualip': 'Manually entered IP. manuelip:var = VMs with a manual IP.',
+    'vh.f.ip': 'IP address (partial; manual IPs included). ip:none = neither a platform nor a manual IP.',
+    'vh.f.manualip': 'Manually entered IP. manuelip:any = VMs with a manual IP.',
     'vh.f.mac': 'MAC address (partial).',
     'vh.f.vlan': 'VLAN — partial match: vlan:10 also finds 100 and 110.',
     'vh.f.network': 'Attached network / portgroup / bridge name.',
     'vh.f.os': 'OS name (partial). os:linux and os:windows find every distro/version.',
     'vh.f.osfam': 'OS family — same classification as the dashboard pie. Values below.',
     'vh.f.status': 'Power state: running, stopped, suspended.',
-    'vh.f.tools': 'VMware Tools / QEMU Agent: running = running; yok = not installed or not running.',
-    'vh.f.host': 'ESXi host / Proxmox node. host:yok = host unknown.',
+    'vh.f.tools': 'VMware Tools / QEMU Agent: running = running; none = not installed or not running.',
+    'vh.f.host': 'ESXi host / Proxmox node. host:none = host unknown.',
     'vh.f.cluster': 'Cluster (partial; cluster:=name for an exact match, cluster:= for VMs without a cluster). If the query contains cluster:, hidden clusters are searched too.',
     'vh.f.datastore': 'Datastore / storage holding the disks.',
     'vh.f.pool': 'Resource pool (vCenter) / pool (Proxmox).',
@@ -236,8 +258,8 @@ const I18N = {
     'vh.f.type': 'Platform type: vcenter or proxmox.',
     'vh.f.location': 'Location of the platform.',
     'vh.f.env': 'Environment: production, test, development.',
-    'vh.f.owner': 'Owner. owner:yok = no owner assigned.',
-    'vh.f.tag': 'Manual tag. tag:yok = untagged.',
+    'vh.f.owner': 'Owner. owner:none = no owner assigned.',
+    'vh.f.tag': 'Manual tag. tag:none = untagged.',
     'vh.f.notes': 'Manual notes.',
     'vh.f.desc': 'Platform note (vCenter annotation / Proxmox description).',
     'vh.f.ptag': 'Platform tags (vCenter tag / Proxmox tags).',
@@ -248,7 +270,7 @@ const I18N = {
     'vh.f.diskuse': 'Real disk fill. VMs with unknown usage (agentless Proxmox) never match.',
     'vh.fields': 'Fields', 'vh.fieldsSub': '— click an example to run it',
     'vh.col.field': 'Field', 'vh.values': 'Values', 'vh.tips': 'Tips',
-    'vh.v.empty': 'empty value',
+    'vh.v.empty': 'empty value', 'vh.v.any': 'set value',
     'vh.t.chips': 'The Status / Platform / OS / Missing / Usage menus are multi-select: options in the same menu are OR\u2019ed (Running + Stopped = status:running,stopped), menus are AND\u2019ed. The \u2298 icon or Shift+click excludes (red); click again to clear. The menu button summarises the selection.',
     'vh.t.counts': 'The number next to an option is how many VMs it returns on its own.',
     'vh.t.cells': 'Clicking a Host, Cluster, Pool, Folder or VLAN cell in the table adds it as a filter.',
@@ -468,7 +490,7 @@ const I18N = {
     const lbl = document.getElementById('langLabel');
     if (lbl) lbl.textContent = I18N.lang.toUpperCase();
     const h1 = document.querySelector('h1.page-title');
-    if (h1) document.title = h1.textContent + ' \u2014 VM Envanter';
+    if (h1) document.title = h1.textContent + ' \u2014 ' + I18N.t('app.name', 'VM Envanter');
   },
   set: function (lang) {
     try { localStorage.setItem('vmi-lang', lang); } catch (e) {}

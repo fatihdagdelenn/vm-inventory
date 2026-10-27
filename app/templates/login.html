@@ -15,27 +15,32 @@
 </head>
 <body class="login-page">
   <div class="login-card">
+    <button type="button" class="btn btn-sm btn-theme-toggle login-lang" id="btnLang" title="Language / Dil">
+      <span id="langLabel">TR</span>
+    </button>
     <div class="text-center mb-4">
       <i class="bi bi-hdd-network login-logo"></i>
-      <h1 class="h4 mt-2 mb-0">VM Envanter Yönetim Sistemi</h1>
+      <h1 class="h4 mt-2 mb-0" data-i18n="app.fullName">VM Envanter Yönetim Sistemi</h1>
       <p class="text-muted small">VMware vCenter &amp; Proxmox VE</p>
     </div>
     {% if error %}
     <div class="alert alert-danger py-2 small">
-      <i class="bi bi-exclamation-triangle"></i> Kullanıcı adı veya parola hatalı.
+      <i class="bi bi-exclamation-triangle"></i> <span data-i18n="login.bad">Kullanıcı adı veya parola hatalı.</span>
     </div>
     {% endif %}
     <form method="post" action="/login">
       <div class="mb-3">
-        <label class="form-label">Kullanıcı adı</label>
+        <label class="form-label" data-i18n="login.user">Kullanıcı adı</label>
         <input type="text" name="username" class="form-control" required autofocus autocomplete="username">
       </div>
       <div class="mb-4">
-        <label class="form-label">Parola</label>
+        <label class="form-label" data-i18n="login.pass">Parola</label>
         <input type="password" name="password" class="form-control" required autocomplete="current-password">
       </div>
-      <button type="submit" class="btn btn-primary w-100">Giriş yap</button>
+      <button type="submit" class="btn btn-primary w-100" data-i18n="login.submit">Giriş yap</button>
     </form>
   </div>
+<script src="/static/js/i18n.js?v={{ asset_version }}"></script>
+<script>document.title = t('login.tab', 'Giriş') + ' \u2014 ' + t('app.name', 'VM Envanter');</script>
 </body>
 </html>

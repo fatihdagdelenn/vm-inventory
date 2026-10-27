@@ -8,7 +8,7 @@
         <p class="text-muted small"><span data-i18n="rp.exportDesc">Arama söz dizimi ile filtrelenmiş sonuçları dışa aktarabilirsiniz (boş bırakılırsa tüm envanter aktarılır). Örn:</span> <code>cluster:production status:running</code></p>
         <div class="mb-3">
           <label class="form-label" data-i18n="rp.filterOpt">Filtre (opsiyonel)</label>
-          <input type="text" id="repQuery" class="form-control" placeholder="örn: os:windows vlan:100">
+          <input type="text" id="repQuery" class="form-control" placeholder="örn: os:windows vlan:100" data-i18n-ph="rp.queryPh">
           <div class="form-text" id="repFilterNote" data-i18n="rp.filterVmOnly">Filtre yalnızca Sanal Makineler kapsamına uygulanır.</div>
         </div>
 
@@ -39,7 +39,7 @@
         <i class="bi bi-folder2-open"></i> <span data-i18n="rp.files">Üretilmiş Dosyalar</span>
         <span class="badge text-bg-secondary ms-2" id="fileCount" style="display:none"></span>
         {% if user.role != 'viewer' %}
-        <button class="btn btn-sm btn-outline-danger ms-auto" onclick="Reports.cleanupFiles()" title="Eski dosyaları temizle">
+        <button class="btn btn-sm btn-outline-danger ms-auto" onclick="Reports.cleanupFiles()" title="Eski dosyaları temizle" data-i18n-title="rp.cleanupTitle">
           <i class="bi bi-trash"></i> <span data-i18n="rp.cleanup">Temizle</span>
         </button>
         {% endif %}

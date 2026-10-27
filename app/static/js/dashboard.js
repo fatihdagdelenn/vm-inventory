@@ -384,7 +384,7 @@ function barGrad(chart, base, horizontal) {
         daysTxt = `<span class="text-success">${t('fc.negligible','Doluluk büyümesi kayda değer değil — kararlı.')}</span>`;
       const up = f.used_pct != null ? f.used_pct : 0;       // gerçek doluluk
       const barCls = up >= 90 ? 'bg-danger' : up >= 75 ? 'bg-warning' : 'bg-success';
-      const rate = f.per_day_gb > 0 ? `<span>+${fmt(f.per_day_gb)}/gün</span>` : '<span></span>';
+      const rate = f.per_day_gb > 0 ? `<span>+${fmt(f.per_day_gb)}/${t('unit.perDay', 'gün')}</span>` : '<span></span>';
       // Tahsis (overcommit) satırı — ayrı kavram
       const ocCls = f.alloc_pct > 100 ? 'text-warning' : 'text-muted';
       const ocBadge = f.overcommit ? ` <span class="badge bg-warning-subtle text-warning-emphasis" title="${t('fc.overcommitHint','VM\'lere fizikselden fazla')} ${unit} ${t('fc.overcommitHint2','verilmiş — sanallastirmada olagan')}">overcommit</span>` : '';
@@ -397,7 +397,7 @@ function barGrad(chart, base, horizontal) {
           <span><strong>${t('fc.usage','Doluluk')}:</strong> ${fmt(f.used_gb)} / ${fmt(f.capacity_gb)} <span class="text-muted">(%${up})</span></span>
           ${rate}</div>
         <div class="small ${ocCls} mt-1"><strong>${t('fc.alloc','Tahsis')}:</strong> ${fmt(f.allocated_gb)}
-          <span class="text-muted">(fizikselin %${f.alloc_pct ?? 0}'i)</span>${ocBadge}</div>
+          <span class="text-muted">(${t('fc.ofPhysical', "fizikselin %{p}'i").replace('{p}', f.alloc_pct ?? 0)})</span>${ocBadge}</div>
         <div class="small mt-1">${daysTxt}</div></div>`;
     };
     const fb = document.getElementById('forecastBody');
@@ -524,7 +524,7 @@ const DashGrid = {
       // v1 (tek sayfa) yerleşimini taşı, yoksa varsayılan kur
       let v1 = null; try { v1 = JSON.parse(localStorage.getItem(LS_KEY)); } catch (e) {}
       const p1 = 'p1';
-      st = { pages: [{ id: p1, name: 'Genel' }], active: p1,
+      st = { pages: [{ id: p1, name: t('dash.pageGeneral', 'Genel') }], active: p1,
              assign: {}, order: {}, width: {}, height: {}, hidden: [] };
       const ord = (v1 && v1.order && v1.order.length)
         ? v1.order.filter(id => ids.includes(id)) : ids.slice();

@@ -977,7 +977,7 @@ def _usage_sync_body():
             db.commit()
         except Exception as exc:
             db.rollback()
-            logger.warning("Ornekleme (snapshot/usage-daily) basarisiz: %s", exc)
+            logger.warning("Sampling (capacity snapshot / daily usage) failed: %s", exc)
     finally:
         db.close()
 

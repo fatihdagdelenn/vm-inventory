@@ -16,8 +16,7 @@ const ClusterVis = {
   onChange: () => location.reload(),
 
   canEdit() {
-    const r = document.querySelector('.role-badge');
-    return !r || r.textContent.trim() !== 'Görüntüleyici';
+    return App.role() !== 'viewer';
   },
 
   label(c) { return c.is_none ? t('cl.noCluster', "(Cluster'sız)") : c.name; },

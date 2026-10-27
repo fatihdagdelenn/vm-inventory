@@ -45,7 +45,7 @@ def _create_default_admin():
     db = SessionLocal()
     try:
         if not db.query(User).count():
-            db.add(User(username="admin", full_name="Sistem Yöneticisi",
+            db.add(User(username="admin", full_name="Administrator",
                         role="admin", password_hash=hash_password("admin123")))
             db.commit()
             logging.warning("Default admin created: admin / admin123 "

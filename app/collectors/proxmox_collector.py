@@ -1107,7 +1107,7 @@ class ProxmoxCollector:
         try:
             groups = self._storage_groups()
         except Exception as exc:
-            logger.warning("Depo listesi alinamadi: %s", exc)
+            logger.warning("Could not list storages: %s", exc)
             return result
 
         for name, g in groups.items():
@@ -1117,7 +1117,7 @@ class ProxmoxCollector:
             for node, _status in self._candidate_nodes(g):
                 content, err = self._fetch_content(node, name)
                 if content is None:
-                    logger.warning("Icerik alinamadi %s/%s: %s", node, name, err)
+                    logger.warning("Could not read storage content %s/%s: %s", node, name, err)
                     continue
                 found = 0
                 for c in content:
@@ -1140,12 +1140,12 @@ class ProxmoxCollector:
                         "notes": (c.get("notes") or c.get("comment") or "").strip(),
                         "source": "pbs" if g["plugin"] == "pbs" else "vzdump",
                     })
-                logger.info("Yedek tarama: depo=%s node=%s tip=%s icerik=%d yedek=%d",
+                logger.info("Backup scan: storage=%s node=%s type=%s content=%d backups=%d",
                             name, node, g["plugin"] or "?", len(content), found)
                 # On shared stores the first node returning content is enough; scan all for local
                 if g["shared"] and len(content) > 0:
                     break
-        logger.info("Yedek taramasi tamamlandi: toplam %d yedek", len(result))
+        logger.info("Backup scan finished: %d backups in total", len(result))
         return result
 
     def diagnose_backups(self) -> list[dict]:
@@ -1416,9 +1416,9 @@ class ProxmoxCollector:
             # /cluster/log returns EMPTY with PVEAuditor/Sys.Audit; Sys.Syslog ('/')
             # is required. Config (RAM/CPU/net) changes produce NO task, so
             # their user can ONLY be read from this source.
-            logger.warning("Cluster log BOS dondu — token rolune 'Sys.Syslog' (/) "
-                           "ekleyin; aksi halde config degisikliklerinin kullanicisi "
-                           "'—' kalir.")
+            logger.warning("Cluster log came back EMPTY - add 'Sys.Syslog' (on /) to "
+                           "the token's role, otherwise the user of config changes "
+                           "stays '-'.")
         # "update VM 109: ...", "update CT 110: ..." -> vmid; node is on the line.
         log_re = re.compile(r"\bupdate\s+(?:VM|CT)\s+(\d+)\b", re.IGNORECASE)
         # Migration ops from UPIDs in cluster-log task lines (qmigrate):
