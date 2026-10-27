@@ -52,13 +52,13 @@ Bu soruların hepsi tek arama kutusundan, saniyeden kısa sürede yanıtlanır. 
 
 ## 📸 Ekran Görüntüleri
 
-*Yerleşik demo envanterden (`tools/demo_data.py`) alınmıştır — tüm adlar ve adresler kurgudur. Görüntüler İngilizce arayüzdendir; arayüz Türkçe de kullanılabilir.*
+*Yerleşik demo envanterden (`tools/demo_data.py`) alınmıştır — tüm adlar ve adresler kurgudur. Görüntüler İngilizce arayüzdendir; arayüz Türkçe de kullanılabilir. En üstteki dashboard varsayılan yerleşimdir.*
 
 | | |
 |---|---|
 | <img src="docs/screenshots/vm-list.png" alt="Sanal makineler" width="440"><br>**Sanal Makineler** — sayılı, çoklu seçimli filtre menüleri, anlık kullanım çubukları | <img src="docs/screenshots/vm-detail.png" alt="VM detayı" width="440"><br>**VM detayı** — tek VM'in tüm bilgileri; sahip / etiket / not / elle IP |
+| <img src="docs/screenshots/hosts.png" alt="Host'lar" width="440"><br>**Host'lar** — host başına CPU / RAM / disk yükü, donanım modeli, uptime, VM sayısı | <img src="docs/screenshots/datastores.png" alt="Datastore'lar" width="440"><br>**Datastore'lar** — depo başına doluluk, paylaşımlı / yerel, bağlı host ve VM'ler |
 | <img src="docs/screenshots/search-help.png" alt="Arama söz dizimi" width="440"><br>**Arama söz dizimi** — `alan:değer` sorguları; her örnek tıklanabilir | <img src="docs/screenshots/change-history.png" alt="Değişiklik geçmişi" width="440"><br>**Değişiklik geçmişi** — eski → yeni ve *kim yaptı*, platformun kendi kaydından |
-| <img src="docs/screenshots/topology.png" alt="Topoloji" width="440"><br>**Topoloji** — platform → cluster → host → VM haritası | <img src="docs/screenshots/dashboard.png" alt="Dashboard" width="440"><br>**Dashboard** — kapasite öngörüsü, boşta (zombi) VM'ler, dikkat listesi |
 
 ## ✨ Özellikler
 
@@ -301,7 +301,7 @@ Dashboard'daki **"Dikkat Gerektirenler"** kartından *"Agent/Tools kurulu olmaya
 
 | Ekran | Ne yapılır? |
 |---|---|
-| **Dashboard** | Genel durum: sayılar, kaynak toplamları, grafikler (dilime tıklayınca filtreli liste açılır), son değişiklikler, platform sağlığı. Cluster görünürlüğü üst çubuktaki **Cluster'lar** düğmesinden (veya cluster grafiğindeki **Yönet**'ten) yönetilir. **En Çok CPU / RAM / Disk Kullanan VM** kartlarında bar üzerine gelince VM'in IP'si ve bağlı olduğu host görünür; bara tıklayınca Sanal Makineler listesi çalışan VM'lerle, **aynı metriğe göre büyükten küçüğe sıralı** açılır ve tıklanan VM vurgulanır |
+| **Dashboard** | Genel durum: sayılar, kaynak toplamları, grafikler (dilime tıklayınca filtreli liste açılır), son değişiklikler, platform sağlığı. Yerleşim sürükle-bırak ile değiştirilir ve hesaba kaydedilir; **Dashboard'u Düzenle → Sıfırla** hizalı varsayılan yerleşime döndürür. Cluster görünürlüğü üst çubuktaki **Cluster'lar** düğmesinden (veya cluster grafiğindeki **Yönet**'ten) yönetilir. **En Çok CPU / RAM / Disk Kullanan VM** kartlarında bar üzerine gelince VM'in IP'si ve bağlı olduğu host görünür; bara tıklayınca Sanal Makineler listesi çalışan VM'lerle, **aynı metriğe göre büyükten küçüğe sıralı** açılır ve tıklanan VM vurgulanır |
 | **Sanal Makineler** | Arama + gelişmiş filtre + gruplama. CPU/RAM/disk kolonlarında anlık kullanım çubukları (sarı %75+, kırmızı %90+); ayrıca VM ID, Pool, Klasör, Tags ve Uptime kolonları. **Kolonlar** menüsünden görünür sütunları seçebilirsiniz (tercih tarayıcıda saklanır). Satıra tıklayınca detay paneli; not/sahip/etiket buradan düzenlenir. Host/cluster/VLAN/pool/klasör hücreleri tıklanabilir filtredir |
 | **Host'lar** | ESXi/PVE node'ları tek tabloda: Host adı, Yönetim IP, OS/hipervizör sürümü, CPU modeli, çekirdek sayısı, CPU/RAM/Disk kullanım çubukları, cluster, VM sayısı, çalışma süresi (uptime) ve durum. **Tüm sütun başlıkları tıklanabilir** — metin (A-Z), sayısal, IP ve durum bazlı sıralama. **VM sayısına tıklayınca** o host'taki VM'leri (ad, IP, güç durumu, anlık CPU/RAM) listeleyen bir pencere açılır; listedeki bir VM'e tıklayınca **aynı sayfada** VM detay paneli açılır (Sanal Makineler ekranındaki panelle aynı) |
 | **Datastore'lar** | Depolama alanları: kapasite, doluluk, tip, bağlı host'lar, çözümlenmiş cluster'lar. Kart / tip / node / tablo görünümleri; **yerel diskleri gizle** filtresi (paylaşımlı kapasiteyi ayrı görmek için), çok-cluster'lı paylaşımlı depolarda **kapasite çakışma uyarısı**, kart üzerinde son yedek yaşı rozeti |

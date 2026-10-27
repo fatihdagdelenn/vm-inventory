@@ -52,13 +52,13 @@ All of these are answered from one search box in well under a second. **No SSH a
 
 ## 📸 Screenshots
 
-*Taken from the built-in demo inventory (`tools/demo_data.py`) — every name and address is fictional.*
+*Taken from the built-in demo inventory (`tools/demo_data.py`) — every name and address is fictional. The dashboard at the top shows the default layout.*
 
 | | |
 |---|---|
 | <img src="docs/screenshots/vm-list.png" alt="Virtual machines with filter menus" width="440"><br>**Virtual machines** — multi-select filter menus with counts, live usage bars | <img src="docs/screenshots/vm-detail.png" alt="VM detail panel" width="440"><br>**VM detail** — everything about one VM, plus owner / tags / notes / manual IP |
+| <img src="docs/screenshots/hosts.png" alt="Hosts" width="440"><br>**Hosts** — CPU / RAM / disk load per host, hardware model, uptime, VM count | <img src="docs/screenshots/datastores.png" alt="Datastores" width="440"><br>**Datastores** — fill level per store, shared vs. local, hosts and VMs on it |
 | <img src="docs/screenshots/search-help.png" alt="Search syntax help" width="440"><br>**Search syntax** — Google-like `field:value` queries; every example is clickable | <img src="docs/screenshots/change-history.png" alt="Change history" width="440"><br>**Change history** — old → new values and *who did it*, from the platforms' own logs |
-| <img src="docs/screenshots/topology.png" alt="Topology map" width="440"><br>**Topology** — platform → cluster → host → VM map | <img src="docs/screenshots/dashboard.png" alt="Dashboard" width="440"><br>**Dashboard** — capacity forecast, idle (zombie) VMs, attention list |
 
 ## ✨ Features
 
@@ -297,7 +297,7 @@ If an agent cannot be installed (appliances, locked-down OSes), type the IP in t
 
 | Screen | What you do there |
 |---|---|
-| **Dashboard** | Overall state: counts, resource totals, charts (click a slice to open the filtered list), capacity forecast, idle VMs, recent changes, platform health. **Top CPU / RAM / Disk VM** cards show the VM's IP and host on hover; a click opens the VM list sorted by the same metric with that VM highlighted. Layout is drag-and-drop and stored per user |
+| **Dashboard** | Overall state: counts, resource totals, charts (click a slice to open the filtered list), capacity forecast, idle VMs, recent changes, platform health. **Top CPU / RAM / Disk VM** cards show the VM's IP and host on hover; a click opens the VM list sorted by the same metric with that VM highlighted. Layout is drag-and-drop and stored per user; **Edit Dashboard → Reset** returns to the default, aligned layout |
 | **Virtual Machines** | Search + quick-filter menus + advanced panel + grouping. Live usage bars in the CPU / RAM / disk columns (yellow 75%+, red 90%+). **Columns** and **Export** are in the table header. Click a row for the detail panel (owner, tags, environment, notes, manual IP are edited there). Host / cluster / VLAN / pool / folder cells are clickable filters |
 | **Hosts** | ESXi / PVE nodes in one table: management IP, hypervisor version, CPU model, cores, CPU / RAM / disk bars, cluster, VM count, uptime, state. Every column sorts; clicking the VM count lists that host's VMs, and a VM opens its detail panel on the same page |
 | **Datastores** | Capacity, fill, type, connected hosts, resolved clusters. Card / type / node / table views; **hide local disks** to see shared capacity; capacity-overlap warning for shared stores seen by several clusters |

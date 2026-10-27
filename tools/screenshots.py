@@ -7,7 +7,9 @@ Dev-only helper - needs Playwright + Chromium and Pillow, not part of the app.
     python3 tools/screenshots.py http://127.0.0.1:8765 [chromium-executable]
 
 Screens are taken in English at 1440x900 (2x) and saved downscaled + palette-
-optimised so the repository stays small.
+optimised so the repository stays small. The dashboard is taken taller (its first
+four rows: counters, resource totals, top CPU/RAM/disk VMs, forecast + idle VMs)
+on a fresh, default layout - so it always shows the aligned default grid.
 """
 import io
 import os
@@ -36,8 +38,8 @@ def save(png_bytes, name, width=1600):
 HIDDEN_COLS = '["vmid","pool","folder","vlan","ptags","uptime"]'
 
 
-def page(browser, theme):
-    pg = browser.new_page(viewport={"width": W, "height": H}, device_scale_factor=2)
+def page(browser, theme, height=H):
+    pg = browser.new_page(viewport={"width": W, "height": height}, device_scale_factor=2)
     pg.add_init_script(f"try {{ localStorage.setItem('vmi-lang', 'en');"
                        f" localStorage.setItem('vmi-dash-theme', '{theme}');"
                        f" localStorage.setItem('vmHiddenCols', '{HIDDEN_COLS}'); }} catch (e) {{}}")
@@ -54,14 +56,22 @@ def settle(pg, ms=900):
     pg.wait_for_timeout(ms)
 
 
+def shot(pg):
+    """Screenshot with the pointer parked on the sidebar logo, so no card shows
+    its hover highlight (the login click leaves the mouse mid-screen)."""
+    pg.mouse.move(30, 30)
+    pg.wait_for_timeout(250)
+    return pg.screenshot()
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     with sync_playwright() as pw:
         b = pw.chromium.launch(**({"executable_path": EXE} if EXE else {}))
 
-        pg = page(b, "dark")                                   # 1) dashboard
+        pg = page(b, "dark", height=1282)                      # 1) dashboard, rows 1-4
         pg.goto(BASE + "/"); settle(pg, 2500)
-        save(pg.screenshot(), "dashboard.png")
+        save(shot(pg), "dashboard.png")
         pg.close()
 
         pg = page(b, "light")                                  # 2) VM list + cluster menu
@@ -70,29 +80,32 @@ def main():
         dd.locator(".qf-btn").click(); pg.wait_for_timeout(300)
         dd.locator('.qf-item[data-value="=PROD-East"]').click(); settle(pg, 600)
         dd.locator('.qf-item[data-value="=DMZ"]').click(); settle(pg, 600)
-        save(pg.screenshot(), "vm-list.png")
+        save(shot(pg), "vm-list.png")
         pg.keyboard.press("Escape")
 
         pg.locator("#vmBody tr.vm-row").first.click(); pg.wait_for_timeout(1200)   # 3) VM detail
-        save(pg.screenshot(), "vm-detail.png")
+        save(shot(pg), "vm-detail.png")
         pg.close()
 
         pg = page(b, "dark")                                   # 4) search help
         pg.goto(BASE + "/vms"); settle(pg)
         pg.click("#searchHelp"); pg.wait_for_timeout(900)
-        save(pg.screenshot(), "search-help.png")
+        save(shot(pg), "search-help.png")
         pg.close()
 
         pg = page(b, "light")                                  # 5) change history
         pg.goto(BASE + "/history"); settle(pg, 1500)
-        save(pg.screenshot(), "change-history.png")
+        save(shot(pg), "change-history.png")
         pg.close()
 
-        pg = page(b, "dark")                                   # 6) topology
-        pg.goto(BASE + "/topology", wait_until="domcontentloaded"); pg.wait_for_timeout(3500)
-        pg.click("#topoExpandAll"); pg.wait_for_timeout(4000)
-        pg.wait_for_timeout(800)
-        save(pg.screenshot(), "topology.png")
+        pg = page(b, "light")                                  # 6) hosts
+        pg.goto(BASE + "/hosts"); settle(pg, 1200)
+        save(shot(pg), "hosts.png")
+        pg.close()
+
+        pg = page(b, "dark")                                   # 7) datastores
+        pg.goto(BASE + "/datastores"); settle(pg, 1200)
+        save(shot(pg), "datastores.png")
         pg.close()
         b.close()
 

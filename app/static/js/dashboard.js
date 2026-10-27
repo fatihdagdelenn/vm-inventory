@@ -491,13 +491,19 @@ function barGrad(chart, base, horizontal) {
 const ROWH = 100, ROW_GAP = 16;           // sabit-satır grid: satır yüksekliği + boşluk
 const HMAX = 12, WMAX = 12;                // maksimum satır/kolon açıklığı
 // Widget başına varsayılan yükseklik (satır). Belirtilmeyen = 3.
+// Aynı satırdaki kartlar aynı yükseklikte olmalı (dashboard.html'deki satır
+// düzeniyle birlikte okunur); stat-physical eksikti -> 3 satır uzun kutu oluyordu.
 const DEFAULT_H = {
-  oldSnapshots: 3,
   'stat-vcenter': 1, 'stat-proxmox': 1, 'stat-host': 1, 'stat-vm': 1,
-  'stat-running': 1, 'stat-stopped': 1,
+  'stat-running': 1, 'stat-stopped': 1, 'stat-physical': 1,
   'mini-vcpu': 1, 'mini-ram': 1, 'mini-disk': 1, 'mini-suspended': 1,
-  'recentChanges': 4, 'platformStatus': 4,
+  forecast: 5, zombie: 5,
+  recentChanges: 4, platformStatus: 4,
+  oldSnapshots: 4, attention: 4, chartEnv: 4,
+  chartHostVm: 4, chartDatastore: 4,
 };
+// Yeni (sıfırlanmış) yerleşimde gizli başlayanlar - "Düzenle" menüsünden açılır.
+const DEFAULT_HIDDEN = ['mini-suspended'];
 const LS_KEY2 = 'vmi-dash-layout-v2';     // çoklu sayfa + masonry yerleşimi
 let _uid = 0; const newId = () => 'p' + (Date.now().toString(36)) + (++_uid);
 
@@ -525,7 +531,7 @@ const DashGrid = {
       let v1 = null; try { v1 = JSON.parse(localStorage.getItem(LS_KEY)); } catch (e) {}
       const p1 = 'p1';
       st = { pages: [{ id: p1, name: t('dash.pageGeneral', 'Genel') }], active: p1,
-             assign: {}, order: {}, width: {}, height: {}, hidden: [] };
+             assign: {}, order: {}, width: {}, height: {}, hidden: v1 ? [] : DEFAULT_HIDDEN.slice() };
       const ord = (v1 && v1.order && v1.order.length)
         ? v1.order.filter(id => ids.includes(id)) : ids.slice();
       ids.forEach(id => { if (!ord.includes(id)) ord.push(id); });
@@ -759,10 +765,16 @@ const DashGrid = {
     DashGrid.renderTabs();
   },
 
-  reset() {
+  async reset() {
     if (!confirm(t('dash.resetConfirm','Tüm dashboard yerleşimi (sayfalar dahil) sıfırlansın mı?'))) return;
     try { localStorage.removeItem(LS_KEY2); localStorage.removeItem(LS_KEY); } catch (e) {}
-    App.userSet('dash_layout', '');
+    // Delete the ACCOUNT copy before reloading. App.userSet is debounced (800 ms),
+    // so the old "userSet(''); location.reload()" never reached the server and the
+    // saved layout came straight back - Reset did nothing (fixed in phase 151).
+    clearTimeout(App._usTimers['dash_layout']);
+    try {
+      await App.api('/api/user-settings/dash_layout', {method: 'PUT', body: {value: ''}});
+    } catch (e) { /* toast shown by App.api; reload anyway */ }
     location.reload();
   },
 

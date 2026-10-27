@@ -30,6 +30,27 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 Phases not yet in a release (phase 142 →; internal v1.7.1 →).
 
+### 📐 Aligned default dashboard (phase 151)
+- The default dashboard was ragged: seven 2-column counters overflowed the
+  12-column first row, and the **Physical Devices** tile had no default height,
+  so it opened **3 rows tall** and pushed the cards around it into gaps.
+- New default layout where **every row fills the grid exactly** and cards in a
+  row share one height: 6 counters · 4 resource totals · **top CPU / RAM / disk
+  VMs** · capacity forecast + idle VMs (taller, nothing cut off) · recent changes
+  + platform status · snapshots / needs attention / environments · then the
+  charts in pairs.
+- The **Suspended VMs** tile starts hidden on a new layout (it broke the row);
+  add it back from Edit Dashboard.
+- **Existing saved layouts are not changed.** To switch to the new default:
+  **Edit Dashboard → Reset**.
+- **Fix:** Reset did nothing since layouts were stored per account — the delete
+  was debounced and the page reloaded before it was sent, so the saved layout came
+  straight back. Reset now deletes the account copy first.
+- README: the topology screenshot (too dense to read) is replaced by **Hosts**
+  and **Datastores**; the dashboard image shows the aligned default layout. The
+  demo inventory now has 12 datastores with real VM counts, and the screenshot
+  tool parks the pointer so no card is captured mid-hover.
+
 ### 🌐 English README, screenshots, globalisation (phase 150)
 - **README is now English** (`README.md`); the Turkish version moved to
   `README.tr.md`, with a language switch at the top of both. Both were brought

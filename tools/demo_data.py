@@ -90,17 +90,24 @@ db.add(ClusterAlias(platform_id=vc.id, host_name="esx-rep01.example.lan", alias=
 # ---------------------------------------------------------------- datastores / networks
 ds_specs = [
     ("vsanDatastore-East", vc, "vsan", None, True, 92000, 61500),
+    ("vmfs-sql-01", vc, "VMFS", None, True, 18000, 13300),
+    ("vmfs-sql-02", vc, "VMFS", None, True, 18000, 16450),
     ("nfs-backup-east", vc, "NFS", None, True, 40000, 21800),
+    ("iso-library", vc, "NFS", None, True, 4000, 1240),
     ("vmfs-dmz", vc, "VMFS", None, True, 12000, 9850),
     ("local-rep01", vc, "VMFS", "esx-rep01.example.lan", False, 16000, 12900),
     ("ceph-west", px, "rbd", None, True, 48000, 23100),
+    ("ceph-west-ssd", px, "rbd", None, True, 12000, 9100),
     ("pbs-west", px, "pbs", None, True, 30000, 17400),
     ("local-lvm", px, "lvmthin", "pve-w01", False, 1800, 540),
+    ("local-lvm", px, "lvmthin", "pve-w02", False, 1800, 610),
 ]
+datastores = []
 for name, plat, typ, node, shared, cap, used in ds_specs:
-    db.add(Datastore(platform_id=plat.id, name=name, type=typ, node=node, shared=shared,
+    datastores.append(Datastore(platform_id=plat.id, name=name, type=typ, node=node, shared=shared,
                      capacity_gb=cap, used_gb=used, free_gb=cap - used,
                      host_count=1 if node else (6 if plat is vc else 3), vm_count=0, status="ok"))
+db.add_all(datastores)
 VLANS = {"110": "PG-App-110", "120": "PG-DB-120", "130": "PG-Web-130", "200": "PG-DMZ-200"}
 for vlan, pg in VLANS.items():
     db.add(Network(platform_id=vc.id, name=pg, vlan=vlan, vswitch="DSwitch-East", portgroup=pg,
@@ -189,8 +196,9 @@ for prefix, count, os_key, vcpu, ram, disk, vlan, tg, owner, env, cl in roles:
             mac_addresses=f"00:50:56:{rnd.randint(16, 255):02x}:{rnd.randint(16, 255):02x}:{rnd.randint(16, 255):02x}",
             guest_os=OS[os_key], cpu_count=vcpu, ram_mb=ram * 1024, disk_total_gb=float(disk),
             power_state=state, cluster=cl, cluster_is_alias=is_replica,
-            datastore=("ceph-west" if is_pve else "local-rep01" if is_replica else
-                       "vmfs-dmz" if cl == "DMZ" else "vsanDatastore-East"),
+            datastore=(("ceph-west-ssd" if prefix in ("gitlab", "ci-runner") else "ceph-west") if is_pve else
+                       "local-rep01" if is_replica else "vmfs-dmz" if cl == "DMZ" else
+                       f"vmfs-sql-0{1 + n % 2}" if prefix in ("sql", "db-pg") else "vsanDatastore-East"),
             vlans=vlan, networks=("vmbr0" if is_pve else VLANS.get(vlan, "")),
             created_date=now - timedelta(days=rnd.randint(20, 900)),
             last_boot=(now - timedelta(days=rnd.randint(1, 120), hours=rnd.randint(0, 23))) if state == "running" else None,
@@ -204,6 +212,11 @@ for prefix, count, os_key, vcpu, ram, disk, vlan, tg, owner, env, cl in roles:
         vms.append(v)
 db.add_all(vms)
 db.commit()
+
+# datastore VM counts (the sync derives them; here we count the demo VMs)
+for d in datastores:
+    d.vm_count = sum(1 for v in vms if v.datastore == d.name and (d.shared or v.host_ref is None
+                                                                   or v.host_ref.name == d.node))
 
 # ---------------------------------------------------------------- snapshots / backups
 for v in rnd.sample([v for v in vms if v.cluster != "Replica-Site"], 14):
