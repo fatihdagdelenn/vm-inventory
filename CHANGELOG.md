@@ -28,7 +28,41 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-Phases not yet in a release (phase 142 →; internal v1.7.1 →).
+Nothing yet (phase 152 →; internal v1.8.1 →).
+
+---
+
+## [v1.8.0] — 2026-10-27
+
+**10 phases since v1.7.0 (phase 142–151; internal v1.7.1 → v1.7.10).** Focus: a
+much stronger Virtual Machines page (multi-select filters, saved searches, exact
+match), cluster visibility from every page plus aliases for cluster-less hosts,
+manual IPs for agent-less VMs, an aligned default dashboard and an English-first
+UI and README.
+
+> **First release with English notes.** Sections up to and including v1.7.0 stay
+> in Turkish as the historical record.
+
+### ⬆️ Upgrading
+- No manual migration: new columns (`ip_manual`, `cluster_is_alias`) and the
+  `cluster_aliases` table are created on startup.
+- **Dashboard:** saved layouts are kept as they are. To get the new aligned
+  default, open **Edit Dashboard → Reset** (once per account).
+- **Language:** users who never picked a language now get the browser's language
+  (Turkish browser → Turkish, otherwise English). Picking TR / EN once fixes it.
+- **Logs:** a few Turkish log lines are now English (`Cluster log came back
+  EMPTY`, `Backup scan …`); update any grep / alert rules that matched them.
+- **API:** `POST /api/clusters/visibility` now requires the CSRF token like every
+  other write endpoint; scripts calling it must send `X-CSRF-Token`.
+
+### ℹ️ Honest limits
+- Server-side messages (API errors, backup diagnostics) and report sheet / column
+  titles are still Turkish; percentages use the `%61.3` style.
+- Disk usage (`diskuse:`, top disk card) is per VM, not per disk.
+- A Proxmox live migration still starts the VM's daily usage history from
+  scratch (manual fields are carried over since phase 143; usage history is not).
+- Owner / notes / tags lost in migrations **before** this release do not come back.
+- Cluster aliases apply only to hosts the platform reports without a cluster.
 
 ### 📐 Aligned default dashboard (phase 151)
 - The default dashboard was ragged: seven 2-column counters overflowed the
