@@ -10,6 +10,7 @@ Supported syntax:
   EXCLUSION      : -cluster:test  !os:windows
   OR             : os:ubuntu,centos
   EXACT          : cluster:=Lab   (whole value, case-insensitive; Lab2 not matched)
+                   cluster:=      (empty value; combinable: cluster:=,=Lab)
   FREE TEXT      : plain words search across common fields (AND)
 """
 import re
@@ -130,7 +131,9 @@ def _ilike_or(column, value: str):
     whole value exactly, case-insensitively (cluster:=Lab does not match Lab2).
     """
     def one(p):
-        if p.startswith("=") and len(p) > 1:
+        if p == "=":                      # "=" alone: the field is empty (OR-able: cluster:=,=Lab)
+            return func.coalesce(column, "") == ""
+        if p.startswith("="):
             return func.lower(func.coalesce(column, "")) == p[1:].lower()
         return _like(column, f"%{p}%")
     parts = [p.strip() for p in value.split(",") if p.strip()]

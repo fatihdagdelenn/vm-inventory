@@ -10,7 +10,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import VirtualMachine, Host, ClusterSetting, AuditLog
+from ..models import VirtualMachine, Host, ClusterSetting, ClusterAlias, AuditLog, Platform
 from ..models.user import User
 from ..core.security import get_current_user, require_role, validate_csrf
 from ..core.audit import log_audit
@@ -75,6 +75,7 @@ def list_clusters(db: Session = Depends(get_db),
     names.discard("")
     names.discard(NONE_SENTINEL)   # handled separately
 
+    alias_names = _alias_names(db)
     items = [{
         "name": n,
         "vm_count": vm_counts.get(n, 0),
@@ -82,6 +83,7 @@ def list_clusters(db: Session = Depends(get_db),
         "visible": settings.get(n, True),       # no setting -> considered visible
         "in_inventory": n in vm_counts or n in host_counts,
         "is_none": False,
+        "is_alias": n in alias_names,
     } for n in sorted(names)]
 
     # The "(No cluster)" group: listed when the inventory has blank-cluster
@@ -94,6 +96,7 @@ def list_clusters(db: Session = Depends(get_db),
             "visible": settings.get(NONE_SENTINEL, True),
             "in_inventory": bool(none_vm or none_host),
             "is_none": True,
+            "is_alias": False,
         })
     return {"items": items,
             "hidden_count": sum(1 for i in items if not i["visible"])}
@@ -172,3 +175,159 @@ def set_visibility_bulk(payload: BulkVisibilityPayload, request: Request,
                       new=("görünür" if vis else "gizli"), request=request)
     db.commit()
     return {"ok": True, "changed": changed}
+
+
+# ---------------------------------------------------------------------------
+# Cluster aliases for standalone hosts (phase 148b)
+# ---------------------------------------------------------------------------
+
+def _alias_names(db) -> set:
+    """Cluster names that currently come from an alias (or are defined as one)."""
+    names = {r[0] for r in db.query(ClusterAlias.alias).distinct()}
+    names |= {r[0] for r in db.query(VirtualMachine.cluster)
+              .filter(VirtualMachine.cluster_is_alias == True).distinct()}  # noqa: E712
+    names |= {r[0] for r in db.query(Host.cluster)
+              .filter(Host.cluster_is_alias == True).distinct()}  # noqa: E712
+    names.discard(None)
+    names.discard("")
+    return names
+
+
+def _real_cluster_names(db) -> set:
+    """Cluster names reported by a platform (not produced by an alias)."""
+    blank = func.coalesce(VirtualMachine.cluster, "") == ""
+    vm = {r[0] for r in db.query(VirtualMachine.cluster)
+          .filter(~blank, func.coalesce(VirtualMachine.cluster_is_alias, False) == False)  # noqa: E712
+          .distinct()}
+    hblank = func.coalesce(Host.cluster, "") == ""
+    hs = {r[0] for r in db.query(Host.cluster)
+          .filter(~hblank, func.coalesce(Host.cluster_is_alias, False) == False)  # noqa: E712
+          .distinct()}
+    return {n for n in vm | hs if n}
+
+
+def _aliasable(col_cluster, col_flag):
+    """Rows whose cluster may be (re)written by an alias: blank or alias-made."""
+    from sqlalchemy import or_
+    return or_(func.coalesce(col_cluster, "") == "", col_flag == True)  # noqa: E712
+
+
+@router.get("/standalone")
+def standalone_hosts(db: Session = Depends(get_db),
+                     user: User = Depends(get_current_user)):
+    """Hosts the platform reports without a cluster, grouped by platform,
+    with their VM count and current alias. These make up "(Cluster'sız)"
+    unless an alias names them."""
+    aliases = {(a.platform_id, a.host_name): a.alias for a in db.query(ClusterAlias)}
+    hosts = (db.query(Host).filter(_aliasable(Host.cluster, Host.cluster_is_alias))
+               .order_by(Host.name).all())
+    vm_counts = dict(db.query(VirtualMachine.host_id, func.count(VirtualMachine.id))
+                     .filter(VirtualMachine.is_template == False,  # noqa: E712
+                             _aliasable(VirtualMachine.cluster, VirtualMachine.cluster_is_alias))
+                     .group_by(VirtualMachine.host_id).all())
+    plats = {p.id: p for p in db.query(Platform)}
+    groups = {}
+    for h in hosts:
+        p = plats.get(h.platform_id)
+        g = groups.setdefault(h.platform_id, {
+            "platform_id": h.platform_id, "platform": p.name if p else "",
+            "location": (p.location or "") if p else "", "hosts": []})
+        g["hosts"].append({"host": h.name, "vm_count": vm_counts.get(h.id, 0),
+                           "alias": aliases.get((h.platform_id, h.name), "")})
+    # Blank-cluster VMs with no host at all cannot be named (nothing to key on)
+    hostless = db.query(func.count(VirtualMachine.id)).filter(
+        VirtualMachine.is_template == False, VirtualMachine.host_id.is_(None),  # noqa: E712
+        func.coalesce(VirtualMachine.cluster, "") == "").scalar() or 0
+    return {"groups": sorted(groups.values(), key=lambda g: g["platform"].lower()),
+            "hostless_vms": hostless}
+
+
+class AliasItem(BaseModel):
+    platform_id: int
+    host: str
+    alias: str = ""            # "" removes the alias (host goes back to "(Cluster'sız)")
+
+
+class AliasPayload(BaseModel):
+    items: list[AliasItem]
+
+
+@router.put("/aliases")
+def set_aliases(payload: AliasPayload, request: Request,
+                db: Session = Depends(get_db),
+                user: User = Depends(require_role("operator"))):
+    """Name (or un-name) standalone hosts' cluster. Applied to the inventory at
+    once - no wait for the next sync - and kept by every later sync until the
+    platform reports a real cluster for the host.
+
+    Visibility carries over: a NEW alias name starts hidden when the group its
+    VMs came from (the old alias, else "(Cluster'sız)") was hidden, so naming a
+    hidden group does not suddenly put it back on the dashboard.
+    """
+    validate_csrf(request, None)
+    real = _real_cluster_names(db)
+    settings = {s.name: s for s in db.query(ClusterSetting)}
+    done, inherited, dropped = [], [], set()
+    for it in payload.items:
+        host_name = it.host.strip()
+        alias = " ".join(it.alias.split())          # trim + collapse inner whitespace
+        if not host_name:
+            continue
+        if len(alias) > 128:
+            raise HTTPException(400, "Takma ad en fazla 128 karakter olabilir")
+        if alias == NONE_SENTINEL:
+            raise HTTPException(400, "Bu ad kullanılamaz")
+        if alias and alias in real:
+            raise HTTPException(409, f'"{alias}" platformdan gelen gerçek bir cluster adı; '
+                                     "karışmaması için başka bir ad seçin")
+        host = db.query(Host).filter_by(platform_id=it.platform_id, name=host_name).first()
+        if host is None:
+            raise HTTPException(404, f"Host bulunamadı: {host_name}")
+        rule = db.query(ClusterAlias).filter_by(platform_id=it.platform_id,
+                                                host_name=host_name).first()
+        prev = rule.alias if rule else ""
+        if prev == alias:
+            continue
+        if alias:
+            if rule is None:
+                rule = ClusterAlias(platform_id=it.platform_id, host_name=host_name, alias=alias)
+                db.add(rule)
+            else:
+                rule.alias = alias
+            # visibility inheritance (only when the new name has no setting yet)
+            if alias not in settings:
+                src = settings.get(prev) if prev else None
+                src = src or settings.get(NONE_SENTINEL)
+                if src is not None and not src.visible:
+                    cs = ClusterSetting(name=alias, visible=False)
+                    db.add(cs)
+                    settings[alias] = cs
+                    inherited.append(alias)
+        elif rule is not None:
+            db.delete(rule)
+        # apply now: the host and its VMs, only where the platform gave no cluster
+        new_val, flag = (alias, True) if alias else ("", False)
+        db.query(Host).filter(Host.id == host.id,
+                              _aliasable(Host.cluster, Host.cluster_is_alias)) \
+          .update({Host.cluster: new_val, Host.cluster_is_alias: flag}, synchronize_session=False)
+        db.query(VirtualMachine).filter(
+            VirtualMachine.host_id == host.id,
+            _aliasable(VirtualMachine.cluster, VirtualMachine.cluster_is_alias)) \
+          .update({VirtualMachine.cluster: new_val, VirtualMachine.cluster_is_alias: flag},
+                  synchronize_session=False)
+        log_audit(db, user, "cluster_alias", target=host_name,
+                  old=prev or None, new=alias or None, request=request)
+        done.append({"host": host_name, "alias": alias})
+        if prev:
+            dropped.add(prev)
+    # An alias nobody uses any more leaves no trace: drop its visibility row,
+    # otherwise the modal keeps listing it as "envanterde yok".
+    db.flush()
+    for name in dropped:
+        in_use = (db.query(ClusterAlias).filter_by(alias=name).first()
+                  or db.query(VirtualMachine.id).filter(VirtualMachine.cluster == name).first()
+                  or db.query(Host.id).filter(Host.cluster == name).first())
+        if not in_use:
+            db.query(ClusterSetting).filter_by(name=name).delete(synchronize_session=False)
+    db.commit()
+    return {"ok": True, "changed": done, "inherited_hidden": inherited}

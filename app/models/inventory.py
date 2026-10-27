@@ -37,6 +37,7 @@ class Host(Base):
     disk_total_gb = Column(Float)                   # Toplam disk kapasitesi (GB)
     disk_used_gb = Column(Float)                    # Used disk (GB)
     cluster = Column(String(128), index=True)       # Cluster name
+    cluster_is_alias = Column(Boolean, default=False)  # cluster came from a ClusterAlias (platform reported none)
     status = Column(String(16), index=True)         # online | offline | maintenance
     last_boot = Column(DateTime)                     # Last boot time (for uptime)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -67,6 +68,7 @@ class VirtualMachine(Base):
     disks_json = Column(Text)                       # Disk details (JSON)
     power_state = Column(String(16), index=True)    # running | stopped | suspended
     cluster = Column(String(128), index=True)
+    cluster_is_alias = Column(Boolean, default=False)  # cluster came from a ClusterAlias (platform reported none)
     datastore = Column(String(255), index=True)     # Comma-separated datastore list
     vlans = Column(String(255), index=True)         # Comma-separated VLAN list
     networks = Column(Text)                         # Attached network/portgroup names
@@ -278,6 +280,25 @@ class ClusterSetting(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(128), unique=True, nullable=False, index=True)
     visible = Column(Boolean, default=True, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ClusterAlias(Base):
+    """
+        Operator-given cluster name for a STANDALONE host (vCenter host outside
+        any cluster -> the platform reports no cluster). The sync writes the alias
+        into hosts.cluster / virtual_machines.cluster (cluster_is_alias=True), so
+        search, visibility, charts, grouping and exports treat it as a cluster.
+        The platform wins: once it reports a real cluster for the host, that
+        name replaces the alias (the rule stays, used again if the host leaves).
+        """
+    __tablename__ = "cluster_aliases"
+    __table_args__ = (UniqueConstraint("platform_id", "host_name", name="uq_cluster_alias_host"),)
+
+    id = Column(Integer, primary_key=True)
+    platform_id = Column(Integer, ForeignKey("platforms.id", ondelete="CASCADE"), index=True, nullable=False)
+    host_name = Column(String(255), nullable=False)
+    alias = Column(String(128), nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 

@@ -189,6 +189,28 @@ def _drop_manual_ip(db, vm, platform_ips, platform_id, ptype, cluster, host, ext
     vm.ip_manual = None
 
 
+def _cluster_aliases(db, platform_id) -> dict:
+    """host name -> alias for this platform's standalone hosts."""
+    from ..models import ClusterAlias
+    return {a.host_name: a.alias for a in
+            db.query(ClusterAlias).filter_by(platform_id=platform_id)}
+
+
+def _apply_cluster_alias(rec: dict, alias_by_host: dict, host_name) -> None:
+    """Fill an empty cluster from the host's alias; mark where the value came from.
+
+    Only touches records that carry a cluster key (collectors always send it).
+    """
+    if "cluster" not in rec:
+        return
+    alias = alias_by_host.get(host_name or "")
+    if not (rec.get("cluster") or "").strip() and alias:
+        rec["cluster"] = alias
+        rec["cluster_is_alias"] = True
+    else:
+        rec["cluster_is_alias"] = False
+
+
 def _epoch(dt):
     """Naive-UTC datetime (collectors produce via utcfromtimestamp) -> epoch seconds."""
     if not dt:
@@ -376,7 +398,12 @@ def sync_platform(platform_id: int):
                           db.query(Host).filter_by(platform_id=platform.id)}
         seen_hosts = set()
         host_by_name = {}
+        # Operator-given cluster names for standalone hosts (phase 148b). Applied
+        # BEFORE the change comparison so an alias never shows up as a "cluster
+        # changed" history row; a real cluster reported by the platform wins.
+        alias_by_host = _cluster_aliases(db, platform.id)
         for hd in hosts_data:
+            _apply_cluster_alias(hd, alias_by_host, hd.get("name"))
             # mgmt_ip candidate list (not a model column - pop before upsert).
             # While the STORED IP is still present on the host, a different
             # deterministic pick (bond failover, vmk order) is NOT a change:
@@ -463,6 +490,7 @@ def sync_platform(platform_id: int):
         for vd in vms_data:
             seen_vms.add(vd["external_id"])
             host_name = vd.pop("host_name", "")
+            _apply_cluster_alias(vd, alias_by_host, host_name)
             host_obj = host_by_name.get(host_name)
             enrich_failed = vd.pop("enrich_failed", False)
             os_from_agent = vd.pop("os_from_agent", True)   # default for vCenter/LXC: trust

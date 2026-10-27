@@ -258,12 +258,15 @@ const VMs = {
 
   qfLabel(pair) { return pair[0] ? t(pair[0], pair[1]) : pair[1]; },
 
-  /** Tek menü satırı. it = [alan, değer, [i18n, etiket], sayı?, gizli?] */
+  /** Tek menü satırı. it = [alan, değer, [i18n, etiket], sayı?, gizli?, takma ad?] */
   qfItemHtml(it, dyn) {
     return '<div class="qf qf-item' + (dyn ? ' qf-dyn' : '') + (it[4] ? ' is-hidden' : '') +
         '" role="button" tabindex="0" data-field="' + it[0] + '" data-value="' + App.esc(it[1]) + '">' +
       '<span class="qf-check"></span>' +
       '<span class="qf-text">' + App.esc(VMs.qfLabel(it[2])) + '</span>' +
+      (it[5] ? '<span class="qf-alias-tag" title="' + App.esc(t('vm.qf.aliasTip',
+        'Platform cluster bildirmiyor; bu ad host için verilen takma ad')) + '">' +
+        t('cv.aliasTag', 'takma ad') + '</span>' : '') +
       (it[4] ? '<span class="qf-hidden-tag" title="' + App.esc(t('vm.qf.hiddenTip',
         'Dashboard ve listede gizli; seçerseniz yine listelenir')) + '"><i class="bi bi-eye-slash"></i> ' +
         t('vm.hiddenMark', 'gizli') + '</span>' : '') +
@@ -275,7 +278,10 @@ const VMs = {
   /** Cluster menüsünü facets'ten doldur (sayılar dahil; gizliler işaretli). */
   setClusterItems(clusters) {
     const g = VMs.QF_GROUPS.find(x => x.id === 'cluster');
-    g.items = (clusters || []).map(c => ['cluster', '=' + c.key, [null, c.key], c.count, !!c.hidden]);
+    // "(Cluster'sız)" = '=' (boş cluster, diğerleriyle VEYA'lanabilir: cluster:=,=Lab)
+    g.items = (clusters || []).map(c => c.is_none
+      ? ['cluster', '=', ['cl.noCluster', "(Cluster'sız)"], c.count, !!c.hidden, false]
+      : ['cluster', '=' + c.key, [null, c.key], c.count, !!c.hidden, !!c.is_alias]);
     const box = document.querySelector('#quickFilters .qf-dd[data-group="cluster"] .qf-dyn-items');
     if (!box) return;
     box.innerHTML = g.items.length ? g.items.map(it => VMs.qfItemHtml(it, true)).join('')
@@ -579,7 +585,7 @@ const VMs = {
       ]],
       [t('vh.g.infra', 'Altyapı ve platform'), [
         F(['host', 'node'], 'host:esx01', t('vh.f.host', 'Bağlı ESXi host / Proxmox node. host:yok = host\'u bilinmeyen.')),
-        F(['cluster'], 'cluster:prod', t('vh.f.cluster', 'Cluster (kısmi; tam eşleşme için cluster:=ad). Sorguda cluster: varsa gizli cluster\'lar da aranır.')),
+        F(['cluster'], 'cluster:prod', t('vh.f.cluster', 'Cluster (kısmi; tam eşleşme için cluster:=ad, cluster\'sız olanlar için cluster:=). Sorguda cluster: varsa gizli cluster\'lar da aranır.')),
         F(['datastore'], 'datastore:ssd', t('vh.f.datastore', 'Disklerin bulunduğu datastore / storage.')),
         F(['pool', 'havuz'], 'pool:prod', t('vh.f.pool', 'Resource pool (vCenter) / pool (Proxmox).')),
         F(['folder', 'klasor'], 'folder:web', t('vh.f.folder', 'VM klasörü (yalnız vCenter).')),

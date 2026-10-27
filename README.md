@@ -345,7 +345,7 @@ yazılır. Mevcut konsol kayıtları aynı ekrandaki butonla toplu silinebilir.
 | `status:` | `status:running,stopped` | running / stopped / suspended (TR: `çalışan`, `kapalı`, `askıda`) |
 | `tools:` / `agent:` | `tools:yok` | `running` = çalışıyor; `yok` = kurulu değil veya çalışmıyor |
 | `host:` / `node:` | `host:esx01` | Bağlı ESXi host / Proxmox node |
-| `cluster:` / `datastore:` | `cluster:"Ankara Prod"` `cluster:=Lab` | Boşluklu değerler tırnaklanır; `=` ile başlayan değer tam eşleşir (`cluster:=Lab`, Lab2'yi bulmaz). Sorguda `cluster:` varsa gizli cluster'lar da aranır |
+| `cluster:` / `datastore:` | `cluster:"Ankara Prod"` `cluster:=Lab` | Boşluklu değerler tırnaklanır; `=` ile başlayan değer tam eşleşir (`cluster:=Lab`, Lab2'yi bulmaz); yalnız `=` boş değer demektir (`cluster:=` cluster'sız VM'ler, `cluster:=,=Lab` ikisi birden). Sorguda `cluster:` varsa gizli cluster'lar da aranır |
 | `pool:` / `havuz:` | `pool:Prod` | Resource pool (vCenter) / pool (Proxmox) |
 | `folder:` / `klasor:` | `folder:Web` | VM klasörü (vCenter); Proxmox'ta yok |
 | `platform:` / `type:` / `location:` | `type:proxmox` | Platform adı / tipi (`vcenter`, `proxmox`) / lokasyonu |
@@ -461,6 +461,8 @@ vm-inventory/
 **Verileri ne kadar güncel?** Envanter en fazla `SYNC_INTERVAL_MINUTES` kadar geride (varsayılan 15 dk); CPU/RAM/disk **kullanım oranları** ise ayrı hafif bir görevle `USAGE_SYNC_INTERVAL_MINUTES` aralığında (varsayılan 3 dk) tazelenir. "Tümünü Yenile" ile her şey anında güncellenir.
 
 **Cluster gizleme nasıl çalışır?** Dashboard, Sanal Makineler, Snapshot'lar ve Topoloji sayfalarının üst çubuğundaki **Cluster'lar** düğmesi (gizli sayısını gösterir) görünürlük penceresini açar; arama, **Tümünü göster** ve **Yalnız bu** (yalnızca o cluster görünür kalır) seçenekleri vardır. Kapattığınız cluster sayılara/grafiklere girmez, VM listesinde, snapshot listesinde ve topolojide varsayılan görünmez. Ayar **herkes için** geçerlidir (operatör ve üstü değiştirir). Veri silinmez — Sanal Makineler sayfasındaki **Cluster** filtre menüsünden (gizliler işaretlidir) seçilen cluster, gelişmiş paneldeki "gizli cluster'ları dahil et" kutusu veya doğrudan `cluster:` araması yine erişir; anahtarı açınca her şey geri gelir.
+
+**Cluster'sız host'lara ad verme:** vCenter'da bir cluster'a bağlı olmayan (standalone) ESXi host'ların VM'leri "(Cluster'sız)" altında toplanır. Görünürlük penceresinde bu satırdaki **Ad ver** ile host bazında (ya da platformdaki tümüne aynı) bir takma ad verin: ad host'a ve VM'lerine cluster adı olarak yazılır, arama/filtre/gizleme/grafik/gruplama/raporlarda normal bir cluster gibi davranır ("takma ad" etiketiyle görünür). Aynı adı birden çok host'a vererek birleştirebilirsiniz. Platform ileride o host için gerçek bir cluster bildirirse **gerçek ad kazanır**; host cluster'dan çıkarsa takma ad geri gelir. Gizli "(Cluster'sız)" grubuna verilen ad gizli başlar. Gerçek bir cluster'ın adı takma ad olarak kullanılamaz.
 
 **Kaç platform eklenebilir?** Sınır yok; her platform bağımsız senkronize edilir, hepsi aynı envanterde birleşir.
 

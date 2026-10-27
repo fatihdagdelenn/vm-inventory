@@ -117,6 +117,8 @@ def delete_platform(platform_id: int, request: Request,
     db.query(VirtualMachine).filter_by(platform_id=p.id).delete(synchronize_session=False)
     db.query(Network).filter_by(platform_id=p.id).delete(synchronize_session=False)
     db.query(Datastore).filter_by(platform_id=p.id).delete(synchronize_session=False)
+    from ..models import ClusterAlias
+    db.query(ClusterAlias).filter_by(platform_id=p.id).delete(synchronize_session=False)
     log_audit(db, user, "delete_platform", target=p.name, request=request)
     db.delete(p)   # hosts and sync logs are removed via ORM cascade
     db.commit()

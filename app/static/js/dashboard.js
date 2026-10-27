@@ -264,13 +264,13 @@ function barGrad(chart, base, horizontal) {
            '&sort=' + sortKey + '&order=desc' + (v.id ? '&hl=' + v.id : '');
        }});
   topVm('chartTopCpu', d.top_cpu_vms || [], v => v.pct,
-    v => `CPU %${v.pct}`, i => critColor((d.top_cpu_vms||[])[i].pct), 'cpu_usage');
+    v => `CPU %${v.pct}`, i => critColor(((d.top_cpu_vms||[])[i] || {}).pct || 0), 'cpu_usage');
   topVm('chartTopRam', d.top_ram_vms || [], v => v.pct,
-    v => `RAM %${v.pct} (${v.used_gb} GB)`, i => critColor((d.top_ram_vms||[])[i].pct), 'ram_usage');
+    v => `RAM %${v.pct} (${v.used_gb} GB)`, i => critColor(((d.top_ram_vms||[])[i] || {}).pct || 0), 'ram_usage');
   topVm('chartTopDisk', d.top_disk_vms || [], v => (v.value_gb != null ? v.value_gb : v.used_gb),
     v => (v.is_used ? `${v.used_gb} / ${v.total_gb} GB ` + t('dash.diskInUse', 'kullanımda')
                     : `${v.total_gb} GB ` + t('dash.diskAllocated', 'ayrılan')),
-    i => { const v = (d.top_disk_vms||[])[i]; return v.is_used ? critColor(v.total_gb ? 100*v.used_gb/v.total_gb : 0) : '#5f7799'; },
+    i => { const v = (d.top_disk_vms||[])[i] || {}; return v.is_used ? critColor(v.total_gb ? 100*v.used_gb/v.total_gb : 0) : '#5f7799'; },
     'disk_usage');
 
   bar('chartHostVm', (d.host_vm_dist || []).map(h => h.name), (d.host_vm_dist || []).map(h => h.count),
@@ -301,7 +301,7 @@ function barGrad(chart, base, horizontal) {
   }
   const dsf = d.datastore_fill || [];
   bar('chartDatastore', dsf.map(s => s.name), dsf.map(s => s.usage_pct),
-    {base: BLUE, thick: 22, colorFn: i => critColor(dsf[i].usage_pct),
+    {base: BLUE, thick: 22, colorFn: i => critColor((dsf[i] || {}).usage_pct || 0),
      scales: {x: {beginAtZero: true, max: 100, ticks: {callback: v => v + '%'}}},
      tooltip: {callbacks: {label: ctx => { const s = dsf[ctx.dataIndex];
        return `%${s.usage_pct} · ${s.used_gb} / ${s.capacity_gb} GB`; }}},

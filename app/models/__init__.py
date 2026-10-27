@@ -1,7 +1,7 @@
 from .user import User, UserSetting
 from .platform import Platform, SyncLog
 from .inventory import (Host, VirtualMachine, Network, Datastore, Snapshot, Backup, Tag,
-                        vm_tags, ChangeHistory, ClusterSetting, AppSetting, ScheduledReport,
+                        vm_tags, ChangeHistory, ClusterSetting, ClusterAlias, AppSetting, ScheduledReport,
                         CapacitySnapshot, VmUsageDaily)
 from .audit import AuditLog
 from .physical import PhysicalDevice, PhysicalDeviceHistory, HostSupplement

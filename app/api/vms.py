@@ -221,9 +221,18 @@ def vm_facets(include_hidden: bool = False,
     cluster_rows = full_base.with_entities(
         VirtualMachine.cluster, func.count(VirtualMachine.id))\
         .group_by(VirtualMachine.cluster).all()
+    from .clusters import NONE_SENTINEL, _alias_names
+    alias_names = _alias_names(db)
     clusters_facet = sorted(
-        [{"key": r[0], "count": r[1], "hidden": r[0] in hidden}
-         for r in cluster_rows if r[0]], key=lambda x: x["key"])
+        [{"key": r[0], "count": r[1], "hidden": r[0] in hidden,
+          "is_alias": r[0] in alias_names}
+         for r in cluster_rows if r[0]], key=lambda x: x["key"].lower())
+    # "(Cluster'sız)": standalone-host VMs with no alias. Listed first so it can
+    # be picked like any cluster (value "=" = empty cluster, OR-able).
+    none_count = sum(r[1] for r in cluster_rows if not r[0])
+    if none_count:
+        clusters_facet.insert(0, {"key": "", "count": none_count, "is_none": True,
+                                  "hidden": NONE_SENTINEL in hidden, "is_alias": False})
 
     return {
         "clusters": clusters_facet,

@@ -27,6 +27,26 @@ Sürümleme [Semantic Versioning](https://semver.org/lang/tr/) yaklaşımını i
 
 Henüz release'e girmemiş fazlar (faz142–; dahili v1.7.1 →).
 
+### 🏷️ Cluster'sız host'lara takma ad (faz149)
+- Standalone ESXi host'ların (platform cluster bildirmiyor) VM'leri tek bir
+  "(Cluster'sız)" grubunda toplanıyordu ve Sanal Makineler'deki Cluster
+  menüsünde hiç görünmüyordu. Artık menüde **(Cluster'sız)** seçeneği var
+  (yeni sözdizimi `cluster:=` = cluster'ı boş; `cluster:=,=Lab` ile birleşir).
+- Görünürlük penceresinde **Ad ver**: host bazında (platform başlığında
+  "Tümüne aynı ad") takma ad. Ad senkronda host'a ve VM'lerine cluster olarak
+  yazılır (`cluster_is_alias` işaretiyle), kaydedince beklemeden uygulanır;
+  arama, filtre, gizleme, dashboard grafikleri, gruplama, raporlar ve
+  topoloji onu normal bir cluster olarak görür. Listelerde "takma ad" etiketi.
+- **Platform kazanır:** host için gerçek bir cluster bildirildiğinde o ad
+  kullanılır; host cluster'dan çıkarsa takma ad geri gelir. Takma ad
+  Değişiklik Geçmişi'ne "cluster değişti" gürültüsü yazmaz (denetim kaydı yazılır).
+- Gizli "(Cluster'sız)" grubuna (ya da gizli eski bir ada) verilen yeni ad
+  **gizli başlar** — ad vermek grubu habersizce dashboard'a geri getirmez.
+  Gerçek bir cluster adı takma ad olarak kullanılamaz (409). Artık kullanılmayan
+  takma adın görünürlük kaydı silinir. Platform silinince kuralları da silinir.
+- **Düzeltme:** dashboard'daki en çok CPU/RAM/Disk ve datastore kartları veri
+  boşken tarayıcı konsoluna hata yazıyordu (renk fonksiyonu); giderildi.
+
 ### 👁 Cluster görünürlüğü her yerden (faz148)
 - Cluster gizle/göster ayarı yalnızca dashboard'daki cluster grafiğinin "Yönet"
   düğmesinde kalıyordu. Artık **Dashboard, Sanal Makineler, Snapshot'lar ve
