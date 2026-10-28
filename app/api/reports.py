@@ -13,6 +13,7 @@ from ..models import VirtualMachine, Host, User, AuditLog, ScheduledReport
 from ..core.security import get_current_user, require_role, validate_csrf
 from ..core.search import apply_vm_search
 from ..core.audit import log_audit
+from ..core.host_hw import annotate_hosts
 from ..core.scheduler import scheduler
 from ..services import report_service as rs
 from ..core.timezone import to_iso, now_local
@@ -75,7 +76,7 @@ def export_vms(fmt: str = "xlsx", q: str = "", db: Session = Depends(get_db),
 @router.get("/hosts/export")
 def export_hosts(fmt: str = "xlsx", db: Session = Depends(get_db),
                  user: User = Depends(get_current_user)):
-    items = db.query(Host).order_by(Host.name).all()
+    items = annotate_hosts(db, db.query(Host).order_by(Host.name).all())
     log_audit(db, user, "export", target=f"hosts ({fmt})", detail=f"count={len(items)}")
     db.commit()
     return _export(items, rs.HOST_COLUMNS, fmt, "Host Envanteri")
@@ -111,7 +112,7 @@ def export_all(fmt: str = "xlsx", q: str = "", db: Session = Depends(get_db),
     vms = apply_vm_search(
         db.query(VirtualMachine).options(joinedload(VirtualMachine.host_ref))
           .filter_by(is_template=False), q).order_by(VirtualMachine.name).all()
-    hosts = db.query(Host).order_by(Host.name).all()
+    hosts = annotate_hosts(db, db.query(Host).order_by(Host.name).all())
     dstores = db.query(Datastore).order_by(Datastore.name).all()
     phys = physical_export_rows(db)
     sections = [
@@ -181,7 +182,7 @@ def _build_items(db: Session, target: str, q: str):
     from ..models import Datastore
     from .physical import physical_export_rows
     if target == "hosts":
-        return db.query(Host).order_by(Host.name).all(), rs.HOST_COLUMNS, "Host"
+        return annotate_hosts(db, db.query(Host).order_by(Host.name).all()), rs.HOST_COLUMNS, "Host"
     if target == "datastores":
         return (db.query(Datastore).order_by(Datastore.name).all(),
                 rs.DATASTORE_COLUMNS, "Datastore")
@@ -194,7 +195,7 @@ def _build_items(db: Session, target: str, q: str):
         sections = [
             ("Sanal Makineler", vms, rs.VM_COLUMNS),
             ("Diskler", rs.disk_rows(vms), rs.DISK_COLUMNS),
-            ("Host'lar", db.query(Host).order_by(Host.name).all(), rs.HOST_COLUMNS),
+            ("Host'lar", annotate_hosts(db, db.query(Host).order_by(Host.name).all()), rs.HOST_COLUMNS),
             ("Datastore'lar", db.query(Datastore).order_by(Datastore.name).all(),
              rs.DATASTORE_COLUMNS),
             ("Fiziksel Envanter", physical_export_rows(db), rs.PHYSICAL_COLUMNS),

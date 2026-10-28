@@ -683,6 +683,20 @@ html.theme-dark .net-card-name { color: var(--text); }
 .net-chip i { font-size: .7rem; color: var(--text-muted); }
 .net-chip-vlan { background: rgba(47,129,247,.12); color: var(--accent); border-color: rgba(47,129,247,.3); }
 .net-chip-more { background: transparent; color: var(--text-muted); }
+/* Hosts page: editable hardware chip (phase 152) */
+button.net-chip.hw-chip { cursor: pointer; font-family: inherit; line-height: inherit; }
+button.net-chip.hw-chip:hover { border-color: var(--accent); }
+.hw-chip .hw-pen { opacity: 0; transition: opacity .15s; }
+.hw-chip:hover .hw-pen, .hw-chip:focus-visible .hw-pen { opacity: 1; }
+.hw-chip .ip-manual-badge { font-size: .62rem; padding: .05rem .3rem; }
+button.net-chip.hw-chip-empty { background: transparent; border-style: dashed; color: var(--text-muted); font-weight: 500; }
+.hw-cell { display: flex; align-items: center; gap: .35rem; min-width: 9.5rem; }
+.hw-cell > span { flex: 1 1 auto; }
+.hw-edit { color: var(--text-muted); opacity: 0; flex: 0 0 auto; line-height: 1; }
+tr:hover .hw-edit, .hw-edit:focus-visible { opacity: .6; }
+.hw-edit:hover { color: var(--accent); opacity: 1; }
+@media (hover: none) { .hw-edit { opacity: .6; } }
+.hw-detected { padding: .5rem .65rem; border-radius: 8px; background: var(--accent-soft); border: 1px solid var(--border); }
 .net-card-foot {
   display: flex; align-items: center; justify-content: space-between;
   gap: .5rem; margin-top: auto; padding-top: .45rem;

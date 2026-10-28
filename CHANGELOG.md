@@ -28,7 +28,32 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-Nothing yet (phase 152 →; internal v1.8.1 →).
+Phases not yet in a release (phase 152 →; internal v1.8.1 →).
+
+### 🖥️ Hardware model on the Hosts page (phase 152)
+- Proxmox cannot report a node's exact system model through its API (the
+  System Report carries only `dmidecode -t bios` + `lspci`), so hosts showed a
+  generic family such as "Dell Inc. PowerEdge Rx5xx", only "HPE", or nothing.
+- **Edit it on the Hosts page** (operator and above): pencil on the hardware chip
+  / table cell → Brand + Model, pre-filled with the detected value so the usual
+  fix is one edit (`Rx5xx` → `R650`). Manual values carry a **manual** badge;
+  the detected value stays visible in the editor and the tooltip. **Use detected
+  value** removes the override. Audit-logged (`host-hardware:<name>`).
+- The same override is used everywhere: Hosts cards / table / sorting / search,
+  Physical Inventory (it already had brand / model fields - same storage) and
+  every export. A sync never overwrites it.
+- **Exports:** host exports (Hosts page, Reports, "all" report, scheduled
+  reports) gained **Brand**, **Model** and **Model source** (manual / detected)
+  columns - hardware was missing from them entirely.
+- **Fix:** Physical Inventory split the detected value at the first space
+  ("Dell" / "Inc. PowerEdge R750"); brand and model are now split at the chassis
+  family ("Dell Inc." / "PowerEdge R750").
+- The Proxmox report parser also accepts the sysfs DMI layout
+  (`/sys/devices/virtual/dmi/id/product_name`) and `dmidecode -t system`; both
+  have been proposed upstream (Proxmox bug #4982). If a future PVE release ships
+  either, the exact model is picked up automatically.
+- Honest limit: on today's PVE (9.2 tested by the user) the exact model still
+  has to be typed once per host.
 
 ---
 

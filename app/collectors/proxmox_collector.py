@@ -246,6 +246,11 @@ class ProxmoxCollector:
             scope = block.group(1) if block else text
             man = re.search(r"Manufacturer:\s*(.+)", scope)
             prod = re.search(r"Product Name:\s*(.+)", scope)
+            # Newer report layouts may print the sysfs DMI files instead
+            # ("# cat /sys/devices/virtual/dmi/id/product_name" + value line;
+            # proposed upstream, see pve-devel 2024-04). Accept either form.
+            man = man or re.search(r"dmi/id/sys_vendor[^\n]*\n[ \t]*([^#\n].*)", text)
+            prod = prod or re.search(r"dmi/id/product_name[^\n]*\n[ \t]*([^#\n].*)", text)
             parts = []
             for m in (man, prod):
                 val = (m.group(1).strip() if m else "")

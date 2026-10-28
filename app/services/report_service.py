@@ -82,6 +82,8 @@ PHYSICAL_COLUMNS = [
 
 HOST_COLUMNS = [
     ("Host Adı", "name"), ("Yönetim IP", "mgmt_ip"), ("İşletim Sistemi", "os_version"),
+    # hw_* are set by core.host_hw.annotate_hosts (manual override > detected)
+    ("Marka", "hw_brand"), ("Model", "hw_name"), ("Model Kaynağı", "hw_source"),
     ("CPU Modeli", "cpu_model"), ("Çekirdek", "cpu_cores"),
     ("Toplam RAM (MB)", "ram_total_mb"), ("Kullanılan RAM (MB)", "ram_used_mb"),
     ("Disk (GB)", "disk_total_gb"), ("Cluster", "cluster"), ("Durum", "status"),

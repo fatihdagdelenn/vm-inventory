@@ -20,6 +20,7 @@ from ..models import (User, PhysicalDevice, PhysicalDeviceHistory,
 from ..models.physical import DEVICE_TYPES, SERVER_ONLY_FIELDS, SERVER_ROLES
 from ..core.security import require_role, get_current_user, validate_csrf
 from ..core.audit import log_audit
+from ..core.host_hw import effective_hw
 from ..core.timezone import to_iso, now_local
 from ..services import report_service as rs
 
@@ -51,15 +52,10 @@ def _host_to_dict(h: Host, sup: HostSupplement = None) -> dict:
     if h.cpu_model:
         cpu = (h.cpu_model + (f" ({h.cpu_cores}c)" if h.cpu_cores else "")).strip()
     ram_gb = int(round((h.ram_total_mb or 0) / 1024)) or None
-    brand, model = "", (h.hw_model or "")
-    if h.hw_model and " " in h.hw_model:
-        brand, model = h.hw_model.split(" ", 1)
-    # Manual override wins (Proxmox often reports a generic/wrong chassis)
-    hw_overridden = False
-    if sup and (sup.brand or sup.model):
-        brand = sup.brand or brand
-        model = sup.model or model
-        hw_overridden = True
+    # Manual override wins (Proxmox often reports a generic/wrong chassis);
+    # same rule as the Hosts page and exports (core/host_hw.py).
+    hw = effective_hw(h, sup)
+    brand, model, hw_overridden = hw["brand"], hw["model"], hw["manual"]
     return {
         "id": None, "source": "platform", "host_id": h.id,
         "device_type": "server", "name": h.name,

@@ -4,6 +4,8 @@
  *  - Tüm kolon başlıkları tıklanabilir: metin (A-Z), sayısal, durum bazlı
  *  - VM sayısına tıklayınca o host'un VM'lerini gösteren modal
  *  - Modal'daki VM'e tıklayınca Sanal Makineler sayfasında detayına deep-link
+ *  - Hardware brand / model can be set by hand (operator+): Proxmox cannot
+ *    report the exact system model through its API (phase 152)
  */
 
 /** Kaynak hücresi: üst satırda değer + satır içi yüzde, altında mini kullanım çubuğu.
@@ -133,6 +135,109 @@ const Hosts = {
       ? '<i class="bi bi-cloud text-primary" title="vCenter"></i>'
       : '<i class="bi bi-box text-warning" title="Proxmox"></i>';
   },
+  /** Hardware text + "manual" badge; for operators also an edit pencil. */
+  _hwHtml(h, inCard) {
+    const edit = App.role() !== 'viewer';
+    const tip = h.hw_manual
+      ? t('hs.hwManualTip', 'Elle girildi') + (h.hw_auto ? ' — ' + t('hs.hwDetected', 'Otomatik bulunan') + ': ' + h.hw_auto : '')
+      : (h.hw_model ? t('hs.hwDetected', 'Otomatik bulunan') : '');
+    const badge = h.hw_manual
+      ? ' <span class="badge bg-warning-subtle text-warning-emphasis border ip-manual-badge">' +
+        t('vm.ipManualBadge', 'elle') + '</span>' : '';
+    if (inCard) {
+      if (!h.hw_model && !edit) return '';
+      if (!h.hw_model)
+        return '<button type="button" class="net-chip hw-chip hw-chip-empty" onclick="Hosts.editHw(' + h.id + ')">' +
+          '<i class="bi bi-plus"></i> ' + t('hs.hwAdd', 'Model ekle') + '</button>';
+      const inner = App.esc(h.hw_model) + badge + (edit ? ' <i class="bi bi-pencil hw-pen"></i>' : '');
+      return edit
+        ? '<button type="button" class="net-chip hw-chip" title="' + App.esc(tip) + '" onclick="Hosts.editHw(' + h.id + ')">' + inner + '</button>'
+        : '<span class="net-chip" title="' + App.esc(tip) + '">' + inner + '</span>';
+    }
+    return '<div class="hw-cell"><span title="' + App.esc(tip) + '">' + App.esc(h.hw_model || '—') + badge + '</span>' +
+      (edit ? '<button type="button" class="btn btn-link btn-sm p-0 hw-edit" title="' +
+        App.esc(t('hs.hwEdit', 'Donanım modelini düzenle')) + '" onclick="Hosts.editHw(' + h.id + ')">' +
+        '<i class="bi bi-pencil"></i></button>' : '') + '</div>';
+  },
+
+  /** Brand / model editor (one modal, built on first use). */
+  _hwModal() {
+    let m = document.getElementById('hwModal');
+    if (m) return m;
+    m = document.createElement('div');
+    m.className = 'modal fade'; m.id = 'hwModal'; m.tabIndex = -1;
+    m.innerHTML =
+      '<div class="modal-dialog"><div class="modal-content">' +
+        '<div class="modal-header"><h5 class="modal-title"><i class="bi bi-hdd-rack"></i> ' +
+          t('hs.hwEdit', 'Donanım modelini düzenle') + ' <small class="text-muted" id="hwHost"></small></h5>' +
+          '<button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>' +
+        '<div class="modal-body">' +
+          '<div class="hw-detected small mb-3" id="hwDetected"></div>' +
+          '<div class="row g-2">' +
+            '<div class="col-5"><label class="form-label small" for="hwBrand">' + t('hs.hwBrand', 'Marka') + '</label>' +
+              '<input id="hwBrand" class="form-control form-control-sm" maxlength="64" placeholder="Dell Inc."></div>' +
+            '<div class="col-7"><label class="form-label small" for="hwModelIn">' + t('hs.hwModelName', 'Model') + '</label>' +
+              '<input id="hwModelIn" class="form-control form-control-sm" maxlength="128" placeholder="PowerEdge R650"></div>' +
+          '</div>' +
+          '<div class="form-text mt-2">' + t('hs.hwHelp',
+            'Proxmox tam modeli API ile bildirmez. Sunucuda "dmidecode -s system-product-name" çıktısını yazabilirsiniz. ' +
+            'Boş bırakıp kaydederseniz otomatik bulunan değere dönülür.') + '</div>' +
+        '</div>' +
+        '<div class="modal-footer">' +
+          '<button type="button" class="btn btn-outline-secondary btn-sm me-auto" id="hwReset">' +
+            '<i class="bi bi-arrow-counterclockwise"></i> ' + t('hs.hwUseAuto', 'Otomatiğe dön') + '</button>' +
+          '<button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">' + t('action.cancel', 'İptal') + '</button>' +
+          '<button type="button" class="btn btn-primary btn-sm" id="hwSave">' + t('action.save', 'Kaydet') + '</button>' +
+        '</div>' +
+      '</div></div>';
+    document.body.appendChild(m);
+    m.querySelector('#hwSave').addEventListener('click', () => Hosts.saveHw(false));
+    m.querySelector('#hwReset').addEventListener('click', () => Hosts.saveHw(true));
+    m.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') Hosts.saveHw(false); });
+    return m;
+  },
+
+  editHw(id) {
+    const h = Hosts.items.find(x => x.id === id);
+    if (!h) return;
+    const m = Hosts._hwModal();
+    Hosts._hwId = id;
+    m.querySelector('#hwHost').textContent = h.name;
+    m.querySelector('#hwDetected').innerHTML = h.hw_auto
+      ? '<i class="bi bi-cpu"></i> ' + t('hs.hwDetected', 'Otomatik bulunan') + ': <strong>' + App.esc(h.hw_auto) + '</strong>'
+      : '<i class="bi bi-question-circle"></i> ' + t('hs.hwNone', 'Platform bu host için model bildirmedi.');
+    // Pre-fill: the manual value, else the detected split - so the typical
+    // fix is just correcting "Rx5xx" to "R650".
+    m.querySelector('#hwBrand').value = h.hw_manual ? h.hw_manual_brand : (h.hw_brand || '');
+    m.querySelector('#hwModelIn').value = h.hw_manual ? h.hw_manual_model : (h.hw_name || '');
+    m.querySelector('#hwReset').classList.toggle('d-none', !h.hw_manual);
+    const modal = bootstrap.Modal.getOrCreateInstance(m);
+    m.addEventListener('shown.bs.modal', () => m.querySelector('#hwModelIn').focus(), {once: true});
+    modal.show();
+  },
+
+  async saveHw(clear) {
+    const m = document.getElementById('hwModal');
+    const body = clear ? {brand: '', model: ''}
+      : {brand: m.querySelector('#hwBrand').value.trim(), model: m.querySelector('#hwModelIn').value.trim()};
+    const h = Hosts.items.find(x => x.id === Hosts._hwId);
+    // Saving the untouched detected value would only pin it - treat as no-op.
+    if (!clear && h && !h.hw_manual && body.brand === (h.hw_brand || '') && body.model === (h.hw_name || '')) {
+      bootstrap.Modal.getOrCreateInstance(m).hide();
+      return;
+    }
+    let res;
+    try {
+      res = await App.api('/api/hosts/' + Hosts._hwId + '/hardware', {method: 'PUT', body});
+    } catch (e) { return; }
+    const i = Hosts.items.findIndex(x => x.id === Hosts._hwId);
+    if (i >= 0) Hosts.items[i] = Object.assign({}, Hosts.items[i], res);
+    bootstrap.Modal.getOrCreateInstance(m).hide();
+    App.toast(clear ? t('hs.hwCleared', 'Otomatik bulunan değere dönüldü')
+                    : t('hs.hwSaved', 'Donanım modeli kaydedildi'), 'success');
+    Hosts.render();
+  },
+
   _vmCell(h) {
     return h.vm_count
       ? '<button type="button" class="vm-count-link" onclick="Hosts.showVms(' + h.id + ')" ' +
@@ -155,7 +260,7 @@ const Hosts = {
         '<div class="net-card-meta">' +
           (h.cluster ? '<span class="net-chip"><i class="bi bi-diagram-3"></i> ' + App.esc(h.cluster) + '</span>' : '') +
           (h.mgmt_ip ? '<span class="net-chip mono">' + App.esc(h.mgmt_ip) + '</span>' : '') +
-          (h.hw_model ? '<span class="net-chip" title="' + App.esc(h.hw_model) + '">' + App.esc(h.hw_model) + '</span>' : '') +
+          Hosts._hwHtml(h, true) +
         '</div>' +
         resCell((h.cpu_cores || '—') + ' ' + t('hs.coresLower','çekirdek'), cpuPct, 'CPU') +
         resCell(App.fmtRam(h.ram_used_mb) + ' / ' + App.fmtRam(h.ram_total_mb), ramPct, 'RAM') +
@@ -230,7 +335,7 @@ const Hosts = {
           '<br><small class="text-muted">' + App.esc(h.platform) + '</small></td>' +
         '<td>' + App.esc(h.mgmt_ip || '—') + '</td>' +
         '<td class="small">' + App.esc(h.os_version || '—') + '</td>' +
-        '<td class="small">' + App.esc(h.hw_model || '—') + '</td>' +
+        '<td class="small">' + Hosts._hwHtml(h, false) + '</td>' +
         '<td class="small">' + App.esc(h.cpu_model || '—') + '</td>' +
         '<td>' + resCell((h.cpu_cores || '—') + ' ' + t('hs.coresLower','çekirdek'), cpuPct, 'CPU') + '</td>' +
         '<td>' + resCell(App.fmtRam(h.ram_used_mb) + ' / ' + App.fmtRam(h.ram_total_mb), ramPct, 'RAM') + '</td>' +
