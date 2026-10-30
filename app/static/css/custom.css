@@ -683,6 +683,17 @@ html.theme-dark .net-card-name { color: var(--text); }
 .net-chip i { font-size: .7rem; color: var(--text-muted); }
 .net-chip-vlan { background: rgba(47,129,247,.12); color: var(--accent); border-color: rgba(47,129,247,.3); }
 .net-chip-more { background: transparent; color: var(--text-muted); }
+/* Web-console links: mgmt / BMC addresses open in a new tab (phase 153) */
+a.ext-link { color: inherit; text-decoration: none; border-bottom: 1px dotted var(--text-muted); }
+a.ext-link:hover { color: var(--accent); border-bottom-color: var(--accent); }
+a.ext-link i { font-size: .68em; margin-left: .3em; opacity: .45; vertical-align: .05em; }
+a.ext-link:hover i { opacity: 1; }
+a.ext-link.ext-link-muted { color: var(--text-muted); }
+a.net-chip.chip-link { text-decoration: none; }
+a.net-chip.chip-link:hover { border-color: var(--accent); color: var(--accent); }
+a.net-chip.chip-link i { font-size: .62rem; opacity: .5; }
+a.net-chip.chip-link:hover i { opacity: 1; color: var(--accent); }
+.net-chip.chip-bmc { background: transparent; }
 /* Hosts page: editable hardware chip (phase 152) */
 button.net-chip.hw-chip { cursor: pointer; font-family: inherit; line-height: inherit; }
 button.net-chip.hw-chip:hover { border-color: var(--accent); }

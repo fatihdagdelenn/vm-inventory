@@ -176,6 +176,17 @@ const App = {
 
   /** VM IP listesi (HTML): platformun bildirdiği IP'ler; yoksa elle girilen
    *  IP, "elle" rozetiyle — doğrulanmamış bilgi olduğu görünür kalsın. */
+  /** Link that opens a device web console in a new tab. The URL comes from
+   *  the server (core/weblinks.py: http/https only); anything else renders
+   *  as plain text. */
+  extLink(text, url, cls = '') {
+    if (!text) return '—';
+    if (!url || !/^https?:\/\//i.test(url)) return App.esc(text);
+    return '<a class="ext-link ' + cls + '" href="' + App.esc(url) + '" target="_blank" rel="noopener noreferrer" ' +
+      'title="' + App.esc(t('ui.openWeb', 'Web arayüzünü aç') + ': ' + url) + '">' + App.esc(text) +
+      '<i class="bi bi-box-arrow-up-right"></i></a>';
+  },
+
   ipHtml(v, sep = '<br>') {
     const plat = v.ip_addresses || '';
     const src = plat || v.ip_manual || '';

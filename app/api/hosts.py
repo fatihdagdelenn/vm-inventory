@@ -8,6 +8,7 @@ from ..models import Host, HostSupplement, User
 from ..core.security import get_current_user, require_role, validate_csrf
 from ..core.audit import log_audit
 from ..core.host_hw import effective_hw, supplements_by_host
+from ..core.weblinks import address_url, host_ui_url
 from ..core.timezone import to_iso
 
 router = APIRouter(prefix="/api/hosts", tags=["hosts"])
@@ -23,6 +24,10 @@ def _host_to_dict(h: Host, sup: HostSupplement = None) -> dict:
             "hw_manual": hw["manual"], "hw_auto": hw["auto"],
             "hw_manual_brand": (sup.brand or "") if sup else "",
             "hw_manual_model": (sup.model or "") if sup else "",
+            # web consoles: hypervisor UI (manual web_url > platform default), BMC
+            "ui_url": host_ui_url(h, sup.web_url if sup else None),
+            "ilo_ip": (sup.ilo_ip or "") if sup else "",
+            "ilo_url": address_url(sup.ilo_ip if sup else None),
             "cpu_cores": h.cpu_cores, "ram_total_mb": h.ram_total_mb,
             "ram_used_mb": h.ram_used_mb, "cpu_usage_pct": h.cpu_usage_pct,
             "disk_total_gb": h.disk_total_gb, "disk_used_gb": h.disk_used_gb,

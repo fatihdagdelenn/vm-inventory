@@ -111,6 +111,9 @@
       </div>
       <div class="col-md-6"><label class="form-label" data-i18n="ph.mgmtIp">Yönetim IP</label><input type="text" class="form-control" id="f_mgmt_ip"></div>
       <div class="col-md-6"><label class="form-label" data-i18n="ph.iloIp">iLO / iDRAC / BMC IP</label><input type="text" class="form-control" id="f_ilo_ip"></div>
+      <div class="col-12"><label class="form-label"><span data-i18n="ph.webUrl">Web arayüzü</span> <span class="text-muted small" data-i18n="ph.optional">(isteğe bağlı)</span></label>
+        <input type="text" class="form-control" id="f_web_url" maxlength="255" placeholder="https://10.0.5.20:8443/">
+        <div class="form-text" data-i18n="ph.webUrlHelp">Boş bırakılırsa Yönetim IP'si https://&lt;ip&gt; olarak açılır. Arayüz farklı bir port veya yoldaysa tam adresi yazın.</div></div>
       <div class="col-md-4"><label class="form-label" data-i18n="ph.brand">Marka</label><input type="text" class="form-control" id="f_brand" data-i18n-ph="ph.brandPh" placeholder="Dell, HPE, NetApp…"></div>
       <div class="col-md-4"><label class="form-label" data-i18n="ph.model">Model</label><input type="text" class="form-control" id="f_model" data-i18n-ph="ph.modelPh" placeholder="PowerEdge R750…"></div>
       <div class="col-md-4"><label class="form-label" data-i18n="ph.serialNo">Seri No</label><input type="text" class="form-control" id="f_serial_no"></div>
@@ -172,6 +175,9 @@
         <input type="text" class="form-control" id="fh_location" list="phLocList"></div>
       <div class="col-md-6"><label class="form-label" data-i18n="ph.iloIp">iLO / iDRAC / BMC IP</label>
         <input type="text" class="form-control" id="fh_ilo_ip"></div>
+      <div class="col-12"><label class="form-label"><span data-i18n="ph.webUrl">Web arayüzü</span> <span class="text-muted small" data-i18n="ph.optional">(isteğe bağlı)</span></label>
+        <input type="text" class="form-control" id="fh_web_url" maxlength="255">
+        <div class="form-text" data-i18n="ph.webUrlHostHelp">Boş bırakılırsa hipervizör arayüzü açılır (Proxmox :8006, ESXi /ui/).</div></div>
       <div class="col-md-6"><label class="form-label" data-i18n="ph.serialNo">Seri No</label>
         <input type="text" class="form-control" id="fh_serial_no"></div>
       <div class="col-12">

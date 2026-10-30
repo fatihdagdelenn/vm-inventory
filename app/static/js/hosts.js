@@ -135,6 +135,15 @@ const Hosts = {
       ? '<i class="bi bi-cloud text-primary" title="vCenter"></i>'
       : '<i class="bi bi-box text-warning" title="Proxmox"></i>';
   },
+  /** Chip that opens a web console (hypervisor UI / BMC) in a new tab. */
+  _linkChip(text, url, cls = '', tip = '') {
+    if (!text) return '';
+    if (!url) return '<span class="net-chip ' + cls + '">' + App.esc(text) + '</span>';
+    return '<a class="net-chip chip-link ' + cls + '" href="' + App.esc(url) + '" target="_blank" rel="noopener noreferrer" ' +
+      'title="' + App.esc((tip ? tip + ' — ' : '') + t('ui.openWeb', 'Web arayüzünü aç') + ': ' + url) + '">' +
+      App.esc(text) + ' <i class="bi bi-box-arrow-up-right"></i></a>';
+  },
+
   /** Hardware text + "manual" badge; for operators also an edit pencil. */
   _hwHtml(h, inCard) {
     const edit = App.role() !== 'viewer';
@@ -259,7 +268,8 @@ const Hosts = {
         '</div>' +
         '<div class="net-card-meta">' +
           (h.cluster ? '<span class="net-chip"><i class="bi bi-diagram-3"></i> ' + App.esc(h.cluster) + '</span>' : '') +
-          (h.mgmt_ip ? '<span class="net-chip mono">' + App.esc(h.mgmt_ip) + '</span>' : '') +
+          Hosts._linkChip(h.mgmt_ip, h.ui_url, 'mono') +
+          (h.ilo_ip ? Hosts._linkChip('iLO/BMC', h.ilo_url, 'chip-bmc', 'iLO / iDRAC / BMC: ' + h.ilo_ip) : '') +
           Hosts._hwHtml(h, true) +
         '</div>' +
         resCell((h.cpu_cores || '—') + ' ' + t('hs.coresLower','çekirdek'), cpuPct, 'CPU') +
@@ -333,7 +343,8 @@ const Hosts = {
       return '<tr>' +
         '<td>' + Hosts._pIcon(h) + ' <strong>' + App.esc(h.name) + '</strong>' +
           '<br><small class="text-muted">' + App.esc(h.platform) + '</small></td>' +
-        '<td>' + App.esc(h.mgmt_ip || '—') + '</td>' +
+        '<td class="text-nowrap">' + App.extLink(h.mgmt_ip, h.ui_url) +
+          (h.ilo_ip ? '<br><small>' + App.extLink('iLO/BMC ' + h.ilo_ip, h.ilo_url, 'ext-link-muted') + '</small>' : '') + '</td>' +
         '<td class="small">' + App.esc(h.os_version || '—') + '</td>' +
         '<td class="small">' + Hosts._hwHtml(h, false) + '</td>' +
         '<td class="small">' + App.esc(h.cpu_model || '—') + '</td>' +

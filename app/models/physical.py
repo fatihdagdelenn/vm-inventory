@@ -36,6 +36,7 @@ class PhysicalDevice(Base):
     brand = Column(String(64))                                    # Dell / HPE / NetApp ...
     model = Column(String(128))                                   # PowerEdge R750 ...
     serial_no = Column(String(128))                               # service tag / serial
+    web_url = Column(String(255))                                 # web UI when not https://<mgmt_ip>
     # Server-only (blank for storage / san_switch / backup)
     cpu = Column(String(128))                                     # e.g. "2x Xeon Gold 6338 (64c)"
     ram_gb = Column(Integer)                                      # total RAM in GB
@@ -61,6 +62,7 @@ class HostSupplement(Base):
     role = Column(String(24), default="hypervisor")      # usually hypervisor
     brand = Column(String(64))                           # manual override of auto model
     model = Column(String(128))                          # manual override of auto model
+    web_url = Column(String(255))                        # web UI override (default: hypervisor UI)
     notes = Column(Text)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

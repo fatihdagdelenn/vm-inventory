@@ -21,14 +21,15 @@ from ..models.physical import DEVICE_TYPES, SERVER_ONLY_FIELDS, SERVER_ROLES
 from ..core.security import require_role, get_current_user, validate_csrf
 from ..core.audit import log_audit
 from ..core.host_hw import effective_hw
+from ..core.weblinks import address_url, host_ui_url, normalize_web_url
 from ..core.timezone import to_iso, now_local
 from ..services import report_service as rs
 
 router = APIRouter(prefix="/api/physical", tags=["physical"])
 
 # Editable fields (device_type handled separately)
-_FIELDS = ("name", "location", "status", "role", "mgmt_ip", "ilo_ip", "brand",
-           "model", "serial_no", "cpu", "ram_gb", "os", "notes")
+_FIELDS = ("name", "location", "status", "role", "mgmt_ip", "ilo_ip", "web_url",
+           "brand", "model", "serial_no", "cpu", "ram_gb", "os", "notes")
 
 
 def _to_dict(d: PhysicalDevice) -> dict:
@@ -38,6 +39,9 @@ def _to_dict(d: PhysicalDevice) -> dict:
         "role": d.role, "mgmt_ip": d.mgmt_ip, "ilo_ip": d.ilo_ip,
         "brand": d.brand, "model": d.model, "serial_no": d.serial_no,
         "cpu": d.cpu, "ram_gb": d.ram_gb, "os": d.os, "notes": d.notes,
+        "web_url": d.web_url,
+        # Links the list renders (web UI wins over the plain mgmt address)
+        "ui_url": d.web_url or address_url(d.mgmt_ip), "ilo_url": address_url(d.ilo_ip),
         "created_at": to_iso(d.created_at), "updated_at": to_iso(d.updated_at),
     }
 
@@ -63,6 +67,10 @@ def _host_to_dict(h: Host, sup: HostSupplement = None) -> dict:
         "status": "active" if (h.status == "online") else (h.status or "active"),
         "role": (sup.role if sup and sup.role else "hypervisor"),
         "mgmt_ip": h.mgmt_ip, "ilo_ip": (sup.ilo_ip if sup else None),
+        "web_url": (sup.web_url if sup else None),
+        "ui_url": host_ui_url(h, sup.web_url if sup else None),
+        "ilo_url": address_url(sup.ilo_ip if sup else None),
+        "platform_type": (h.platform.type if h.platform else ""),
         "brand": brand, "model": model, "hw_overridden": hw_overridden,
         "hw_auto": (h.hw_model or ""),
         "serial_no": (sup.serial_no if sup else None),
@@ -70,6 +78,15 @@ def _host_to_dict(h: Host, sup: HostSupplement = None) -> dict:
         "notes": (sup.notes if sup else None),
         "cluster": h.cluster, "updated_at": to_iso(h.updated_at),
     }
+
+
+def _web_url(value):
+    """Validated web UI address (http/https only) or 400."""
+    try:
+        return normalize_web_url(value)
+    except ValueError:
+        raise HTTPException(400, "Geçersiz web adresi: yalnızca http(s) adresi, "
+                                 "IP veya host[:port] girilebilir")
 
 
 def _clean(payload: dict) -> dict:
@@ -89,6 +106,8 @@ def _clean(payload: dict) -> dict:
             out["ram_gb"] = int(out["ram_gb"]) if str(out["ram_gb"]).strip() else None
         except (ValueError, TypeError):
             out["ram_gb"] = None
+    if "web_url" in out:
+        out["web_url"] = _web_url(out["web_url"])
     # role: only valid values kept
     if out.get("role") and out["role"] not in SERVER_ROLES:
         out["role"] = None
@@ -128,7 +147,8 @@ def list_devices(q: str = "", device_type: str = "", status: str = "",
             PhysicalDevice.name.ilike(like), PhysicalDevice.location.ilike(like),
             PhysicalDevice.mgmt_ip.ilike(like), PhysicalDevice.ilo_ip.ilike(like),
             PhysicalDevice.brand.ilike(like), PhysicalDevice.model.ilike(like),
-            PhysicalDevice.serial_no.ilike(like), PhysicalDevice.notes.ilike(like)))
+            PhysicalDevice.serial_no.ilike(like), PhysicalDevice.notes.ilike(like),
+            PhysicalDevice.web_url.ilike(like)))
     manual = [_to_dict(d) for d in
               query.order_by(PhysicalDevice.device_type, PhysicalDevice.name).all()]
 
@@ -193,6 +213,8 @@ def upsert_host_supplement(host_id: int, request: Request,
     sup.brand = (payload.get("brand") or "").strip() or None
     sup.model = (payload.get("model") or "").strip() or None
     sup.notes = (payload.get("notes") or "").strip() or None
+    if "web_url" in payload:          # older clients do not send it: keep
+        sup.web_url = _web_url(payload.get("web_url"))
     log_audit(db, user, "update", target=f"host-supplement:{h.name}", request=request)
     db.commit()
     return _host_to_dict(h, sup)

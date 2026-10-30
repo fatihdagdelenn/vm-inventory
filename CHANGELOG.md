@@ -30,6 +30,27 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 Phases not yet in a release (phase 152 →; internal v1.8.1 →).
 
+### 🔗 Open device web consoles from the inventory (phase 153)
+- **Management and iLO / iDRAC / BMC addresses are links** on Physical Inventory
+  and Hosts (cards and table): one click opens the device's web console in a new
+  tab.
+- **Hypervisor hosts open the right UI by default:** a Proxmox node goes to
+  `https://<ip>:8006`, an ESXi host to `https://<ip>/ui/`. Other devices open
+  `https://<address>`.
+- New optional **Web UI** field (manual devices and hypervisor host extras) for
+  consoles on another port or path (`https://10.0.5.20:8443/`, `http://…`); when
+  set, the management address opens it. The iLO field accepts `host:port` too.
+- **Hosts page** cards show an **iLO/BMC** chip next to the management IP once a
+  BMC address is entered (Physical Inventory → host extras).
+- Exports (physical inventory, "all" report, scheduled reports) gained a **Web
+  UI** column with the address each row opens.
+- Safety: only `http` / `https` addresses are stored or rendered as links
+  (`javascript:`, `file:`, `data:` and malformed ports are refused with 400);
+  links open with `rel="noopener noreferrer"`. Values that cannot be linked
+  (e.g. an iLO field holding "10.0.0.5 (iDRAC)") stay plain text.
+- Honest limits: the browser still shows its own certificate warning for
+  self-signed consoles; the app does not proxy or log in to them.
+
 ### 🖥️ Hardware model on the Hosts page (phase 152)
 - Proxmox cannot report a node's exact system model through its API (the
   System Report carries only `dmidecode -t bios` + `lspci`), so hosts showed a

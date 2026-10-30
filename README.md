@@ -305,7 +305,7 @@ If an agent cannot be installed (appliances, locked-down OSes), type the IP in t
 | **Backups** | Proxmox / PBS backups per VM. When a permission or configuration is missing it **says why** instead of showing an empty list. *(vCenter has no backup API, so this screen is Proxmox-only)* |
 | **Networks** | Port groups / bridges / SDN vnets and host NICs, grouped by host, cluster, VLAN or physical cards |
 | **Topology** | Live Cytoscape map: platform → cluster → host → VM, layer filters, node positions saved per account, reachable / unreachable VM links |
-| **Physical Inventory** | Non-virtualised hardware: servers, storage, SAN switches, backup appliances, with location, management / iLO-BMC IP, brand, model, serial, role and state. Hypervisor hosts appear here **read-only**; the fields you add to them survive every sync |
+| **Physical Inventory** | Non-virtualised hardware: servers, storage, SAN switches, backup appliances, with location, management / iLO-BMC IP, optional web UI address, brand, model, serial, role and state. Management and iLO addresses are **links that open the device's web console** in a new tab (Proxmox nodes `:8006`, ESXi hosts `/ui/` by default). Hypervisor hosts appear here **read-only**; the fields you add to them survive every sync |
 | **Reports** | Instant Excel / CSV / PDF (with filters) + scheduled daily reports (written to `data/reports/`). Scope: **VM / Host / Datastore / Physical / Everything**; VM exports include allocation **and** usage columns and a separate **Disks** sheet |
 | **Change History** | Added / deleted / cloned / migrated VMs, per-field **old → new** values, category, source and **who did it**, with date range and filters — see below |
 | **Platforms** | Connections, manual sync, API error logs |

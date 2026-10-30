@@ -142,8 +142,8 @@ const Physical = {
         '<td>' + roleCell + '</td>' +
         '<td>' + App.esc(d.location || '—') + '</td>' +
         '<td><span class="badge ' + (sm.c || 'text-bg-secondary') + '">' + App.esc(Physical.statusLabel(d.status)) + '</span></td>' +
-        '<td>' + App.esc(d.mgmt_ip || '—') + '</td>' +
-        '<td>' + App.esc(d.ilo_ip || '—') + '</td>' +
+        '<td class="text-nowrap">' + Physical.mgmtCell(d) + '</td>' +
+        '<td class="text-nowrap">' + App.extLink(d.ilo_ip, d.ilo_url) + '</td>' +
         '<td>' + App.esc(d.brand || '—') + '</td>' +
         '<td>' + App.esc(d.model || '—') + '</td>' +
         '<td class="small text-muted">' + App.esc(d.cpu || '—') + '</td>' +
@@ -152,6 +152,18 @@ const Physical = {
         '</tr>';
     }).join('');
     Physical.markSort();
+  },
+
+  /** Mgmt IP opens the device web UI (web_url > hypervisor UI > https://ip).
+   *  A device with only a web address shows that address's host. */
+  mgmtCell(d) {
+    if (d.mgmt_ip) return App.extLink(d.mgmt_ip, d.ui_url);
+    if (d.ui_url) {
+      let host = d.ui_url;
+      try { host = new URL(d.ui_url).host; } catch (e) { /* keep full */ }
+      return App.extLink(host, d.ui_url, 'ext-link-web');
+    }
+    return '—';
   },
 
   markSort() {
@@ -193,7 +205,7 @@ const Physical = {
     document.getElementById('phTypeErr').style.display = 'none';
     const set = (f, v) => { document.getElementById('f_' + f).value = v == null ? '' : v; };
     set('name', d && d.name); set('location', d && d.location);
-    set('mgmt_ip', d && d.mgmt_ip); set('ilo_ip', d && d.ilo_ip);
+    set('mgmt_ip', d && d.mgmt_ip); set('ilo_ip', d && d.ilo_ip); set('web_url', d && d.web_url);
     set('brand', d && d.brand); set('model', d && d.model);
     set('serial_no', d && d.serial_no); set('cpu', d && d.cpu);
     set('ram_gb', d && d.ram_gb); set('os', d && d.os); set('notes', d && d.notes);
@@ -217,7 +229,7 @@ const Physical = {
       device_type: typeEl.value,
       name: val('name'), location: val('location'), status: document.getElementById('f_status').value,
       role: document.getElementById('f_role').value,
-      mgmt_ip: val('mgmt_ip'), ilo_ip: val('ilo_ip'), brand: val('brand'),
+      mgmt_ip: val('mgmt_ip'), ilo_ip: val('ilo_ip'), web_url: val('web_url'), brand: val('brand'),
       model: val('model'), serial_no: val('serial_no'), cpu: val('cpu'),
       ram_gb: val('ram_gb'), os: val('os'), notes: val('notes'),
     };
@@ -246,6 +258,10 @@ const Physical = {
     document.getElementById('fh_role').value = d.role || 'hypervisor';
     document.getElementById('fh_location').value = d.location || '';
     document.getElementById('fh_ilo_ip').value = d.ilo_ip || '';
+    // Web UI override: blank = hypervisor default, shown as the placeholder
+    const wu = document.getElementById('fh_web_url');
+    wu.value = d.web_url || '';
+    wu.placeholder = (!d.web_url && d.ui_url) ? d.ui_url : 'https://…';
     document.getElementById('fh_serial_no').value = d.serial_no || '';
     // Brand/model overrides: prefill only when the user has already overridden;
     // otherwise leave blank and show the auto-detected value as a hint.
@@ -266,7 +282,7 @@ const Physical = {
     const val = f => document.getElementById('fh_' + f).value.trim();
     const payload = {
       role: document.getElementById('fh_role').value,
-      location: val('location'), ilo_ip: val('ilo_ip'),
+      location: val('location'), ilo_ip: val('ilo_ip'), web_url: val('web_url'),
       serial_no: val('serial_no'), brand: val('brand'), model: val('model'),
       notes: val('notes'),
     };

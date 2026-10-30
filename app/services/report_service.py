@@ -75,7 +75,7 @@ PHYSICAL_ROLE_LABELS = {"hypervisor": "Hypervisor", "windows": "Windows",
 PHYSICAL_COLUMNS = [
     ("Tip", "device_type"), ("Ad", "name"), ("Rol", "role"),
     ("Lokasyon", "location"), ("Durum", "status"), ("Yönetim IP", "mgmt_ip"),
-    ("iLO/BMC IP", "ilo_ip"), ("Marka", "brand"), ("Model", "model"),
+    ("iLO/BMC IP", "ilo_ip"), ("Web Arayüzü", "ui_url"), ("Marka", "brand"), ("Model", "model"),
     ("Seri No", "serial_no"), ("CPU", "cpu"), ("RAM (GB)", "ram_gb"),
     ("İşletim Sistemi", "os"), ("Not", "notes"),
 ]
@@ -120,7 +120,13 @@ def _row_values(obj, columns):
     is_physical = is_dict or obj.__class__.__name__ == "PhysicalDevice"
     values = []
     for _, field in columns:
-        if field == "host_name":  # VM -> related host name
+        if field == "ui_url":     # effective web UI (dict rows already carry it)
+            if is_dict:
+                values.append(obj.get("ui_url") or "")
+            else:
+                from ..core.weblinks import address_url
+                values.append(getattr(obj, "web_url", None) or address_url(getattr(obj, "mgmt_ip", None)))
+        elif field == "host_name":  # VM -> related host name
             values.append(obj.host_ref.name if getattr(obj, "host_ref", None) else "")
         elif field == "device_type":
             values.append(PHYSICAL_DTYPE_LABELS.get(get(field), get(field) or ""))
