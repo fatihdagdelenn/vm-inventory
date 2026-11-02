@@ -368,6 +368,7 @@ yazılır. Mevcut konsol kayıtları aynı ekrandaki butonla toplu silinebilir.
 | `manuelip:` | `manuelip:var` `-manuelip:var` | Elle IP girilmiş VM'ler (agent IP bildirmiyor) |
 | `mac:` / `vlan:` / `network:` | `vlan:100` | MAC, VLAN (kısmi: `vlan:10` 100'ü de bulur), bağlı ağ/portgroup/köprü |
 | `os:` | `os:linux` | OS adı; `linux`/`windows` tüm dağıtım ve sürümleri bulur |
+| `kernel:` / `cekirdek:` | `kernel:5.14` | Çekirdek sürümü (kısmi); VMware Tools 11.2+ / QEMU agent olan Linux konuklar, Windows'ta boş |
 | `osfam:` | `osfam:windows,linux` `osfam:redhat` | OS ailesi (dashboard pastasıyla aynı): `windows` `linux` `ubuntu` `debian` `redhat` `suse` `otherlinux` `bsd` `vmware` `macos` `other` |
 | `status:` | `status:running,stopped` | running / stopped / suspended (TR: `çalışan`, `kapalı`, `askıda`) |
 | `tools:` / `agent:` | `tools:yok` | `running` = çalışıyor; `yok` = kurulu değil veya çalışmıyor |

@@ -30,7 +30,8 @@ NOW = time.time()
 
 BASE = dict(external_id="pve101/2612", vmid="2612", name="devtestelastic01-sL1",
             power_state="running", host_name="pve101", cluster="25-cluster",
-            cpu_count=8, ram_mb=8192, disk_total_gb=175.0)
+            cpu_count=8, ram_mb=8192, disk_total_gb=175.0,
+            kernel="6.8.0-45-generic")
 HOSTS = [{"external_id": "pve101", "name": "pve101",
           "cluster": "25-cluster", "status": "online"}]
 
@@ -135,5 +136,8 @@ run_sync(ss, PID, FakeCollector(vms=[dict(vm2)], hosts=HOSTS2, vm_ops={
 db.expire_all()
 rows = change_rows(db, field="ram_mb")
 assert not rows[-1].actor, ("9) eski op korumasi", rows[-1].actor)
+
+# kernel is enrich-only: it must never produce Change History rows
+assert not change_rows(db, field="kernel"), "kernel tarihce gurultusu"
 
 print("PROXMOX ACTOR SUITE OK (9 senaryo + harita sozlesmeleri)")

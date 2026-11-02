@@ -73,7 +73,7 @@ const VMs = {
           '<span class="group-key">' + App.esc(g.key) + '</span>' +
           '<span class="group-count">' + g.count + ' VM</span></button></div>').join('');
       document.getElementById('vmBody').innerHTML =
-        '<tr><td colspan="15" class="text-center text-muted p-4">' +
+        '<tr><td colspan="30" class="text-center text-muted p-4">' +
         t('vm.groupHint','Gruplardan birine tıklayarak VM listesini filtreleyebilirsiniz.') + '</td></tr>';
       document.getElementById('vmCount').textContent = data.groups.length + ' ' + t('vm.groups','grup');
       document.getElementById('vmPager').innerHTML = '';
@@ -85,7 +85,7 @@ const VMs = {
     VMs.total = data.total;
     const body = document.getElementById('vmBody');
     if (!data.items.length) {
-      body.innerHTML = '<tr><td colspan="15" class="text-center text-muted p-4">' + t('vm.noResults','Sonuç bulunamadı.') + '</td></tr>';
+      body.innerHTML = '<tr><td colspan="30" class="text-center text-muted p-4">' + t('vm.noResults','Sonuç bulunamadı.') + '</td></tr>';
     } else {
       body.innerHTML = data.items.map(v => {
         const pIcon = v.platform_type === 'vcenter'
@@ -98,6 +98,7 @@ const VMs = {
           '<td data-col="vmid" class="small text-muted text-nowrap">' + App.esc(v.vmid || '—') + '</td>' +
           '<td data-col="ip" class="text-nowrap small">' + App.ipHtml(v) + '</td>' +
           '<td data-col="guest_os" class="small">' + App.esc(v.guest_os || '—') + '</td>' +
+          '<td data-col="kernel" class="small text-muted text-nowrap">' + App.esc(v.kernel || '—') + '</td>' +
           '<td data-col="platform" class="small text-nowrap">' + VMs.platformCell(v.platform_type) + '</td>' +
           '<td data-col="agent" class="text-nowrap">' + VMs.agentCell(v.agent_state) + '</td>' +
           '<td data-col="cpu">' + (v.cpu_count || '—') + VMs.usageMini(v.cpu_usage_pct) + '</td>' +
@@ -585,6 +586,7 @@ const VMs = {
       ]],
       [t('vh.g.sys', 'Sistem ve durum'), [
         F(['os'], 'os:ubuntu', t('vh.f.os', 'OS adı (kısmi). os:linux ve os:windows tüm dağıtımları/sürümleri bulur.')),
+        F(['kernel', 'cekirdek'], 'kernel:5.14', t('vh.f.kernel', 'Çekirdek sürümü (kısmi). Linux konuklarda agent / Tools bildirir; Windows\'ta boştur.')),
         F(['osfam', 'osailesi'], 'osfam:redhat', t('vh.f.osfam', 'OS ailesi — dashboard pastasıyla aynı sınıflandırma. Değerler aşağıda.')),
         F(['status'], 'status:running', t('vh.f.status', 'Güç durumu: running, stopped, suspended (TR: çalışan, kapalı, askıda).')),
         F(['tools', 'agent'], 'tools:' + QF_NONE, t('vh.f.tools', 'VMware Tools / QEMU Agent: running = çalışıyor; yok = kurulu değil veya çalışmıyor.')),

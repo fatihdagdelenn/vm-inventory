@@ -51,6 +51,7 @@ except Exception as exc:  # pragma: no cover - font registration is non-critical
 VM_COLUMNS = [
     ("VM Adı", "name"), ("VM ID", "vmid"), ("IP Adresleri", "ip_addresses"),
     ("MAC Adresleri", "mac_addresses"), ("İşletim Sistemi", "guest_os"),
+    ("Çekirdek", "kernel"),
     ("CPU (adet)", "cpu_count"), ("CPU Kullanım (%)", "cpu_usage_pct"),
     ("RAM Tahsis (MB)", "ram_mb"), ("RAM Kullanım (MB)", "ram_usage_mb"),
     ("Disk Tahsis (GB)", "disk_total_gb"), ("Disk Kullanım (GB)", "disk_used_gb"),

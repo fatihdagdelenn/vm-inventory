@@ -140,6 +140,13 @@ OS = {
     "win22": "Microsoft Windows Server 2022 Standard", "win19": "Microsoft Windows Server 2019 Datacenter",
     "sles": "SUSE Linux Enterprise Server 15 SP5", "photon": "VMware Photon OS 5.0",
 }
+# Kernel release per Linux OS (Windows guests report none - see the VMware
+# collector: kernelVersion is a build number there and is ignored)
+KERNEL = {
+    "ubuntu": "6.8.0-45-generic", "ubuntu22": "5.15.0-122-generic",
+    "rhel": "5.14.0-427.40.1.el9_4.x86_64", "rocky": "5.14.0-362.24.1.el9_3.x86_64",
+    "debian": "6.1.0-26-amd64", "sles": "5.14.21-150500.55.73-default", "photon": "6.1.10-10.ph5",
+}
 roles = [  # prefix, count, os, vcpu, ram GB, disk GB, vlan, tags, owner, env, cluster
     ("web", 10, "ubuntu", 4, 8, 80, "130", [], "web-team", "production", "PROD-East"),
     ("app", 12, "rhel", 8, 16, 120, "110", [], "app-team", "production", "PROD-East"),
@@ -194,7 +201,11 @@ for prefix, count, os_key, vcpu, ram, disk, vlan, tg, owner, env, cl in roles:
             external_id=f"{h.name}/{vmid}" if is_pve else f"vm-{vmid}", vmid=str(vmid) if is_pve else f"vm-{vmid}",
             name=name, ip_addresses=f"10.{20 if not is_pve else 40}.{third}.{10 + n}" if ip_ok else "",
             mac_addresses=f"00:50:56:{rnd.randint(16, 255):02x}:{rnd.randint(16, 255):02x}:{rnd.randint(16, 255):02x}",
-            guest_os=OS[os_key], cpu_count=vcpu, ram_mb=ram * 1024, disk_total_gb=float(disk),
+            guest_os=OS[os_key],
+            # Proxmox reads it from the QEMU agent; vCenter keeps the detailed
+            # guest data (extraConfig) even while the VM is off
+            kernel=KERNEL.get(os_key) if (agent or not is_pve) else None,
+            cpu_count=vcpu, ram_mb=ram * 1024, disk_total_gb=float(disk),
             power_state=state, cluster=cl, cluster_is_alias=is_replica,
             datastore=(("ceph-west-ssd" if prefix in ("gitlab", "ci-runner") else "ceph-west") if is_pve else
                        "local-rep01" if is_replica else "vmfs-dmz" if cl == "DMZ" else

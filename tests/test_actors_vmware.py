@@ -18,7 +18,8 @@ PID = p.id
 NOW = time.time()
 
 BASE = dict(external_id="vm-100", name="app01", power_state="poweredOn",
-            host_name="h1", cluster="c1", cpu_count=24, ram_mb=8192)
+            host_name="h1", cluster="c1", cpu_count=24, ram_mb=8192,
+            kernel="5.14.0-427.40.1.el9_4.x86_64")
 
 
 def sync(vm=None, ops=None):
@@ -95,5 +96,8 @@ run_sync(ss, PID, FakeCollector(vms=[], vm_ops={
 db.expire_all()
 rows = change_rows(db, change_type="deleted")
 assert rows and rows[-1].actor == "deleter@corp", "6) silme aktoru"
+
+# kernel is enrich-only: it must never produce Change History rows
+assert not change_rows(db, field="kernel"), "kernel tarihce gurultusu"
 
 print("VMWARE ACTOR SUITE OK (6 senaryo)")

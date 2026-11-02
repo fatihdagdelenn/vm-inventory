@@ -25,10 +25,11 @@ SORTABLE = {"name": VirtualMachine.name, "power_state": VirtualMachine.power_sta
             "agent": VirtualMachine.tools_status,
             "ram_mb": VirtualMachine.ram_mb, "cpu_count": VirtualMachine.cpu_count,
             "disk_total_gb": VirtualMachine.disk_total_gb, "vmid": VirtualMachine.vmid,
-            "uptime": VirtualMachine.last_boot, "pool": VirtualMachine.pool}
+            "uptime": VirtualMachine.last_boot, "pool": VirtualMachine.pool,
+            "kernel": VirtualMachine.kernel}
 # Text columns sort case-insensitively (true alphabetical); otherwise the DB
 # sorts by byte/ASCII order (uppercase first -> not alphabetical)
-CASE_INSENSITIVE = {"name", "cluster", "guest_os", "vmid", "pool"}
+CASE_INSENSITIVE = {"name", "cluster", "guest_os", "vmid", "pool", "kernel"}
 # Live-usage sort keys. The dashboard's "top VM" cards order by these SAME
 # expressions, so clicking a bar opens a list in the identical order.
 # Disk falls back to the allocated size when real usage is unknown (agentless

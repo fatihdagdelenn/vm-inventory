@@ -26,15 +26,13 @@ logger = logging.getLogger("collector.vmware")
 _DETAILED_RE = re.compile(r"(\w+)='([^']*)'")
 
 
-def _parse_detailed(raw: str) -> str:
-    """
-    Parses vSphere 8.0 U2+ detailed guest data ('guestInfo.detailed.data' or
-    guest.guestDetailedData) and returns the best full name.
-    E.g. prettyName='Ubuntu 24.04.1 LTS'  ->  "Ubuntu 24.04.1 LTS".
-    """
-    if not raw:
-        return ""
-    d = dict(_DETAILED_RE.findall(raw))
+def _detailed_fields(raw: str) -> dict:
+    """key='value' pairs of vSphere detailed guest data as a dict."""
+    return dict(_DETAILED_RE.findall(raw)) if raw else {}
+
+
+def _detailed_os(d: dict) -> str:
+    """Best full OS name from parsed detailed data."""
     pretty = (d.get("prettyName") or "").strip()
     if pretty:
         return pretty
@@ -42,8 +40,37 @@ def _parse_detailed(raw: str) -> str:
     return (f"{name} {ver}".strip()) if name else ""
 
 
-def _best_guest_os(vm, guest, summary_config) -> str:
+def _detailed_kernel(d: dict) -> str:
+    """Kernel release from parsed detailed data (Tools 11.2+), Linux only.
+
+    On Windows guests kernelVersion carries the OS build number
+    (e.g. '20348'), which is not a kernel - so it is ignored there.
     """
+    if (d.get("familyName") or "").strip().lower() != "linux":
+        return ""
+    return (d.get("kernelVersion") or "").strip()
+
+
+def _parse_detailed(raw: str) -> str:
+    """
+    Parses vSphere 8.0 U2+ detailed guest data ('guestInfo.detailed.data' or
+    guest.guestDetailedData) and returns the best full name.
+    E.g. prettyName='Ubuntu 24.04.1 LTS'  ->  "Ubuntu 24.04.1 LTS".
+    """
+    return _detailed_os(_detailed_fields(raw))
+
+
+def _best_guest_os(vm, guest, summary_config) -> str:
+    """OS name only (see _guest_os_and_kernel)."""
+    return _guest_os_and_kernel(vm, guest, summary_config)[0]
+
+
+def _guest_os_and_kernel(vm, guest, summary_config):
+    """
+    (os_name, kernel). Kernel comes from the same detailed data as the OS name
+    (kernelVersion, Linux guests only; '' when unknown). The persistent
+    extraConfig copy is read only when the live data leaves something open.
+
     Find the most detailed OS name, layered:
       1) guest.guestDetailedData              (VM on, Tools 11.2+ - full version)
       2) config.extraConfig['guestInfo.detailed.data']  (persistent; even when off)
@@ -54,26 +81,34 @@ def _best_guest_os(vm, guest, summary_config) -> str:
     is usually more specific than the generic runtime name Tools reports
     ("Other 3.x Linux"), so the catalog name wins when detailed data is absent.
     """
+    os_name = kernel = family = ""
+
+    def take(d):
+        nonlocal os_name, kernel, family
+        os_name = os_name or _detailed_os(d)
+        kernel = kernel or _detailed_kernel(d)
+        family = family or (d.get("familyName") or "").strip().lower()
+
     # 1) Live detailed data (full version)
-    detailed = _parse_detailed(getattr(guest, "guestDetailedData", None) or "")
-    if detailed:
-        return detailed
-    # 2) Persistent detailed data (extraConfig) - even while the VM is off
-    #    The key appears as guestinfo/guestInfo in sources -> case-insensitive
-    try:
-        full_cfg = vm.config
-        if full_cfg and getattr(full_cfg, "extraConfig", None):
-            for opt in full_cfg.extraConfig:
-                if (opt.key or "").lower() == "guestinfo.detailed.data":
-                    detailed = _parse_detailed(opt.value or "")
-                    if detailed:
-                        return detailed
-                    break
-    except Exception:
-        pass
+    take(_detailed_fields(getattr(guest, "guestDetailedData", None) or ""))
+    # 2) Persistent detailed data (extraConfig) - even while the VM is off.
+    #    Skipped when live data already answered both (a non-Linux family has
+    #    no kernel to look for). Key is guestinfo/guestInfo -> case-insensitive.
+    if not os_name or (not kernel and family in ("", "linux")):
+        try:
+            full_cfg = vm.config
+            if full_cfg and getattr(full_cfg, "extraConfig", None):
+                for opt in full_cfg.extraConfig:
+                    if (opt.key or "").lower() == "guestinfo.detailed.data":
+                        take(_detailed_fields(opt.value or ""))
+                        break
+        except Exception:
+            pass
+    if os_name:
+        return os_name, kernel
     # 3) Catalog name (config)  4) OS reported by Tools - old (non-regressing) order
-    return (summary_config.guestFullName if summary_config else "") or \
-           (getattr(guest, "guestFullName", "") if guest else "") or ""
+    return ((summary_config.guestFullName if summary_config else "") or
+            (getattr(guest, "guestFullName", "") if guest else "") or "", kernel)
 
 
 def _fetch_vcenter_tags(host, port, username, password, verify_ssl) -> dict:
@@ -379,14 +414,15 @@ class VMwareCollector:
                 power_map = {"poweredOn": "running", "poweredOff": "stopped",
                              "suspended": "suspended"}
 
-                vms.append({
+                guest_os, kernel = _guest_os_and_kernel(vm, guest, config)
+                entry = {
                     "external_id": vm._moId,
                     "vmid": vm._moId,
                     "name": config.name if config else vm.name,
                     "ip_addresses": ",".join(sorted(set(ips))),
                     "dns_servers": ",".join(dns),
                     "mac_addresses": ",".join(sorted(set(macs))),
-                    "guest_os": _best_guest_os(vm, guest, config),
+                    "guest_os": guest_os,
                     "arch": ("x86_64" if config and "64" in (config.guestId or "")
                              else "x86" if config else ""),
                     "cpu_count": config.numCpu if config else 0,
@@ -409,7 +445,12 @@ class VMwareCollector:
                     "folder": self._vm_folder(vm),
                     "platform_tags": tag_map.get(vm._moId, ""),
                     "is_template": bool(config.template) if config else False,
-                })
+                }
+                # Only when known: an absent key keeps the stored kernel (no
+                # detailed data this round, or a Windows guest).
+                if kernel:
+                    entry["kernel"] = kernel
+                vms.append(entry)
             except Exception as exc:
                 logger.warning("Could not read VM %s: %s", getattr(vm, "name", "?"), exc)
         return vms

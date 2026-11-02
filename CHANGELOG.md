@@ -30,6 +30,34 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 Phases not yet in a release (phase 152 →; internal v1.8.1 →).
 
+### 🐧 Kernel column on Virtual Machines (phase 154)
+- New **Kernel** column right after Operating System (sortable, case-insensitive;
+  `—` when unknown). It is part of the column chooser: users with a saved column
+  set see it once (new columns start visible) and can hide it like any other.
+- **VMware now fills the kernel** - it was always empty there. The collector
+  reads `kernelVersion` from the same detailed guest data it already uses for the
+  OS name (`guestDetailedData`, or the persistent `guestInfo.detailed.data` copy
+  while the VM is off; VMware Tools 11.2+, vSphere 8.0 U2+). Written **only for
+  `familyName='Linux'`**: on Windows that field is the OS build number, not a
+  kernel. The extraConfig copy is read only when the live data leaves the OS or
+  a Linux kernel open (no extra vCenter round trip for Windows VMs). Proxmox is
+  unchanged (QEMU agent `get-osinfo` → `kernel-release`).
+- A sync round without kernel data (Tools silent) keeps the stored value; kernel
+  changes never write Change History rows (it is an enrich field, not tracked).
+- **Search:** free text covers the kernel; new field `kernel:` (aliases
+  `cekirdek:` / `çekirdek:`), e.g. `kernel:el9`, `kernel:none`. Search help and
+  README updated.
+- **Exports:** "Çekirdek" column after "İşletim Sistemi" in Excel, CSV and PDF
+  (VM report, "all" report, scheduled reports).
+- Tests: new `tests/test_vm_kernel.py` (parser incl. Windows build number,
+  extraConfig fallback, sync persistence, sort, search, all three export
+  formats); actor suites carry kernel values and assert kernel never creates
+  history rows. Demo inventory has realistic kernels for Linux VMs.
+- Honest limits: VMs with VMware Tools older than 11.2 (or vSphere before 8.0
+  U2) report no detailed data, so their kernel stays empty; Windows guests have
+  no kernel by design. The VM PDF is already very wide; long RHEL kernel strings
+  wrap in it (Excel / CSV are unaffected).
+
 ### 🔗 Open device web consoles from the inventory (phase 153)
 - **Management and iLO / iDRAC / BMC addresses are links** on Physical Inventory
   and Hosts (cards and table): one click opens the device's web console in a new
