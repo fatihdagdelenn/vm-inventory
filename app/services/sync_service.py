@@ -59,7 +59,7 @@ def _preserve_old(field, old, new) -> bool:
     if field == "guest_os":
         return new is not None and _is_generic_os(new) and old and not _is_generic_os(old)
     if field in ("ip_addresses", "datastore", "vlans", "disk_total_gb",
-                 "networks", "mac_addresses"):
+                 "networks", "mac_addresses", "kernel", "arch"):
         return (not new) and bool(old)   # old non-empty, new empty/0 -> transient drop
     return False
 
@@ -487,8 +487,16 @@ def sync_platform(platform_id: int):
         migrated_old_exts = {m[0] for m in migrated_pmx.values()}
 
         seen_vms = set()
+        unreadable = 0
         for vd in vms_data:
             seen_vms.add(vd["external_id"])
+            if vd.get("read_failed"):
+                # The VM exists but could not be read this round (see the
+                # VMware collector): keep the stored row exactly as it is -
+                # no update, no delete. A VM never seen before is skipped and
+                # created on the next readable round.
+                unreadable += 1
+                continue
             host_name = vd.pop("host_name", "")
             _apply_cluster_alias(vd, alias_by_host, host_name)
             host_obj = host_by_name.get(host_name)
@@ -524,6 +532,24 @@ def sync_platform(platform_id: int):
                     # displayed uptime stays continuous.
                     old_vm = existing_vms.get(old_ext)
                     if old_vm is not None:
+                        # Same VM, new row: carry the agent-sourced identity when
+                        # the agent did not answer on this first round on the new
+                        # node (osinfo / network calls often fail while the guest
+                        # settles) - same provenance rule as for an existing row.
+                        # Otherwise the row starts with the generic ostype name,
+                        # no kernel and no IP, and they "come and go" until the
+                        # agent answers.
+                        carry = []
+                        if not os_from_agent:
+                            carry += ["guest_os", "kernel", "arch"]
+                        if not ip_from_agent:
+                            carry += ["ip_addresses", "mac_addresses", "networks"]
+                        for f in carry:
+                            if getattr(old_vm, f):
+                                setattr(vm, f, getattr(old_vm, f))
+                        for f in ("kernel", "arch", "dns_servers"):   # fill gaps only
+                            if not getattr(vm, f) and getattr(old_vm, f):
+                                setattr(vm, f, getattr(old_vm, f))
                         # Same VM, new row: carry everything the operator typed in.
                         for f in _MANUAL_VM_FIELDS:
                             val = getattr(old_vm, f)
@@ -699,6 +725,11 @@ def sync_platform(platform_id: int):
                                    cluster=vd.get("cluster") or vm.cluster,
                                    host=f"{old_host} → {new_host}",
                                    vm_external_id=ext_id, **_meta(op))
+                # Untracked enrich fields get the same "no empty overwrite" rule
+                # (_preserve_old only runs over TRACKED_VM_FIELDS above).
+                for f in ("kernel", "arch"):
+                    if f in vd and _preserve_old(f, getattr(vm, f), vd[f]):
+                        vd[f] = getattr(vm, f)
                 if vm.ip_manual and vd.get("ip_addresses"):
                     _drop_manual_ip(db, vm, vd["ip_addresses"], platform.id, ptype,
                                     vd.get("cluster") or vm.cluster,
@@ -825,9 +856,11 @@ def sync_platform(platform_id: int):
         log.finished_at = datetime.utcnow()
         log.hosts_found = len(hosts_data)
         log.vms_found = len(vms_data)
-        log.message = f"{len(hosts_data)} host, {len(vms_data)} VM senkronize edildi"
+        log.message = f"{len(hosts_data)} host, {len(vms_data)} VM senkronize edildi" + \
+            (f" ({unreadable} VM okunamadı, kayıtları korundu)" if unreadable else "")
         db.commit()
-        logger.info("Sync done: %s (%s VMs)", platform.name, len(vms_data))
+        logger.info("Sync done: %s (%s VMs%s)", platform.name, len(vms_data),
+                    f", {unreadable} unreadable kept" if unreadable else "")
 
     except Exception as exc:
         logger.exception("Sync error (platform %s)", platform_id)

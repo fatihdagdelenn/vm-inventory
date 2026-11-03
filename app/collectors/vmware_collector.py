@@ -452,7 +452,21 @@ class VMwareCollector:
                     entry["kernel"] = kernel
                 vms.append(entry)
             except Exception as exc:
-                logger.warning("Could not read VM %s: %s", getattr(vm, "name", "?"), exc)
+                # A VM that exists but could not be read THIS round (vMotion in
+                # progress, Tools restarting, transient vCenter error) must not
+                # vanish from the result: sync would record it as deleted and
+                # drop its manual fields, kernel and usage history, then
+                # re-create it next round. Report it as unreadable instead -
+                # sync keeps the stored row untouched. Only a VM vCenter says is
+                # gone (ManagedObjectNotFound) is left out.
+                if type(exc).__name__ == "ManagedObjectNotFound":
+                    logger.info("VM disappeared during read: %s", getattr(vm, "_moId", "?"))
+                    continue
+                logger.warning("Could not read VM %s - keeping the stored record "
+                               "this round: %s", getattr(vm, "_moId", "?"), exc)
+                moid = getattr(vm, "_moId", None)
+                if moid:
+                    vms.append({"external_id": moid, "read_failed": True})
         return vms
 
     # ---------- Networks ----------

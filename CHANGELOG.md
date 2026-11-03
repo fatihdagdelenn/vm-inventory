@@ -30,6 +30,30 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 Phases not yet in a release (phase 152 →; internal v1.8.1 →).
 
+### 🛡️ Sync resilience: values no longer come and go (phase 155)
+- **Fix (VMware):** a VM that existed but could not be read in one round
+  (vMotion in progress, Tools restarting, a transient vCenter error) was dropped
+  from the collector result, so the sync recorded it as **deleted** - removing
+  its owner / notes / environment / tags, kernel and daily usage history - and
+  re-created it as a "new" VM on the next round. Such a VM is now reported as
+  *unreadable* and its stored record is kept untouched for that round (no
+  update, no delete, no history row). Only a VM vCenter reports as gone
+  (`ManagedObjectNotFound`) or that is absent from the inventory is deleted.
+  The sync log says how many VMs were kept this way.
+- **Fix (Proxmox live migration):** the VM's new row started with the generic
+  ostype name, no kernel and no IP whenever the guest agent did not answer on
+  the first round on the new node, and they appeared again only when the agent
+  did. The agent-sourced identity (OS name, kernel, arch, IPs / MACs / networks,
+  DNS) is now carried over from the old row in that case - the same rule an
+  existing row already had. Fresh agent values still win.
+- Kernel and architecture are never overwritten by an empty value.
+- Tests: new `tests/test_sync_resilience.py` (unreadable VM kept with its manual
+  fields, no deleted / created noise, real deletion still works, collector turns
+  a read error into "unreadable", migration carry-over with silent and answering
+  agent, empty-kernel guard).
+- Honest limits: values lost to the old behaviour (manual fields of VMs that
+  were deleted and re-created) do not come back.
+
 ### 🐧 Kernel column on Virtual Machines (phase 154)
 - New **Kernel** column right after Operating System (sortable, case-insensitive;
   `—` when unknown). It is part of the column chooser: users with a saved column
