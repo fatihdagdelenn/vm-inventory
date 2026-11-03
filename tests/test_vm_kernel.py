@@ -1,8 +1,9 @@
 """
 Kernel column regression suite (phase 154).
 
-Covers: VMware detailed-data parsing (kernelVersion, Linux only, live data
-before the persistent extraConfig copy), sync persistence (an absent key keeps
+Covers: VMware detailed-data parsing (kernelVersion for Linux / FreeBSD /
+other families, NT version for Windows, live data before the persistent
+extraConfig copy), Proxmox agent kernel (Windows -> NT version), sync persistence (an absent key keeps
 the stored value), VM list sort, free-text + kernel: search, and the
 "Çekirdek" column in Excel / CSV / PDF exports.
 
@@ -20,6 +21,7 @@ db, ss = make_env("_kernel")
 from app.models import Platform, VirtualMachine  # noqa: E402
 from app.collectors.vmware_collector import (  # noqa: E402
     _guest_os_and_kernel, _best_guest_os, _parse_detailed, _detailed_fields, _detailed_kernel)
+from app.collectors.proxmox_collector import _agent_kernel  # noqa: E402
 from app.core.search import apply_vm_search  # noqa: E402
 from app.services import report_service as rs  # noqa: E402
 import app.api.vms as vms_api  # noqa: E402
@@ -33,6 +35,10 @@ LINUX = ("architecture='X86' bitness='64' buildNumber='' cpeString='cpe:/o:rocky
 WINDOWS = ("architecture='X86' bitness='64' buildNumber='20348' distroName='Windows' "
            "distroVersion='10.0' familyName='Windows' kernelVersion='20348' "
            "prettyName='Windows Server 2022, 64-bit (Build 20348.2582)'")
+WIN_NOPRETTY = ("buildNumber='17763' distroName='Windows' distroVersion='10.0' "
+                "familyName='Windows' kernelVersion='17763.6293'")
+FREEBSD = ("architecture='X86' bitness='64' distroName='FreeBSD' distroVersion='13.2' "
+           "familyName='FreeBSD' kernelVersion='13.2-RELEASE-p4' prettyName='FreeBSD 13.2-RELEASE-p4'")
 
 
 def vmobj(extra=None, calls=None):
@@ -48,8 +54,17 @@ def vmobj(extra=None, calls=None):
 
 # --- 1) parser ---
 assert _detailed_kernel(_detailed_fields(LINUX)) == "5.14.0-427.13.1.el9_4.x86_64"
-assert _detailed_kernel(_detailed_fields(WINDOWS)) == ""          # build number, not a kernel
+assert _detailed_kernel(_detailed_fields(WINDOWS)) == "NT 10.0.20348.2582"   # build + UBR
+assert _detailed_kernel(_detailed_fields(WIN_NOPRETTY)) == "NT 10.0.17763.6293"
+assert _detailed_kernel(_detailed_fields("familyName='Windows' distroVersion='10.0'")) == ""
+assert _detailed_kernel(_detailed_fields(FREEBSD)) == "13.2-RELEASE-p4"
 assert _detailed_kernel(_detailed_fields("familyName='Linux'")) == ""
+# Proxmox QEMU agent get-osinfo
+assert _agent_kernel({"id": "mswindows", "kernel-release": "20348", "kernel-version": "10.0"}) == "NT 10.0.20348"
+assert _agent_kernel({"id": "ubuntu", "kernel-release": "6.8.0-45-generic",
+                      "kernel-version": "#45-Ubuntu SMP"}) == "6.8.0-45-generic"
+assert _agent_kernel({"id": "freebsd", "kernel-release": "14.1-RELEASE"}) == "14.1-RELEASE"
+assert _agent_kernel({}) == ""
 assert _parse_detailed(LINUX) == "Rocky Linux 9.4 (Blue Onyx)"   # old helper unchanged
 cfg = NS(guestFullName="Rocky Linux (64-bit)")
 
@@ -59,12 +74,17 @@ assert _guest_os_and_kernel(vmobj(None, calls), NS(guestDetailedData=LINUX), cfg
 assert not calls, "live data answered both -> extraConfig must not be read"
 
 calls = []
-assert _guest_os_and_kernel(vmobj(None, calls), NS(guestDetailedData=WINDOWS), cfg)[1] == ""
-assert not calls, "Windows family -> no kernel to look for, no extraConfig read"
+assert _guest_os_and_kernel(vmobj(None, calls), NS(guestDetailedData=WINDOWS), cfg)[1] == "NT 10.0.20348.2582"
+assert not calls, "Windows answered from live data -> no extraConfig read"
 
 # powered-off VM: no live data, persistent copy in extraConfig
 assert _guest_os_and_kernel(vmobj(LINUX), NS(guestDetailedData=None), cfg) == \
     ("Rocky Linux 9.4 (Blue Onyx)", "5.14.0-427.13.1.el9_4.x86_64")
+# Tools too old for detailed data (CentOS 4/5, Tools 10.x): catalog name, no kernel
+calls = []
+assert _guest_os_and_kernel(vmobj(None, calls), NS(guestDetailedData="", guestFullName="CentOS 4/5 (64-bit)"),
+                            NS(guestFullName="CentOS 4/5 (64-bit)")) == ("CentOS 4/5 (64-bit)", "")
+assert calls, "no live data -> persistent copy is checked"
 # no detailed data at all (old Tools): catalog name, no kernel
 assert _guest_os_and_kernel(vmobj(None), NS(guestDetailedData=None, guestFullName=""), cfg) == \
     ("Rocky Linux (64-bit)", "")

@@ -351,7 +351,7 @@ Tracked: **hardware** (vCPU, RAM, OS type), **disk & storage** (size, datastore)
 | `manuelip:` | `manuelip:any` `-manuelip:any` | VMs with / without a manually entered IP |
 | `mac:` / `vlan:` / `network:` | `vlan:100` | MAC, VLAN (partial: `vlan:10` also finds 100), attached network / port group / bridge |
 | `os:` | `os:linux` | OS name; `linux` / `windows` find every distro and version |
-| `kernel:` | `kernel:5.14` | Kernel release (partial); Linux guests with VMware Tools 11.2+ / QEMU agent, empty on Windows |
+| `kernel:` | `kernel:5.14` `kernel:NT` | Kernel (partial): Linux / FreeBSD kernel release, Windows NT version (`NT 10.0.20348.2582`). Needs VMware Tools 11.2+ or the QEMU agent; empty otherwise |
 | `osfam:` | `osfam:windows,linux` `osfam:redhat` | OS family (same as the dashboard pie): `windows` `linux` `ubuntu` `debian` `redhat` `suse` `otherlinux` `bsd` `vmware` `macos` `other` |
 | `status:` | `status:running,stopped` | running / stopped / suspended |
 | `tools:` / `agent:` | `tools:none` | `running` = running; `none` = not installed or not running |

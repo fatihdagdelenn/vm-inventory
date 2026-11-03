@@ -30,6 +30,21 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 Phases not yet in a release (phase 152 →; internal v1.8.1 →).
 
+### 🪟 Kernel for Windows and non-Linux guests (phase 156)
+- **Windows** now shows its **NT kernel version** instead of an empty cell:
+  VMware `NT 10.0.20348.2582` (NT version + build + update revision from the
+  detailed guest data), Proxmox `NT 10.0.20348` (QEMU agent build). On Proxmox
+  this replaces the bare build number ("20348") the agent used to leave there,
+  so the column has one format on both platforms. Search: `kernel:NT`.
+- **FreeBSD and other non-Linux families** take `kernelVersion` as reported
+  (e.g. `13.2-RELEASE-p4`) - phase 154 accepted only `familyName='Linux'`.
+- The persistent extraConfig copy is now checked whenever the live detailed
+  data leaves the kernel open, for every family.
+- Honest limit: VMware only publishes detailed guest data with **VMware Tools
+  11.2+**. Very old guests (CentOS 4/5 on Tools 10.x, "guestToolsUnsupported")
+  and guests whose open-vm-tools build does not publish it report no kernel
+  through any vSphere API - the cell stays empty even though Tools runs.
+
 ### 🛡️ Sync resilience: values no longer come and go (phase 155)
 - **Fix (VMware):** a VM that existed but could not be read in one round
   (vMotion in progress, Tools restarting, a transient vCenter error) was dropped

@@ -586,7 +586,7 @@ const VMs = {
       ]],
       [t('vh.g.sys', 'Sistem ve durum'), [
         F(['os'], 'os:ubuntu', t('vh.f.os', 'OS adı (kısmi). os:linux ve os:windows tüm dağıtımları/sürümleri bulur.')),
-        F(['kernel', 'cekirdek'], 'kernel:5.14', t('vh.f.kernel', 'Çekirdek sürümü (kısmi). Linux konuklarda agent / Tools bildirir; Windows\'ta boştur.')),
+        F(['kernel', 'cekirdek'], 'kernel:5.14', t('vh.f.kernel', 'Çekirdek sürümü (kısmi). Linux/FreeBSD: kernel sürümü; Windows: NT sürümü (NT 10.0.20348…). Eski Tools / agent yoksa boştur.')),
         F(['osfam', 'osailesi'], 'osfam:redhat', t('vh.f.osfam', 'OS ailesi — dashboard pastasıyla aynı sınıflandırma. Değerler aşağıda.')),
         F(['status'], 'status:running', t('vh.f.status', 'Güç durumu: running, stopped, suspended (TR: çalışan, kapalı, askıda).')),
         F(['tools', 'agent'], 'tools:' + QF_NONE, t('vh.f.tools', 'VMware Tools / QEMU Agent: running = çalışıyor; yok = kurulu değil veya çalışmıyor.')),

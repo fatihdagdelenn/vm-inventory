@@ -140,9 +140,10 @@ OS = {
     "win22": "Microsoft Windows Server 2022 Standard", "win19": "Microsoft Windows Server 2019 Datacenter",
     "sles": "SUSE Linux Enterprise Server 15 SP5", "photon": "VMware Photon OS 5.0",
 }
-# Kernel release per Linux OS (Windows guests report none - see the VMware
-# collector: kernelVersion is a build number there and is ignored)
+# Kernel per OS: Linux kernel release; Windows shows its NT kernel version
+# (the collectors build it from the build number - see _detailed_kernel)
 KERNEL = {
+    "win22": "NT 10.0.20348.2700", "win19": "NT 10.0.17763.6414",
     "ubuntu": "6.8.0-45-generic", "ubuntu22": "5.15.0-122-generic",
     "rhel": "5.14.0-427.40.1.el9_4.x86_64", "rocky": "5.14.0-362.24.1.el9_3.x86_64",
     "debian": "6.1.0-26-amd64", "sles": "5.14.21-150500.55.73-default", "photon": "6.1.10-10.ph5",

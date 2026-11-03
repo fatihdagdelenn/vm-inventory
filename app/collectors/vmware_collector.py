@@ -40,14 +40,37 @@ def _detailed_os(d: dict) -> str:
     return (f"{name} {ver}".strip()) if name else ""
 
 
-def _detailed_kernel(d: dict) -> str:
-    """Kernel release from parsed detailed data (Tools 11.2+), Linux only.
+_WIN_BUILD_RE = re.compile(r"Build (\d+(?:\.\d+)?)", re.IGNORECASE)
 
-    On Windows guests kernelVersion carries the OS build number
-    (e.g. '20348'), which is not a kernel - so it is ignored there.
+
+def _windows_nt_version(d: dict) -> str:
+    """NT kernel version of a Windows guest, e.g. 'NT 10.0.20348.2582'.
+
+    Windows reports no kernel release; its kernel identity is the NT version
+    shown by `ver` (major.minor.build.UBR). Built from distroVersion ('10.0')
+    plus the build - with the update revision from prettyName
+    ('... (Build 20348.2582)') when present, else kernelVersion / buildNumber.
     """
-    if (d.get("familyName") or "").strip().lower() != "linux":
+    ver = (d.get("distroVersion") or "").strip()
+    kv = (d.get("kernelVersion") or "").strip()
+    m = _WIN_BUILD_RE.search(d.get("prettyName") or "")
+    build = m.group(1) if m else (kv if kv[:1].isdigit() else (d.get("buildNumber") or "").strip())
+    if not build:
         return ""
+    if ver and build.startswith(ver + "."):          # already a full version
+        return "NT " + build
+    return "NT " + (f"{ver}.{build}" if ver else build)
+
+
+def _detailed_kernel(d: dict) -> str:
+    """Kernel identity from parsed detailed data (VMware Tools 11.2+).
+
+    Linux / FreeBSD / other families: kernelVersion as reported
+    ('5.14.0-427.13.1.el9_4.x86_64', '13.2-RELEASE-p4'). Windows: that field
+    is only the build number, so the NT version is built instead.
+    """
+    if (d.get("familyName") or "").strip().lower() == "windows":
+        return _windows_nt_version(d)
     return (d.get("kernelVersion") or "").strip()
 
 
@@ -68,8 +91,8 @@ def _best_guest_os(vm, guest, summary_config) -> str:
 def _guest_os_and_kernel(vm, guest, summary_config):
     """
     (os_name, kernel). Kernel comes from the same detailed data as the OS name
-    (kernelVersion, Linux guests only; '' when unknown). The persistent
-    extraConfig copy is read only when the live data leaves something open.
+    (see _detailed_kernel; '' when unknown). The persistent extraConfig copy
+    is read only when the live data leaves the OS name or the kernel open.
 
     Find the most detailed OS name, layered:
       1) guest.guestDetailedData              (VM on, Tools 11.2+ - full version)
@@ -81,20 +104,19 @@ def _guest_os_and_kernel(vm, guest, summary_config):
     is usually more specific than the generic runtime name Tools reports
     ("Other 3.x Linux"), so the catalog name wins when detailed data is absent.
     """
-    os_name = kernel = family = ""
+    os_name = kernel = ""
 
     def take(d):
-        nonlocal os_name, kernel, family
+        nonlocal os_name, kernel
         os_name = os_name or _detailed_os(d)
         kernel = kernel or _detailed_kernel(d)
-        family = family or (d.get("familyName") or "").strip().lower()
 
     # 1) Live detailed data (full version)
     take(_detailed_fields(getattr(guest, "guestDetailedData", None) or ""))
     # 2) Persistent detailed data (extraConfig) - even while the VM is off.
-    #    Skipped when live data already answered both (a non-Linux family has
-    #    no kernel to look for). Key is guestinfo/guestInfo -> case-insensitive.
-    if not os_name or (not kernel and family in ("", "linux")):
+    #    Skipped when live data already answered both.
+    #    Key is guestinfo/guestInfo -> case-insensitive.
+    if not os_name or not kernel:
         try:
             full_cfg = vm.config
             if full_cfg and getattr(full_cfg, "extraConfig", None):

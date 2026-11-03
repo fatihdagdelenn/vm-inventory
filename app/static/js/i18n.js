@@ -249,7 +249,7 @@ const I18N = {
     'vh.f.vlan': 'VLAN — partial match: vlan:10 also finds 100 and 110.',
     'vh.f.network': 'Attached network / portgroup / bridge name.',
     'vh.f.os': 'OS name (partial). os:linux and os:windows find every distro/version.',
-    'vh.f.kernel': 'Kernel release (partial). Reported by the agent / Tools on Linux guests; empty on Windows.',
+    'vh.f.kernel': 'Kernel (partial). Linux/FreeBSD: kernel release; Windows: NT version (NT 10.0.20348…). Empty with old Tools / no agent.',
     'vh.f.osfam': 'OS family — same classification as the dashboard pie. Values below.',
     'vh.f.status': 'Power state: running, stopped, suspended.',
     'vh.f.tools': 'VMware Tools / QEMU Agent: running = running; none = not installed or not running.',

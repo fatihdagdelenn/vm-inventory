@@ -76,6 +76,20 @@ OSTYPE_MAP = {
 }
 
 
+def _agent_kernel(result: dict) -> str:
+    """Kernel identity from a QEMU agent get-osinfo result.
+
+    Linux: kernel-release ('6.8.0-45-generic'). Windows: kernel-release is the
+    build ('20348') and kernel-version the NT version ('10.0'), so the NT
+    kernel version is shown ('NT 10.0.20348') - same format as VMware.
+    """
+    rel = str(result.get("kernel-release", "") or "").strip()
+    ver = str(result.get("kernel-version", "") or "").strip()
+    if (result.get("id") or "").lower() == "mswindows" and rel[:1].isdigit():
+        return "NT " + (f"{ver}.{rel}" if ver else rel)
+    return rel or ver
+
+
 class ProxmoxCollector:
     def __init__(self, host: str, port: int = 8006, verify_ssl: bool = True,
                  username: str = None, password: str = None,
@@ -735,8 +749,7 @@ class ProxmoxCollector:
                             agent_alive = True
                             os_from_agent = True
                             entry.pop("agent_indeterminate", None)  # rescued
-                        kern = result.get("kernel-release", "") or \
-                            result.get("kernel-version", "")
+                        kern = _agent_kernel(result)
                         if kern:
                             entry["kernel"] = kern
                         if result.get("machine"):
