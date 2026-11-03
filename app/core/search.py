@@ -106,6 +106,13 @@ STATUS_MAP = {"calisan": "running", "çalışan": "running", "açık": "running"
               "acik": "running", "kapali": "stopped", "kapalı": "stopped",
               "askida": "suspended", "askıda": "suspended"}
 
+# OS lifecycle status (destek:eol / support:soon); stored values are English
+SUPPORT_MAP = {"destekli": "supported", "supported": "supported", "ok": "supported",
+               "yakinda": "soon", "yakında": "soon", "soon": "soon",
+               "uzatilmis": "extended", "uzatılmış": "extended", "extended": "extended",
+               "eol": "eol", "bitti": "eol", "bitmis": "eol", "bitmiş": "eol",
+               "bilinmiyor": "unknown", "unknown": "unknown"}
+
 # Tools/Agent state mappings
 TOOLS_MAP = {"running": "guestToolsRunning", "calisan": "guestToolsRunning",
              "var": "guestToolsRunning", "ok": "guestToolsRunning",
@@ -214,6 +221,13 @@ def _field_condition(field: str, value: str):
         return VirtualMachine.platform.has(cond) if cond is not None else None
 
     # ---- Specially-mapped fields ----
+    if field in ("destek", "support"):
+        parts = [SUPPORT_MAP.get(p.strip().lower()) for p in value.split(",") if p.strip()]
+        if not parts or None in parts:
+            return None                 # unknown word -> free text, like other fields
+        # never-computed rows count as unknown
+        return or_(*[func.coalesce(VirtualMachine.support_status, "unknown") == p
+                     for p in dict.fromkeys(parts)])
     if field == "status":
         parts = [STATUS_MAP.get(p.strip().lower(), p.strip().lower())
                  for p in value.split(",") if p.strip()]

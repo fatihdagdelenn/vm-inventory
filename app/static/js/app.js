@@ -138,6 +138,52 @@ const App = {
   },
 
   /** Güç/erişim durumu için renkli rozet üret. */
+  /* ---------- OS lifecycle (phase 158) ---------- */
+  SUPPORT: {
+    supported: ['sp.supported', 'Destekli', 'sp-ok'],
+    soon:      ['sp.soon', 'Yakında', 'sp-soon'],
+    extended:  ['sp.extended', 'Uzatılmış', 'sp-ext'],
+    eol:       ['sp.eol', 'EOL', 'sp-eol'],
+    unknown:   ['sp.unknown', 'Bilinmiyor', 'sp-unk'],
+  },
+
+  /** Plain day: 2027-05-31 -> 31.05.2027 (TR) / 2027-05-31 (EN). */
+  fmtDay(iso) {
+    if (!iso) return '';
+    return (window.I18N && I18N.lang === 'en') ? iso : iso.split('-').reverse().join('.');
+  },
+
+  /** One sentence: why this status, until when, how sure. */
+  supportText(v) {
+    const d = App.fmtDay(v.support_until);
+    const R = {
+      standard: [t('sp.r.standard', 'Standart destek {d} tarihine kadar')],
+      no_end_date: [t('sp.r.noEnd', 'Destek sürüyor; bitiş tarihi henüz açıklanmadı')],
+      extended_subscription: [t('sp.r.extSub', 'Uzatılmış destek (abonelik) {d} tarihine kadar')],
+      extended_available: [t('sp.r.extAvail', 'Standart destek {d} tarihinde bitti; ücretli uzatılmış destek var (sahipseniz Yönetim → İşletim Sistemi Desteği\'nden istisna ekleyin)')],
+      ended: [t('sp.r.ended', 'Destek {d} tarihinde bitti')],
+      all_releases_eol: [t('sp.r.allEol', 'Sürüm tam belli değil, ama olası tüm sürümlerin desteği bitti (en son {d})')],
+      no_data: [t('sp.r.noData', 'Bu sürüm için yaşam döngüsü verisi yok')],
+      never_powered: [t('sp.r.never', 'VM hiç açık görülmedi; işletim sistemi bilgisi yok')],
+      no_agent: [t('sp.r.noAgent', 'Agent / Tools çalışmıyor; sürüm tespit edilemedi')],
+      tools_old: [t('sp.r.toolsOld', 'VMware Tools ayrıntılı OS bilgisi göndermiyor (11.2\'den eski)')],
+      version_unknown: [t('sp.r.verUnknown', 'İşletim sistemi sürümü tespit edilemedi')],
+    }[v.support_reason] || [''];
+    const parts = [];
+    if (v.support_os) parts.push(v.support_os);
+    if (R[0]) parts.push(R[0].replace('{d}', d || '?'));
+    if (v.support_confidence === 'estimated')
+      parts.push(t('sp.estimated', 'tahmini: VM ayarındaki / platformun önerdiği addan'));
+    return parts.join(' · ');
+  },
+
+  supportBadge(v) {
+    const m = App.SUPPORT[v.support_status] || App.SUPPORT.unknown;
+    const est = v.support_confidence === 'estimated' && v.support_status !== 'unknown';
+    return '<span class="badge sp-badge ' + m[2] + '" title="' + App.esc(App.supportText(v)) + '">' +
+      (est ? '≈ ' : '') + t(m[0], m[1]) + '</span>';
+  },
+
   stateBadge(state) {
     const map = {
       running:   [t('st.running','Çalışıyor'),  'state-running'],
@@ -260,6 +306,8 @@ const App = {
       row(t('vd.mac', 'MAC Adresleri'), App.esc(v.mac_addresses).split(',').join('<br>')) +
       row(t('vm.dns','DNS Sunucuları'), App.esc(v.dns_servers).split(',').join('<br>')) +
       row(t('vm.os', 'İşletim Sistemi'), App.esc(v.guest_os)) +
+      row(t('vm.support', 'Destek'), App.supportBadge(v) +
+          '<div class="small text-muted mt-1">' + App.esc(App.supportText(v)) + '</div>') +
       row(t('vd.kernelArch', 'Çekirdek / Mimari'),
           [App.esc(v.kernel), App.esc(v.arch)].filter(Boolean).join(' · ') || '—') +
       row('CPU', (v.cpu_count || '—') +

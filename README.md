@@ -80,6 +80,7 @@ All of these are answered from one search box in well under a second. **No SSH a
 | 🐧 **Full OS version** | Detailed guest OS on VMware (e.g. *"Ubuntu 24.04.1 LTS"*, vSphere 8.0 U2+ with VMware Tools 11.2+); on Proxmox via the QEMU Guest Agent |
 | ✍️ **Manual IP** | For VMs whose agent cannot be installed: type the IP yourself — searchable and exported, replaced automatically once an agent reports one |
 | 🖧 **Hosts** | Sortable host table with CPU / RAM / disk bars, uptime and per-host VM list |
+| 🛡️ **OS lifecycle (EOL)** | Every VM's OS release is matched against [endoflife.date](https://endoflife.date): **Support** column (supported / ending soon / extended / EOL / unknown, with the end date and the reason in the tooltip), `support:eol` search, dashboard card, export columns. Extended-support subscriptions (Ubuntu Pro, RHEL ELS, Windows ESU…) can be recorded per VM, tag or product. Works offline with the bundled data |
 | 🏢 **Physical inventory** | Non-virtualised hardware (servers, storage, SAN switches, backup appliances) entered by hand; hypervisor hosts flow in automatically and keep your manual fields |
 | 💽 **Per-disk view** | Every disk of a multi-disk VM is listed; a separate "Disks" sheet in exports |
 | ⏱️ **Migration-aware uptime** | Proxmox resets uptime on live migration (bugzilla #499); the real guest uptime is read from the agent when possible, otherwise boot time is carried across the migration |
@@ -351,6 +352,7 @@ Tracked: **hardware** (vCPU, RAM, OS type), **disk & storage** (size, datastore)
 | `manuelip:` | `manuelip:any` `-manuelip:any` | VMs with / without a manually entered IP |
 | `mac:` / `vlan:` / `network:` | `vlan:100` | MAC, VLAN (partial: `vlan:10` also finds 100), attached network / port group / bridge |
 | `os:` | `os:linux` | OS name; `linux` / `windows` find every distro and version |
+| `support:` / `destek:` | `support:eol` `support:soon,unknown` | OS lifecycle status: `eol`, `soon`, `extended`, `supported`, `unknown` (TR: `yakinda`, `uzatilmis`, `destekli`, `bilinmiyor`) |
 | `kernel:` | `kernel:5.14` `kernel:NT` | Kernel (partial): Linux / FreeBSD kernel release, Windows NT version (`NT 10.0.20348.2582`). Needs VMware Tools 11.2+ or the QEMU agent; empty otherwise |
 | `osfam:` | `osfam:windows,linux` `osfam:redhat` | OS family (same as the dashboard pie): `windows` `linux` `ubuntu` `debian` `redhat` `suse` `otherlinux` `bsd` `vmware` `macos` `other` |
 | `status:` | `status:running,stopped` | running / stopped / suspended |
@@ -416,7 +418,7 @@ server {
 
 **Upgrades** — pull the new version, then `docker compose up -d --build`, and Ctrl+F5 in the browser. Data lives in Docker volumes; new columns are added automatically.
 
-**Offline / intranet** — all JavaScript, CSS and fonts are vendored (no CDN), so the UI works without internet access.
+**Offline / intranet** — all JavaScript, CSS and fonts are vendored (no CDN), so the UI works without internet access. OS lifecycle data ships with the app; a server with internet refreshes it weekly from endoflife.date. Without internet, refresh it by running `python3 tools/refresh_lifecycle_seed.py lifecycle.json` on any machine that has internet and uploading the file in **Administration → OS Support**.
 
 **Other** — change the PostgreSQL password in `docker-compose.yml`, tune the sync interval to your environment, and open only the chosen port in the firewall.
 

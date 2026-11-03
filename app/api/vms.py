@@ -6,7 +6,7 @@ the local DB (never against the platforms).
 import re
 import json
 from fastapi import APIRouter, Depends, HTTPException, Request, Body, Query
-from sqlalchemy import func
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session, joinedload
 
 from ..database import get_db
@@ -26,7 +26,10 @@ SORTABLE = {"name": VirtualMachine.name, "power_state": VirtualMachine.power_sta
             "ram_mb": VirtualMachine.ram_mb, "cpu_count": VirtualMachine.cpu_count,
             "disk_total_gb": VirtualMachine.disk_total_gb, "vmid": VirtualMachine.vmid,
             "uptime": VirtualMachine.last_boot, "pool": VirtualMachine.pool,
-            "kernel": VirtualMachine.kernel}
+            "kernel": VirtualMachine.kernel,
+            # severity first (EOL on top when ascending), then the end date
+            "support": case({"eol": 0, "soon": 1, "extended": 2, "supported": 3},
+                            value=VirtualMachine.support_status, else_=4)}
 # Text columns sort case-insensitively (true alphabetical); otherwise the DB
 # sorts by byte/ASCII order (uppercase first -> not alphabetical)
 CASE_INSENSITIVE = {"name", "cluster", "guest_os", "vmid", "pool", "kernel"}
@@ -81,6 +84,10 @@ def _vm_to_dict(vm: VirtualMachine) -> dict:
         "platform_type": vm.platform.type if vm.platform else "",
         "tags": [{"id": t.id, "name": t.name, "color": t.color} for t in vm.tags],
         "updated_at": to_iso(vm.updated_at),
+        "support_status": vm.support_status or "unknown",
+        "support_until": vm.support_until.isoformat() if vm.support_until else None,
+        "support_reason": vm.support_reason, "support_os": vm.support_os,
+        "support_confidence": vm.support_confidence,
     }
 
 
@@ -156,6 +163,11 @@ def list_vms(q: str = "", page: int = 1, per_page: int = 50,
             query = query.order_by(nulls_last.asc(), VirtualMachine.last_boot.asc())
         else:
             query = query.order_by(nulls_last.asc(), VirtualMachine.last_boot.desc())
+    elif sort == "support":
+        # severity, then the nearest end date, then name
+        query = query.order_by(sort_col.desc() if order == "desc" else sort_col.asc(),
+                               VirtualMachine.support_until.asc().nullslast(),
+                               VirtualMachine.name)
     else:
         query = query.order_by(sort_col.desc() if order == "desc" else sort_col.asc())
     items = query.offset((page - 1) * per_page).limit(per_page).all()
@@ -451,4 +463,8 @@ def update_vm_meta(vm_id: int, request: Request, payload: dict = Body(...),
               new="; ".join(f"{k}={new[k]}" for k in changed) or None,
               detail=f"alanlar={list(payload.keys())}", request=request)
     db.commit()
+    if "tags" in payload:      # a tag may switch an extended-support exception on/off
+        from ..services.lifecycle_service import recompute
+        recompute(db, vm_ids=[vm.id])
+        db.refresh(vm)
     return _vm_to_dict(vm)

@@ -156,10 +156,136 @@ const Settings = {
       msg.textContent = 'Kaydedilemedi';
     }
   },
+
+  /* ---------- OS lifecycle (phase 158) ---------- */
+  lcNames: {},
+  srcLabel(src) {
+    return ({seed: t('lc.src.seed', 'Uygulamayla gelen'), 'endoflife.date': 'endoflife.date',
+             manual: t('lc.src.manual', 'Yüklenen JSON')})[src] || (src || '—');
+  },
+
+  async loadLifecycle() {
+    let d;
+    try { d = await App.api('/api/lifecycle'); } catch (e) { return; }
+    const m = d.meta;
+    Settings.lcNames = d.product_names || {};
+    const c = d.counts;
+    const dt = iso => iso ? App.fmtDate(iso.length > 19 ? iso : iso + 'Z') : '—';
+    const row = (k, v) => '<dt class="col-5 text-muted fw-normal">' + k + '</dt><dd class="col-7 mb-1">' + v + '</dd>';
+    document.getElementById('lcMeta').innerHTML =
+      row(t('lc.cycles', 'Sürüm'), m.cycles + ' (' + Object.entries(m.by_source || {})
+        .map(([k, n]) => Settings.srcLabel(k) + ': ' + n).join(', ') + ')') +
+      row(t('lc.dataDate', 'Veri tarihi'), dt(m.data_date)) +
+      row(t('lc.lastSync', 'Son başarılı güncelleme'), m.last_sync ? dt(m.last_sync) : t('lc.never', 'hiç (internet yok)')) +
+      (m.last_error ? row(t('lc.lastAttempt', 'Son deneme'), dt(m.last_attempt) +
+        ' <span class="badge text-bg-light border" title="' + App.esc(m.last_error) + '">' +
+        t('lc.offline', 'erişilemedi') + '</span>') : '') +
+      row(t('lc.vmStatus', 'VM durumu'),
+        ['eol', 'soon', 'extended', 'unknown', 'supported'].map(k =>
+          '<a class="text-decoration-none me-2" href="/vms?q=destek:' + k + '">' +
+          App.supportBadge({support_status: k}) + ' ' + (c[k] || 0) + '</a>').join(''));
+    document.getElementById('lcSoon').value = m.soon_days;
+    document.getElementById('lcProducts').innerHTML = (d.products || []).map(p =>
+      '<tr><td>' + App.esc(p.label) + '</td><td>' + p.cycles + '</td>' +
+      '<td class="small">' + dt(p.updated_at).split(' ')[0] + '</td>' +
+      '<td class="small text-muted">' + App.esc((p.sources || []).map(Settings.srcLabel).join(' + ')) + '</td></tr>').join('');
+    const sel = document.getElementById('ovDistro');
+    sel.innerHTML = '<option value="">' + t('lc.anyProduct', 'Hepsi') + '</option>' +
+      Object.entries(Settings.lcNames).sort((a, b) => a[1].localeCompare(b[1]))
+        .map(([k, v]) => '<option value="' + k + '">' + App.esc(v) + '</option>').join('');
+    Settings.loadOverrides();
+  },
+
+  async loadOverrides() {
+    let d;
+    try { d = await App.api('/api/lifecycle/overrides'); } catch (e) { return; }
+    document.getElementById('ovTags').innerHTML = (d.tags || []).map(x => '<option value="' + App.esc(x) + '">').join('');
+    const scope = {all: t('lc.sc.all', "Tüm VM'ler"), tag: t('lc.sc.tag', 'Etiket'), vm: t('lc.sc.vm', 'Tek VM')};
+    document.getElementById('ovBody').innerHTML = d.items.length ? d.items.map(o => '<tr>' +
+      '<td>' + scope[o.scope] + '</td><td>' + App.esc(o.scope === 'all' ? '—' : o.target_label) + '</td>' +
+      '<td>' + App.esc(o.distro_label || t('lc.anyProduct', 'Hepsi')) + '</td>' +
+      '<td>' + (o.extended ? '<span class="badge sp-badge sp-ext">' + t('lc.yes', 'Var') + '</span>'
+                           : '<span class="badge sp-badge sp-unk">' + t('lc.no', 'Yok') + '</span>') + '</td>' +
+      '<td class="small">' + App.esc(o.note || '') + '</td><td class="small text-muted">' + App.esc(o.created_by || '') + '</td>' +
+      '<td class="text-end"><button class="btn btn-sm btn-outline-danger" title="' + t('action.delete', 'Sil') +
+      '" onclick="Settings.ovDelete(' + o.id + ')"><i class="bi bi-trash"></i></button></td></tr>').join('')
+      : '<tr><td colspan="7" class="text-muted small p-3">' + t('lc.noOverrides', 'İstisna yok.') + '</td></tr>';
+  },
+
+  ovScopeChanged() {
+    const sc = document.getElementById('ovScope').value, inp = document.getElementById('ovTarget');
+    inp.disabled = sc === 'all';
+    inp.placeholder = sc === 'tag' ? t('lc.tagPh', 'etiket adı') : sc === 'vm' ? t('lc.vmPh', 'VM adı (tam)') : '';
+    inp.setAttribute('list', sc === 'tag' ? 'ovTags' : '');
+    if (sc === 'all') inp.value = '';
+  },
+
+  lcMsg(ok, text) {
+    const el = document.getElementById('lcMsg');
+    el.className = 'small mt-2 ' + (ok ? 'text-success' : 'text-danger');
+    el.textContent = text;
+  },
+
+  async lcSync() {
+    const btn = document.getElementById('lcSyncBtn');
+    btn.disabled = true;
+    try {
+      const r = await App.api('/api/lifecycle/sync', {method: 'POST', body: {}});
+      Settings.lcMsg(r.ok, r.ok
+        ? '✓ ' + t('lc.synced', 'Güncellendi') + ': +' + r.added + ' / ~' + r.updated
+        : t('lc.syncFail', 'endoflife.date\'e erişilemedi; mevcut veri kullanılmaya devam ediyor.'));
+    } catch (e) { /* toast shown */ }
+    btn.disabled = false;
+    Settings.loadLifecycle();
+  },
+
+  async lcImport(input) {
+    const f = input.files && input.files[0];
+    input.value = '';
+    if (!f) return;
+    let body;
+    try { body = JSON.parse(await f.text()); } catch (e) {
+      Settings.lcMsg(false, t('lc.badJson', 'Dosya geçerli bir JSON değil')); return;
+    }
+    try {
+      const r = await App.api('/api/lifecycle/import', {method: 'POST', body});
+      Settings.lcMsg(true, '✓ ' + r.rows + ' ' + t('lc.rowsRead', 'sürüm okundu') + ': +' + r.added +
+        ' / ~' + r.updated + ' / =' + r.kept);
+    } catch (e) { return; }
+    Settings.loadLifecycle();
+  },
+
+  async lcSaveSoon() {
+    const n = parseInt(document.getElementById('lcSoon').value, 10);
+    try {
+      await App.api('/api/lifecycle/settings', {method: 'PUT', body: {soon_days: n}});
+      Settings.lcMsg(true, '✓ ' + t('pl.saved', 'Kaydedildi'));
+    } catch (e) { return; }
+    Settings.loadLifecycle();
+  },
+
+  async ovAdd() {
+    const body = {scope: document.getElementById('ovScope').value,
+                  target: document.getElementById('ovTarget').value.trim(),
+                  distro: document.getElementById('ovDistro').value,
+                  extended: document.getElementById('ovExtended').checked,
+                  note: document.getElementById('ovNote').value.trim()};
+    try { await App.api('/api/lifecycle/overrides', {method: 'POST', body}); } catch (e) { return; }
+    document.getElementById('ovTarget').value = '';
+    document.getElementById('ovNote').value = '';
+    Settings.loadLifecycle();
+  },
+
+  async ovDelete(id) {
+    if (!confirm(t('lc.ovDeleteConfirm', 'Bu istisna silinsin mi?'))) return;
+    try { await App.api('/api/lifecycle/overrides/' + id, {method: 'DELETE'}); } catch (e) { return; }
+    Settings.loadLifecycle();
+  },
 };
 
 Settings.loadUsers();
 Settings.loadAudit();
 Settings.loadSync();
+Settings.loadLifecycle();
 document.getElementById('auditSearch').addEventListener('input', App.debounce(() => Settings.loadAudit(), 300));
 document.getElementById('auditAction').addEventListener('change', () => Settings.loadAudit());

@@ -861,6 +861,14 @@ def sync_platform(platform_id: int):
         db.commit()
         logger.info("Sync done: %s (%s VMs%s)", platform.name, len(vms_data),
                     f", {unreadable} unreadable kept" if unreadable else "")
+        # OS / kernel may have changed -> refresh the lifecycle status of this
+        # platform's VMs. Never lets a lifecycle problem fail the sync itself.
+        try:
+            from .lifecycle_service import recompute
+            recompute(db, platform_id=platform.id)
+        except Exception:
+            logger.exception("Lifecycle recompute after sync failed (platform %s)", platform_id)
+            db.rollback()
 
     except Exception as exc:
         logger.exception("Sync error (platform %s)", platform_id)

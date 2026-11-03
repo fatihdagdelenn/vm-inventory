@@ -173,14 +173,26 @@
         <div class="card-body chart-box d-flex justify-content-center"><canvas id="chartEnv"></canvas></div></div>
     </div>
 
-    <!-- ===== OS ===== -->
-    <div class="dash-widget" data-widget="chartOs" data-w="6" data-title="İşletim Sistemi Ailesi">
+    <!-- ===== OS: family / top OS / lifecycle (phase 158: 3 x 4) ===== -->
+    <div class="dash-widget" data-widget="chartOs" data-w="4" data-title="İşletim Sistemi Ailesi">
       <div class="card panel h-100"><div class="card-header" data-i18n="dash.osFamily">İşletim Sistemi Ailesi</div>
         <div class="card-body chart-box d-flex justify-content-center"><canvas id="chartOs"></canvas></div></div>
     </div>
-    <div class="dash-widget" data-widget="chartTopOs" data-w="6" data-title="En Çok Kullanılan İşletim Sistemleri">
+    <div class="dash-widget" data-widget="chartTopOs" data-w="4" data-title="En Çok Kullanılan İşletim Sistemleri">
       <div class="card panel h-100"><div class="card-header" data-i18n="dash.topOs">En Çok Kullanılan İşletim Sistemleri</div>
         <div class="card-body chart-box"><canvas id="chartTopOs"></canvas></div></div>
+    </div>
+    <div class="dash-widget" data-widget="osSupport" data-w="4" data-title="İşletim Sistemi Desteği">
+      <div class="card panel h-100"><div class="card-header"><i class="bi bi-shield-check"></i> <span data-i18n="dash.osSupport">İşletim Sistemi Desteği</span></div>
+        <div class="list-group list-group-flush sp-list" id="osSupportList">
+          <a href="/vms?q=destek:eol" class="list-group-item attention-item"><span class="sp-dot sp-eol"></span> <span data-i18n="dash.sp.eol">Desteği bitmiş (EOL)</span> <span class="sp-count" id="sp-eol">—</span></a>
+          <a href="/vms?q=destek:yakinda" class="list-group-item attention-item"><span class="sp-dot sp-soon"></span> <span id="sp-soon-label" data-i18n="dash.sp.soon">Desteği yakında bitecek</span> <span class="sp-count" id="sp-soon">—</span></a>
+          <a href="/vms?q=destek:uzatilmis" class="list-group-item attention-item"><span class="sp-dot sp-ext"></span> <span data-i18n="dash.sp.extended">Uzatılmış destekte</span> <span class="sp-count" id="sp-extended">—</span></a>
+          <a href="/vms?q=destek:bilinmiyor" class="list-group-item attention-item"><span class="sp-dot sp-unk"></span> <span data-i18n="dash.sp.unknown">Sürümü bilinmiyor</span> <span class="sp-count" id="sp-unknown">—</span></a>
+          <a href="/vms?q=destek:destekli" class="list-group-item attention-item"><span class="sp-dot sp-ok"></span> <span data-i18n="dash.sp.supported">Destekleniyor</span> <span class="sp-count" id="sp-supported">—</span></a>
+        </div>
+        <div class="card-footer text-muted sp-foot" id="spFoot"></div>
+      </div>
     </div>
 
     <!-- ===== Clusters ===== -->

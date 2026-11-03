@@ -61,6 +61,13 @@ class VirtualMachine(Base):
     mac_addresses = Column(Text)                    # Comma-separated MAC list
     guest_os = Column(String(255), index=True)      # Operating system
     kernel = Column(String(128))                     # Kernel version (Proxmox agent / -)
+    # OS lifecycle (services/lifecycle_service.py; recomputed after every sync
+    # and whenever lifecycle data, exceptions or the 'soon' threshold change)
+    support_status = Column(String(12), index=True)  # supported|soon|extended|eol|unknown
+    support_until = Column(Date)                     # end date that applies to the status
+    support_reason = Column(String(32))              # reason code (UI translates it)
+    support_os = Column(String(64))                  # identified release, e.g. 'Ubuntu 22.04'
+    support_confidence = Column(String(12))          # high | estimated | none
     arch = Column(String(32))                        # Mimari: x86_64 / aarch64 …
     cpu_count = Column(Integer)
     ram_mb = Column(BigInteger)

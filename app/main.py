@@ -20,7 +20,7 @@ from .core.security import (get_current_user, hash_password,
                             refresh_session_token, set_session_cookie)
 from .core.scheduler import start_scheduler, stop_scheduler
 from .api import (auth, dashboard, vms, hosts, networks, platforms, physical, datastores, snapshots, backups,
-                  reports, admin, clusters, topology, user_settings)
+                  reports, admin, clusters, topology, user_settings, lifecycle)
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -72,6 +72,10 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logging.warning("mac_addresses temizligi atlandi: %s", exc)
     _create_default_admin()
+    # OS lifecycle: apply the bundled endoflife.date seed (newest data wins)
+    # and compute every VM's support status once.
+    from .services.lifecycle_service import startup as _lifecycle_startup
+    _lifecycle_startup()
     start_scheduler()
     yield
     stop_scheduler()
@@ -121,7 +125,7 @@ app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")),
 for router in (auth.router, dashboard.router, vms.router, hosts.router,
                networks.router, platforms.router, reports.router, admin.router,
                clusters.router, datastores.router, snapshots.router, backups.router,
-               topology.router, user_settings.router, physical.router):
+               topology.router, user_settings.router, physical.router, lifecycle.router):
     app.include_router(router)
 
 

@@ -79,6 +79,7 @@ Bu soruların hepsi tek arama kutusundan, saniyeden kısa sürede yanıtlanır. 
 | 🐧 **Tam OS sürümü** | VMware'de ayrıntılı misafir OS verisi (ör. *"Ubuntu 24.04.1 LTS"*) — vSphere 8.0 U2+ ve VMware Tools 11.2+ ile; Proxmox'ta QEMU Guest Agent ile |
 | 🆔 **VM ID & çalışma süresi** | VM ID (Proxmox sayısal / VMware MoRef) ve host+VM **uptime** kolonları; host'larda CPU/RAM/Disk kullanım çubukları |
 | 🖧 **Host detayı & sıralama** | Host tablosunda tüm kolonlar tıklanabilir sıralanır (metin/sayı/IP/durum); VM sayısına tıklayınca host'un VM listesi açılır, oradan VM detayı **aynı sayfada** görüntülenir |
+| 🛡️ **İşletim sistemi yaşam döngüsü (EOL)** | Her VM'in OS sürümü [endoflife.date](https://endoflife.date) verisiyle eşleşir: **Destek** sütunu (destekli / yakında bitiyor / uzatılmış / EOL / bilinmiyor; bitiş tarihi ve neden ipucunda), `destek:eol` araması, dashboard kartı, export sütunları. Uzatılmış destek abonelikleri (Ubuntu Pro, RHEL ELS, Windows ESU…) VM, etiket veya ürün bazında girilir. Uygulamayla gelen veriyle internetsiz çalışır |
 | 🏢 **Fiziksel envanter** | Sanallaştırma dışı donanım (fiziksel sunucu, storage, SAN switch, yedekleme ünitesi) elle girilir; lokasyon / yönetim IP / iLO-BMC IP / marka / model / seri no / rol. Sanallaştırma host'ları buraya otomatik akar, elle eklenen alanlar senkronizasyonda korunur |
 | 💽 **Disk disk görünürlük** | Çok diskli VM'lerde her diskin boyutu ayrı listelenir; export'ta ayrı "Diskler" sayfası. *(Kullanım oranı platformlarda yalnız VM geneli verilir — disk başına değil; arayüzde böyle etiketlidir)* |
 | ⏱️ **Göç-farkında uptime** | Proxmox'un uptime sayacı canlı göçte sıfırlanır (bugzilla #499). Gerçek misafir uptime'ı mümkünse QEMU ajanından okunur, değilse göç boyunca boot zamanı taşınır — gerçek yeniden başlatmada sıfırlanır |
@@ -368,6 +369,7 @@ yazılır. Mevcut konsol kayıtları aynı ekrandaki butonla toplu silinebilir.
 | `manuelip:` | `manuelip:var` `-manuelip:var` | Elle IP girilmiş VM'ler (agent IP bildirmiyor) |
 | `mac:` / `vlan:` / `network:` | `vlan:100` | MAC, VLAN (kısmi: `vlan:10` 100'ü de bulur), bağlı ağ/portgroup/köprü |
 | `os:` | `os:linux` | OS adı; `linux`/`windows` tüm dağıtım ve sürümleri bulur |
+| `destek:` / `support:` | `destek:eol` `destek:yakinda,bilinmiyor` | OS desteği: `eol`, `yakinda`, `uzatilmis`, `destekli`, `bilinmiyor` (EN: `soon`, `extended`, `supported`, `unknown`) |
 | `kernel:` / `cekirdek:` | `kernel:5.14` `kernel:NT` | Çekirdek (kısmi): Linux / FreeBSD kernel sürümü, Windows NT sürümü (`NT 10.0.20348.2582`). VMware Tools 11.2+ veya QEMU agent gerekir; yoksa boş |
 | `osfam:` | `osfam:windows,linux` `osfam:redhat` | OS ailesi (dashboard pastasıyla aynı): `windows` `linux` `ubuntu` `debian` `redhat` `suse` `otherlinux` `bsd` `vmware` `macos` `other` |
 | `status:` | `status:running,stopped` | running / stopped / suspended (TR: `çalışan`, `kapalı`, `askıda`) |
@@ -433,6 +435,8 @@ server {
 **Yedekleme** — İki şey yeterli: PostgreSQL veritabanı (`docker compose exec db pg_dump -U vminv vminventory > yedek.sql`) ve `.env` dosyası (özellikle `ENCRYPTION_KEY`).
 
 **Güncelleme** — Yeni sürümü açın, ardından `docker compose up -d --build`; tarayıcıda Ctrl+F5. Veriler volume'lerde korunur.
+
+**İnternetsiz ortam** — Arayüzün tüm JavaScript/CSS/fontları uygulamayla gelir. İşletim sistemi yaşam döngüsü verisi de uygulamayla gelir; internete erişen sunucu haftada bir endoflife.date'ten günceller. İnternet yoksa internete erişen herhangi bir makinede `python3 tools/refresh_lifecycle_seed.py lifecycle.json` çalıştırıp dosyayı **Yönetim → İşletim Sistemi Desteği**'nden yükleyin.
 
 **Diğer** — `docker-compose.yml` içindeki PostgreSQL parolasını değiştirin; senkronizasyon aralığını ortamınıza göre ayarlayın (`SYNC_INTERVAL_MINUTES`); güvenlik duvarında yalnızca seçtiğiniz portu açın.
 

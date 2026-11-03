@@ -30,6 +30,61 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 Phases not yet in a release (phase 152 →; internal v1.8.1 →).
 
+### 🛡️ OS lifecycle (EOL) tracking (phase 158)
+- **Identity** (`app/core/os_identity.py`): the stored OS name (+ kernel) is
+  mapped to an [endoflife.date](https://endoflife.date) product and release
+  cycle - Ubuntu, Debian, RHEL, CentOS (Stream), Rocky, AlmaLinux, Oracle Linux,
+  SLES, openSUSE Leap, Fedora, Amazon Linux, Windows Server, Windows 10/11,
+  FreeBSD, Photon OS. Confidence is **high** for the guest's own name (Tools
+  detailed data / QEMU agent) or a version read from the kernel (`el7`, `ph5`,
+  NT build `20348` -> Server 2022), **estimated** for VMware's catalog name in
+  the VM settings or the Proxmox ostype hint (shown with "≈"). Ambiguous names
+  ("Windows Server 2016 or later", "CentOS 4/5") get no version.
+- **Data** (`os_lifecycle`): 16 products / 358 release cycles ship with the app
+  (`app/resources/os_lifecycle_seed.json`, built from endoflife.date). A weekly job
+  (Mon 04:17, plus once 90 s after start) refreshes them from the endoflife.date
+  API v1; **without internet it fails fast** (one attempt, logged at INFO) and
+  the stored data keeps working. **Administration → OS Support** shows the data
+  status, an "Update from endoflife.date" button and **Upload JSON** (seed format
+  or raw API v1 responses; `tools/refresh_lifecycle_seed.py` builds one on any
+  machine with internet). For each release the newest data wins, whatever its
+  source.
+- **Status per VM**: `supported` / `soon` (within the threshold, default 180
+  days, set in Administration) / `extended` / `eol` / `unknown`, with the end
+  date that applies and a reason - for unknown: agent not running, VMware Tools
+  too old for detailed OS data (< 11.2), VM never seen powered on, release not
+  identifiable, no data for the release. If the exact release is unknown but
+  every possible one is out of support (any CentOS, Windows 10 non-LTSC) the VM
+  is EOL (estimated). Recomputed after every platform sync, on lifecycle data /
+  threshold / exception changes and when a VM's tags change.
+- **Extended-support exceptions** (`lifecycle_overrides`): mark a paid
+  subscription (Ubuntu Pro / ESM, RHEL ELS, Windows ESU, Debian ELTS…) for all
+  VMs (optionally one product), a tag or a single VM (kept across Proxmox
+  migrations). Most specific wins (VM > tag > all), so a VM rule can also switch
+  it off inside a tagged group. Without one, an expired release is EOL even when
+  paid extended support exists (the tooltip says so).
+- **UI**: colored **Support** column after Kernel (tooltip: release, end date,
+  reason, "estimated"; click to filter, sortable by severity), Support row in
+  the VM detail panel, search `support:` / `destek:` (`eol`, `soon`/`yakinda`,
+  `extended`/`uzatilmis`, `supported`/`destekli`, `unknown`/`bilinmiyor`),
+  dashboard **OS Support** card in the OS row (EOL / ending soon / extended /
+  unknown / supported, each opens the filtered VM list). The OS row is now
+  3 x 4 columns; the top-OS chart cuts long names at the end instead of
+  clipping them.
+- **Exports**: "Destek" and "Destek Bitişi" columns (VM report, "all" report,
+  scheduled reports).
+- Demo inventory: EOL, ending-soon, extended (tag exception) and both kinds of
+  unknown examples.
+- Tests: `tests/test_os_identity.py` (76 real OS strings), `tests/test_lifecycle.py`
+  (seed / import / newest-wins, offline + online sync, every status and reason,
+  exceptions, threshold, search, sort, dashboard, exports, hooks).
+- Honest limits: the status is only as good as the OS name - VMs with old Tools
+  or no agent stay estimated/unknown. Windows 10/11 needs the build (Tools 11.2+
+  or QEMU agent) to pick the feature update. Extended-support end dates exist
+  only where endoflife.date has them (e.g. none for CentOS 7 or Photon OS).
+  Existing saved dashboard layouts get the new card at the end of the
+  first page - Edit Dashboard → Reset gives the aligned default.
+
 ### ↔️ Virtual Machines table: scroll, resize, click-to-filter (phase 157)
 - **Horizontal scroll is always on screen.** The table now scrolls inside its
   own box sized to the window; before, the horizontal scrollbar sat below all

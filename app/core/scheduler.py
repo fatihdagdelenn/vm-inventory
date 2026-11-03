@@ -93,6 +93,16 @@ def start_scheduler():
         id="usage_sync_boot",
         replace_existing=True,
     )
+    # OS lifecycle data from endoflife.date: weekly, plus one attempt shortly
+    # after start. Without internet (prod) it fails fast and the stored data
+    # (seed / uploaded JSON) keeps working - see services/lifecycle_service.
+    from ..services.lifecycle_service import scheduled_sync as _lifecycle_sync
+    scheduler.add_job(_lifecycle_sync, trigger="cron", day_of_week="mon", hour=4, minute=17,
+                      id="lifecycle_sync", max_instances=1, coalesce=True,
+                      replace_existing=True)
+    scheduler.add_job(_lifecycle_sync, trigger="date",
+                      run_date=now_local() + timedelta(seconds=90),
+                      id="lifecycle_sync_boot", replace_existing=True)
     scheduler.start()
     # Reload persistent scheduled reports from the DB into the scheduler.
     # (They used to be in-memory and were lost on every restart.)

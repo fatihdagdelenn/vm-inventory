@@ -222,6 +222,36 @@ for prefix, count, os_key, vcpu, ram, disk, vlan, tg, owner, env, cl in roles:
             platform_tags="backup-gold" if "critical" in tg else None)
         v.tags = [tags[x] for x in tg]
         vms.append(v)
+# OS lifecycle examples (phase 158): out-of-support, ending soon, extended,
+# and the "unknown" reasons the Support column explains
+east, west = hosts_by_cluster["PROD-East"][0], hosts_by_cluster["pve-west"][0]
+LC = [  # name, host, guest_os, kernel, tools, power, booted, tags
+    ("ftp-legacy-01", east, "Ubuntu 18.04.6 LTS", "4.15.0-213-generic", "guestToolsRunning", "running", True, ["legacy"]),
+    ("ftp-legacy-02", east, "Ubuntu 18.04.6 LTS", "4.15.0-213-generic", "guestToolsRunning", "running", True, []),
+    ("build-c7-01", east, "CentOS Linux 7 (Core)", "3.10.0-1160.119.1.el7.x86_64", "guestToolsRunning", "running", True, []),
+    ("app-w2012-01", east, "Microsoft Windows Server 2012 R2 Standard", None, "guestToolsRunning", "running", True, []),
+    ("app-w2016-01", east, "Microsoft Windows Server 2016 Standard", "NT 10.0.14393.7428", "guestToolsRunning", "running", True, []),
+    ("mail-deb11-01", west, "Debian GNU/Linux 11 (bullseye)", "5.10.0-33-amd64", "guestToolsRunning", "running", True, []),
+    ("appliance-lb-01", east, "Other 3.x or later Linux (64-bit)", None, "guestToolsRunning", "running", True, []),
+    ("old-tools-rhel7", east, "Red Hat Enterprise Linux 7 (64-bit)", None, "guestToolsRunning", "running", True, []),
+    ("tmpl-new-ubuntu", east, "Ubuntu Linux (64-bit)", None, "guestToolsNotRunning", "stopped", False, []),
+]
+for name, h, gos, kern, ts, st, booted, tg in LC:
+    vmid += 1
+    is_pve = h.platform_id == px.id
+    v = VirtualMachine(
+        platform_id=h.platform_id, host_id=h.id,
+        external_id=f"{h.name}/{vmid}" if is_pve else f"vm-{vmid}", vmid=str(vmid) if is_pve else f"vm-{vmid}",
+        name=name, guest_os=gos, kernel=kern, tools_status=ts, power_state=st,
+        ip_addresses=f"10.{40 if is_pve else 20}.50.{vmid % 200}" if booted else "",
+        cpu_count=2, ram_mb=4096, disk_total_gb=60.0, cluster=h.cluster,
+        datastore="ceph-west" if is_pve else "vsanDatastore-East",
+        vlans="110", created_date=now - timedelta(days=rnd.randint(400, 2500)),
+        last_boot=(now - timedelta(days=rnd.randint(5, 90))) if booted else None,
+        environment="production", pool=None if is_pve else "Production",
+        folder=None if is_pve else "/DC-East/LEGACY")
+    v.tags = [tags[x] for x in tg]
+    vms.append(v)
 db.add_all(vms)
 db.commit()
 
@@ -314,4 +344,14 @@ for v in vms:
                             ram_max_mb=v.ram_usage_mb, net_kbps=.4 if idle else rnd.uniform(40, 900),
                             diskio_kbps=.3 if idle else rnd.uniform(60, 1500), samples=96))
 db.commit()
-print(f"Demo inventory written to {path}: {len(hosts)} hosts, {len(vms)} VMs, {len(events)} history rows.")
+
+# OS lifecycle: bundled endoflife.date seed + one extended-support exception
+# (the "legacy" tag has Ubuntu Pro / ESM), then every VM's support status
+from app.models import LifecycleOverride  # noqa: E402
+from app.services.lifecycle_service import ensure_seed, recompute  # noqa: E402
+ensure_seed(db)
+db.add(LifecycleOverride(scope="tag", target="legacy", target_label="legacy", distro="ubuntu",
+                         extended=True, note="Ubuntu Pro (ESM) subscription", created_by="admin"))
+db.commit()
+lc = recompute(db)
+print(f"Demo inventory written to {path}: {len(hosts)} hosts, {len(vms)} VMs, {len(events)} history rows, support {lc}.")

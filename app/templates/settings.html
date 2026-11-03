@@ -4,6 +4,7 @@
   <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tabUsers" data-i18n="st2.users">Kullanıcılar</a></li>
   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabAudit">Audit Log</a></li>
   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabSync" data-i18n="st2.sync">Senkronizasyon</a></li>
+  <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabLifecycle" data-i18n="lc.tab">İşletim Sistemi Desteği</a></li>
 </ul>
 <div class="tab-content">
   <div class="tab-pane fade show active" id="tabUsers">
@@ -71,6 +72,76 @@
       </div>
     </div>
   </div>
+
+<div class="tab-pane fade" id="tabLifecycle">
+  <div class="row g-3">
+    <div class="col-lg-6">
+      <div class="card panel h-100">
+        <div class="card-header"><i class="bi bi-database-check"></i> <span data-i18n="lc.data">Yaşam döngüsü verisi</span></div>
+        <div class="card-body">
+          <p class="text-muted small" data-i18n="lc.desc">Destek bitiş tarihleri endoflife.date'ten gelir. İnternet erişimi olan sunucu haftada bir kendisi günceller; erişim yoksa uygulamayla gelen veri ya da buradan yüklediğiniz JSON kullanılır. Her sürüm için en yeni veri geçerlidir.</p>
+          <dl class="row small mb-3" id="lcMeta"></dl>
+          <div class="d-flex flex-wrap gap-2 mb-3">
+            <button class="btn btn-sm btn-outline-primary" id="lcSyncBtn" onclick="Settings.lcSync()">
+              <i class="bi bi-cloud-arrow-down"></i> <span data-i18n="lc.syncNow">endoflife.date'ten güncelle</span></button>
+            <label class="btn btn-sm btn-outline-secondary mb-0">
+              <i class="bi bi-upload"></i> <span data-i18n="lc.upload">JSON yükle</span>
+              <input type="file" accept=".json,application/json" id="lcFile" class="d-none" onchange="Settings.lcImport(this)"></label>
+          </div>
+          <div class="form-text mb-3" data-i18n="lc.uploadHint">İnternetsiz sunucu için: başka bir makinede "python3 tools/refresh_lifecycle_seed.py lifecycle.json" çalıştırın veya endoflife.date/api/v1/products/&lt;ürün&gt; cevaplarını kaydedin, dosyayı buradan yükleyin.</div>
+          <label class="form-label small" for="lcSoon" data-i18n="lc.soonDays">"Yakında" eşiği (gün)</label>
+          <div class="d-flex gap-2 align-items-center">
+            <input id="lcSoon" type="number" min="1" max="3650" class="form-control form-control-sm" style="max-width:120px">
+            <button class="btn btn-sm btn-primary" onclick="Settings.lcSaveSoon()"><i class="bi bi-check-lg"></i> <span data-i18n="pl.save">Kaydet</span></button>
+          </div>
+          <div class="small mt-2" id="lcMsg"></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card panel h-100">
+        <div class="card-header"><i class="bi bi-list-check"></i> <span data-i18n="lc.products">Takip edilen ürünler</span></div>
+        <div class="table-responsive" style="max-height:360px">
+          <table class="table table-sm mb-0"><thead><tr>
+            <th data-i18n="lc.product">Ürün</th><th data-i18n="lc.cycles">Sürüm</th>
+            <th data-i18n="lc.dataDate">Veri tarihi</th><th data-i18n="lc.source">Kaynak</th></tr></thead>
+            <tbody id="lcProducts"></tbody></table>
+        </div>
+      </div>
+    </div>
+    <div class="col-12">
+      <div class="card panel">
+        <div class="card-header"><i class="bi bi-shield-plus"></i> <span data-i18n="lc.overrides">Uzatılmış destek istisnaları</span></div>
+        <div class="card-body pb-2">
+          <p class="text-muted small mb-2" data-i18n="lc.ovDesc">Ücretli uzatılmış destek aboneliği olan sistemleri işaretleyin (Ubuntu Pro / ESM, RHEL ELS, Windows ESU, Debian ELTS…). Standart desteği bitmiş bu VM'ler EOL yerine "Uzatılmış" görünür. En özel kural geçerlidir: VM &gt; etiket &gt; tümü.</p>
+          <div class="row g-2 align-items-end">
+            <div class="col-md-2"><label class="form-label small" data-i18n="lc.scope">Kapsam</label>
+              <select id="ovScope" class="form-select form-select-sm" onchange="Settings.ovScopeChanged()">
+                <option value="all" data-i18n="lc.sc.all">Tüm VM'ler</option>
+                <option value="tag" data-i18n="lc.sc.tag">Etiket</option>
+                <option value="vm" data-i18n="lc.sc.vm">Tek VM</option></select></div>
+            <div class="col-md-3"><label class="form-label small" data-i18n="lc.target">Hedef</label>
+              <input id="ovTarget" class="form-control form-control-sm" list="ovTags" disabled>
+              <datalist id="ovTags"></datalist></div>
+            <div class="col-md-2"><label class="form-label small" data-i18n="lc.onlyProduct">Yalnız ürün</label>
+              <select id="ovDistro" class="form-select form-select-sm"></select></div>
+            <div class="col-md-2"><div class="form-check form-switch mb-1">
+              <input class="form-check-input" type="checkbox" id="ovExtended" checked>
+              <label class="form-check-label small" for="ovExtended" data-i18n="lc.hasExtended">Uzatılmış destek var</label></div></div>
+            <div class="col-md-2"><label class="form-label small" data-i18n="lc.note">Not</label>
+              <input id="ovNote" class="form-control form-control-sm" maxlength="1000"></div>
+            <div class="col-md-1"><button class="btn btn-sm btn-primary w-100" onclick="Settings.ovAdd()">
+              <i class="bi bi-plus-lg"></i> <span data-i18n="lc.add">Ekle</span></button></div>
+          </div>
+        </div>
+        <div class="table-responsive"><table class="table table-sm align-middle mb-0"><thead><tr>
+          <th data-i18n="lc.scope">Kapsam</th><th data-i18n="lc.target">Hedef</th><th data-i18n="lc.onlyProduct">Yalnız ürün</th>
+          <th data-i18n="lc.extended">Uzatılmış</th><th data-i18n="lc.note">Not</th><th data-i18n="lc.by">Ekleyen</th><th></th></tr></thead>
+          <tbody id="ovBody"></tbody></table></div>
+      </div>
+    </div>
+  </div>
+</div>
 </div>
 
 <div class="modal fade" id="userModal" tabindex="-1">

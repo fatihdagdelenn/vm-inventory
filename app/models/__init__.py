@@ -5,3 +5,4 @@ from .inventory import (Host, VirtualMachine, Network, Datastore, Snapshot, Back
                         CapacitySnapshot, VmUsageDaily)
 from .audit import AuditLog
 from .physical import PhysicalDevice, PhysicalDeviceHistory, HostSupplement
+from .lifecycle import OsLifecycle, LifecycleOverride

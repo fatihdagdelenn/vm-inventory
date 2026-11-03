@@ -12,6 +12,17 @@ from ..core.os_family import distribution as os_family_distribution
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
+def _soon_days(db):
+    from ..services.lifecycle_service import soon_days
+    return soon_days(db)
+
+
+def _data_date(db):
+    from ..models import OsLifecycle
+    d = db.query(func.max(OsLifecycle.updated_at)).scalar()
+    return d.isoformat(timespec="seconds") if d else None
+
+
 @router.get("/summary")
 def summary(no_local: int = 0, db: Session = Depends(get_db),
             user: User = Depends(get_current_user)):
@@ -89,6 +100,10 @@ def summary(no_local: int = 0, db: Session = Depends(get_db),
         VirtualMachine.tools_status.ilike("%NotRunning%") |
         VirtualMachine.tools_status.ilike("%unknown%")).count()
     no_owner = base.filter(func.coalesce(VirtualMachine.owner, "") == "").count()
+    # OS lifecycle (each count links to /vms?q=destek:<status>)
+    _sup = func.coalesce(VirtualMachine.support_status, "unknown")
+    support = dict(base.with_entities(_sup, func.count(VirtualMachine.id)).group_by(_sup).all())
+    support = {k: support.get(k, 0) for k in ("eol", "soon", "extended", "unknown", "supported")}
 
     # Snapshot queries share ONE hidden-cluster rule, applied in SQL. It used to
     # be applied in Python after a LIMIT 1000, so 1000 hidden rows (e.g. Veeam
@@ -257,6 +272,8 @@ def summary(no_local: int = 0, db: Session = Depends(get_db),
             "phys": phys, "old_snapshot_items": old_snapshot_items,
             "snapshot_total": snapshot_total,
             "physical_count": db.query(PhysicalDevice).count(),
+            "support": support,
+            "support_meta": {"soon_days": _soon_days(db), "data_date": _data_date(db)},
             "attention": {"no_ip": no_ip, "no_tools": no_tools, "no_owner": no_owner,
                           "old_snapshots": old_snapshots, "no_backup": no_backup},
             "env_distribution": env_dist, "cluster_distribution": cluster_dist,

@@ -135,6 +135,15 @@ function barGrad(chart, base, horizontal) {
   set('at-noip', d.attention.no_ip);       set('at-notools', d.attention.no_tools);
   set('at-noowner', d.attention.no_owner);  set('at-oldsnap', d.attention.old_snapshots);
   set('at-nobackup', d.attention.no_backup);
+  if (d.support) {
+    ['eol', 'soon', 'extended', 'unknown', 'supported'].forEach(k => set('sp-' + k, d.support[k]));
+    const lab = document.getElementById('sp-soon-label');
+    if (lab && d.support_meta) lab.textContent =
+      t('dash.sp.soonN', '{n} gün içinde bitecek').replace('{n}', d.support_meta.soon_days);
+    const foot = document.getElementById('spFoot');
+    if (foot && d.support_meta) foot.textContent = t('dash.sp.source', 'Veri: endoflife.date') +
+      (d.support_meta.data_date ? ' · ' + App.fmtDay(d.support_meta.data_date.slice(0, 10)) : '');
+  }
   SnapWidget.items = d.old_snapshot_items || [];
   SnapWidget.total = d.snapshot_total || 0;
   SnapWidget.render();
@@ -215,7 +224,13 @@ function barGrad(chart, base, horizontal) {
       options: {indexAxis: horizontal ? 'y' : 'x',
         plugins: {legend: {display: false}, glow: {color: hexA(opts.base || BLUE, .45), blur: 12},
                   tooltip: opts.tooltip},
-        scales: opts.scales || {x: {beginAtZero: true, ticks: {precision: 0}}},
+        scales: opts.scales || Object.assign({x: {beginAtZero: true, ticks: {precision: 0}}},
+          // long category labels are cut at the END ("Red Hat Enterprise Li…") instead
+          // of being clipped at the card's left edge; the tooltip keeps the full name
+          opts.maxLabel ? {y: {ticks: {callback(v) {
+            const l = String(this.getLabelForValue(v)).replace(/^Microsoft\s+/, '');
+            return l.length > opts.maxLabel ? l.slice(0, opts.maxLabel - 1) + '…' : l;
+          }}}} : {}),
         onClick: opts.onClick,
         // Clickable bars show a hand cursor, so the deep link is discoverable.
         onHover: opts.onClick ? (e, els) => {
@@ -229,7 +244,7 @@ function barGrad(chart, base, horizontal) {
      onClick: clickHandler(l => l === '—' ? 'cluster:yok' : (/\s/.test(l) ? 'cluster:"'+l+'"' : 'cluster:'+l))});
 
   bar('chartTopOs', d.top_os.map(o => o.key), d.top_os.map(o => o.count),
-    {base: PURPLE, colorFn: i => PALETTE[i % PALETTE.length]});
+    {base: PURPLE, colorFn: i => PALETTE[i % PALETTE.length], maxLabel: 22});
 
   /* Host CPU/RAM — dikey, kritik renkli gradyan + glow */
   const usageBar = (canvasId, key, base) => {
@@ -500,6 +515,7 @@ const DEFAULT_H = {
   forecast: 5, zombie: 5,
   recentChanges: 4, platformStatus: 4,
   oldSnapshots: 4, attention: 4, chartEnv: 4,
+  chartOs: 4, chartTopOs: 4, osSupport: 4,
   chartHostVm: 4, chartDatastore: 4,
 };
 // Yeni (sıfırlanmış) yerleşimde gizli başlayanlar - "Düzenle" menüsünden açılır.

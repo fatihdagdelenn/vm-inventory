@@ -48,10 +48,15 @@ except Exception as exc:  # pragma: no cover - font registration is non-critical
     logger.warning("PDF fontu kaydedilemedi: %s", exc)
 
 # Exported VM columns: (header, model field)
+# OS lifecycle status codes -> export labels (export titles are Turkish)
+SUPPORT_LABELS = {"supported": "Destekli", "soon": "Yakında bitiyor",
+                  "extended": "Uzatılmış destek", "eol": "EOL", "unknown": "Bilinmiyor"}
+
 VM_COLUMNS = [
     ("VM Adı", "name"), ("VM ID", "vmid"), ("IP Adresleri", "ip_addresses"),
     ("MAC Adresleri", "mac_addresses"), ("İşletim Sistemi", "guest_os"),
     ("Çekirdek", "kernel"),
+    ("Destek", "support_status"), ("Destek Bitişi", "support_until"),
     ("CPU (adet)", "cpu_count"), ("CPU Kullanım (%)", "cpu_usage_pct"),
     ("RAM Tahsis (MB)", "ram_mb"), ("RAM Kullanım (MB)", "ram_usage_mb"),
     ("Disk Tahsis (GB)", "disk_total_gb"), ("Disk Kullanım (GB)", "disk_used_gb"),
@@ -121,7 +126,12 @@ def _row_values(obj, columns):
     is_physical = is_dict or obj.__class__.__name__ == "PhysicalDevice"
     values = []
     for _, field in columns:
-        if field == "ui_url":     # effective web UI (dict rows already carry it)
+        if field == "support_status" and not is_physical:
+            values.append(SUPPORT_LABELS.get(get(field) or "unknown", get(field) or ""))
+        elif field == "support_until" and not is_physical:
+            v = get(field)
+            values.append(v.isoformat() if v else "")
+        elif field == "ui_url":     # effective web UI (dict rows already carry it)
             if is_dict:
                 values.append(obj.get("ui_url") or "")
             else:
