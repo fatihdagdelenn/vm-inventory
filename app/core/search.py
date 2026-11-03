@@ -14,7 +14,7 @@ Supported syntax:
   FREE TEXT      : plain words search across common fields (AND)
 """
 import re
-from sqlalchemy import or_, and_, not_, func
+from sqlalchemy import or_, and_, not_, func, select
 from sqlalchemy.orm import Query
 
 from ..models import VirtualMachine, Host, Tag, Platform
@@ -88,7 +88,15 @@ NUMERIC_MAP = {
     # Disk used 0 means "unknown" on agentless Proxmox, not an empty disk.
     "diskuse": (func.nullif(VirtualMachine.disk_used_gb, 0) * 100.0
                 / func.nullif(VirtualMachine.disk_total_gb, 0), 1),
+    # open kernel CVEs with a published fix (services/vuln_service)
+    "acikcve": (VirtualMachine.vuln_open, 1),
+    "opencve": (VirtualMachine.vuln_open, 1),
 }
+
+# Kernel vulnerability words (zafiyet:var / kev:evet)
+YES_WORDS = ("evet", "var", "yes", "true", "1", "e")
+NO_WORDS = ("hayir", "hayır", "yok", "no", "false", "0", "h")
+VULN_FIELDS = ("zafiyet", "vuln", "kev", "cve")
 
 # OS family aliases - "os:linux" catches all distros
 # (consistent with the dashboard OS distribution classification)
@@ -181,7 +189,7 @@ def _field_condition(field: str, value: str):
     # ---- Empty-value searches: ip:yok, owner:yok, tag:yok ----
     # NOTE: not applied to specially-mapped fields like status/tools
     # (tools:yok means "agent not installed", not "field empty")
-    if vlow in EMPTY_WORDS and field not in ("status", "tools", "agent"):
+    if vlow in EMPTY_WORDS and field not in ("status", "tools", "agent") + VULN_FIELDS:
         if field == "tag":
             return ~VirtualMachine.tags.any()
         col = FIELD_MAP.get(field)
@@ -219,6 +227,10 @@ def _field_condition(field: str, value: str):
     if field == "type":                 # platform tipi: vcenter / proxmox
         cond = _ilike_or(Platform.type, value)
         return VirtualMachine.platform.has(cond) if cond is not None else None
+
+    # ---- Kernel vulnerabilities (phase 160) ----
+    if field in VULN_FIELDS:
+        return _vuln_condition(field, vlow, value)
 
     # ---- Specially-mapped fields ----
     if field in ("destek", "support"):
@@ -290,6 +302,56 @@ def _field_condition(field: str, value: str):
         return _ilike_or(FIELD_MAP[field], value)
 
     return None     # bilinmeyen alan
+
+
+def _open_findings(*conds):
+    from ..models import VmVuln
+    return VirtualMachine.id.in_(
+        select(VmVuln.vm_id).where(VmVuln.closed_at.is_(None), *conds))
+
+
+def _vuln_condition(field: str, vlow: str, value: str):
+    """zafiyet:var|yok|belirsiz|duzeltmesiz|bilinmiyor|kapsamdisi,
+    kev:evet|hayir, cve:CVE-2024-1086[,2026-43040] (cve:yok = no open CVE)."""
+    from ..models import VmVuln
+    open_n = func.coalesce(VirtualMachine.vuln_open, 0)
+    if field == "kev":
+        if vlow in YES_WORDS:
+            return func.coalesce(VirtualMachine.vuln_kev, 0) > 0
+        if vlow in NO_WORDS:
+            return func.coalesce(VirtualMachine.vuln_kev, 0) == 0
+        return None
+    if field == "cve":
+        if vlow in EMPTY_WORDS:
+            return and_(VirtualMachine.vuln_status == "evaluated", open_n == 0)
+        if vlow in PRESENT_WORDS:
+            return open_n > 0
+        parts = [p.strip().lstrip("=").upper() for p in value.split(",") if p.strip()]
+        # a full id matches exactly, a fragment ("2024-1086", "2026-") by substring
+        conds = [VmVuln.cve == p if re.fullmatch(r"CVE-\d+-\d+", p) else VmVuln.cve.like(f"%{p}%")
+                 for p in parts if p]
+        return _open_findings(or_(*conds)) if conds else None
+    words = {
+        "var": open_n > 0,
+        "yok": and_(VirtualMachine.vuln_status == "evaluated",
+                    func.coalesce(VirtualMachine.vuln_total, 0) == 0),
+        "belirsiz": _open_findings(VmVuln.status == "uncertain"),
+        "duzeltmesiz": _open_findings(VmVuln.fix_available == False),  # noqa: E712
+        "bilinmiyor": VirtualMachine.vuln_status == "unknown",
+        "kapsamdisi": VirtualMachine.vuln_status == "skipped",
+    }
+    alias = {"evet": "var", "yes": "var", "open": "var", "none": "yok", "hayir": "yok",
+             "hayır": "yok", "uncertain": "belirsiz", "düzeltmesiz": "duzeltmesiz",
+             "nofix": "duzeltmesiz", "unknown": "bilinmiyor", "skipped": "kapsamdisi",
+             "kapsamdışı": "kapsamdisi", "degerlendirilmedi": "kapsamdisi",
+             "değerlendirilmedi": "kapsamdisi"}
+    conds = []
+    for part in (p.strip().lower() for p in value.split(",") if p.strip()):
+        c = words.get(alias.get(part, part))
+        if c is None:
+            return None
+        conds.append(c)
+    return or_(*conds) if conds else None
 
 
 def apply_vm_search(query: Query, q: str) -> Query:

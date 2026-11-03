@@ -15,6 +15,7 @@ const History = {
     networks: t('hi.f.net','Ağ (Köprü/Portgrup)'),
     cluster: 'Cluster', power_state: t('hi.f.power','Güç Durumu'), host: t('hi.f.host','Host (Göç)'),
     console: t('hi.cat.console','Konsol Erişimi'),
+    vuln: t('hi.f.vuln','Çekirdek Zafiyeti'),
   },
   CATS: {
     hardware:  { l: t('hi.c.hardware','Donanım'),        i: 'cpu',              c: 'cat-badge cat-hardware' },
@@ -25,6 +26,7 @@ const History = {
     lifecycle: { l: t('hi.c.lifecycle','Yaşam Döngüsü'),  i: 'box-seam',         c: 'cat-badge cat-lifecycle' },
     os:        { l: t('vm.os','İşletim Sistemi'), i: 'window-stack',    c: 'cat-badge cat-os' },
     console:   { l: t('hi.c.console','Konsol'),         i: 'terminal',         c: 'cat-badge cat-console' },
+    security:  { l: t('hi.c.security','Güvenlik'),       i: 'shield-exclamation', c: 'cat-badge cat-security' },
     other:     { l: t('hi.c.other','Diğer'),          i: 'pencil-square',    c: 'cat-badge cat-other' },
   },
   TYPE_BADGE: {

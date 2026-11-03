@@ -6,3 +6,4 @@ from .inventory import (Host, VirtualMachine, Network, Datastore, Snapshot, Back
 from .audit import AuditLog
 from .physical import PhysicalDevice, PhysicalDeviceHistory, HostSupplement
 from .lifecycle import OsLifecycle, LifecycleOverride
+from .vuln import VulnAdvisory, VulnCve, VulnKev, VmVuln

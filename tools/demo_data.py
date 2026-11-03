@@ -356,3 +356,46 @@ db.add(LifecycleOverride(scope="tag", target="legacy", target_label="legacy", di
 db.commit()
 lc = recompute(db)
 print(f"Demo inventory written to {path}: {len(hosts)} hosts, {len(vms)} VMs, {len(events)} history rows, support {lc}.")
+
+# Kernel vulnerabilities (phase 160): the REAL trimmed OSV / KEV records the
+# tests use, plus a few made-up Ubuntu records so the page has some spread.
+import json as _json  # noqa: E402
+from app.services import vuln_service as _vs  # noqa: E402
+_fx = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tests", "fixtures", "vuln")
+_recs = [_json.load(open(os.path.join(_fx, f))) for f in
+         ("UBUNTU-CVE-2026-43040.json", "UBUNTU-CVE-2024-1086.json", "ALSA-2024-2394.json")]
+_DEMO = [  # cve, ubuntu priority, cvss vector, 24.04 linux fix, 22.04 linux fix, description
+    ("CVE-2026-31337", "high", "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H", "6.8.0-60.63", "5.15.0-140.150",
+     "netfilter: nf_tables: use-after-free in set element removal allows local privilege escalation."),
+    ("CVE-2026-28810", "medium", "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:H", "6.8.0-71.71", "5.15.0-151.161",
+     "ext4: avoid out-of-bounds read in ext4_xattr_inode_dec_ref_all() on a corrupted image."),
+    ("CVE-2026-40021", "critical", "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", None, None,
+     "ksmbd: missing bounds check in SMB2 compound request handling (no fix released yet)."),
+]
+for _cve, _prio, _vec, _f24, _f22, _txt in _DEMO:
+    _aff = []
+    for _eco, _fix in (("Ubuntu:24.04:LTS", _f24), ("Ubuntu:22.04:LTS", _f22)):
+        _ev = [{"introduced": "0"}] + ([{"fixed": _fix}] if _fix else [])
+        _aff.append({"package": {"ecosystem": _eco, "name": "linux"},
+                     "ranges": [{"type": "ECOSYSTEM", "events": _ev}]})
+    _recs.append({"id": "UBUNTU-" + _cve, "upstream": [_cve], "details": _txt,
+                  "modified": "2026-10-20T00:00:00Z", "affected": _aff,
+                  "severity": [{"type": "CVSS_V3", "score": _vec}, {"type": "Ubuntu", "score": _prio}]})
+_recs.append({"id": "DEBIAN-CVE-2026-31337", "upstream": ["CVE-2026-31337"], "modified": "2026-10-20T00:00:00Z",
+              "affected": [{"package": {"ecosystem": "Debian:12", "name": "linux"},
+                            "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"},
+                                                                         {"fixed": "6.1.115-1"}]}]}]})
+# Proxmox reports uname -v through the QEMU agent: the Debian package version
+for _v in vms:
+    if _v.platform_id == px.id and _v.kernel == KERNEL["debian"]:
+        _v.kernel_build = "#1 SMP PREEMPT_DYNAMIC Debian 6.1.112-1 (2024-09-30)"
+db.commit()
+_vs._store(db, _vs._osv_records(_recs), "upload")
+_vs.import_kev(db, _json.load(open(os.path.join(_fx, "kev.json"))))
+vu = _vs.recompute(db)
+# spread the "first seen" dates a little, like a system that has been running
+from app.models import VmVuln  # noqa: E402
+for _r in db.query(VmVuln).all():
+    _r.first_seen = now - timedelta(days=rnd.randint(1, 60))
+db.commit()
+print(f"Kernel vulnerabilities: {vu}")

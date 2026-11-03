@@ -1,0 +1,42 @@
+{
+ "title": "CISA Catalog of Known Exploited Vulnerabilities",
+ "catalogVersion": "2026.10.30",
+ "dateReleased": "2026-10-30T17:02:45.3665Z",
+ "count": 2,
+ "vulnerabilities": [
+  {
+   "cveID": "CVE-2024-1086",
+   "vendorProject": "Linux",
+   "product": "Kernel",
+   "vulnerabilityName": "Linux Kernel Use-After-Free Vulnerability",
+   "dateAdded": "2024-05-30",
+   "shortDescription": "Linux kernel contains a use-after-free vulnerability in the netfilter: nf_tables component that allows an attacker to achieve local privilege escalation.",
+   "requiredAction": "Apply mitigations per vendor instructions or discontinue use of the product if mitigations are unavailable.",
+   "dueDate": "2024-06-20",
+   "knownRansomwareCampaignUse": "Known",
+   "forensicTriage": "No",
+   "notes": "This vulnerability affects a common open-source component, third-party library, or a protocol used by different products. Please check with specific vendors for information on patching status. For more information, please see: https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=f342de4e2f33e0e39165d8639387aa6c19dff660;   https://nvd.nist.gov/vuln/detail/CVE-2024-1086",
+   "cwes": [
+    "CWE-416"
+   ]
+  },
+  {
+   "cveID": "CVE-2021-44228",
+   "vendorProject": "Apache",
+   "product": "Log4j2",
+   "vulnerabilityName": "Apache Log4j2 Remote Code Execution Vulnerability",
+   "dateAdded": "2021-12-10",
+   "shortDescription": "Apache Log4j2 contains a vulnerability where JNDI features do not protect against attacker-controlled JNDI-related endpoints, allowing for remote code execution.",
+   "requiredAction": "For all affected software assets for which updates exist, the only acceptable remediation actions are: 1) Apply updates; OR 2) remove affected assets from agency networks. Temporary mitigations using one of the measures provided at https://www.cisa.gov/uscert/ed-22-02-apache-log4j-recommended-mitigation-measures are only acceptable until updates are available.",
+   "dueDate": "2021-12-24",
+   "knownRansomwareCampaignUse": "Known",
+   "forensicTriage": "No",
+   "notes": "https://nvd.nist.gov/vuln/detail/CVE-2021-44228",
+   "cwes": [
+    "CWE-20",
+    "CWE-400",
+    "CWE-502"
+   ]
+  }
+ ]
+}

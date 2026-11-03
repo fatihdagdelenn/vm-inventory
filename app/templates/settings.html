@@ -5,6 +5,7 @@
   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabAudit">Audit Log</a></li>
   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabSync" data-i18n="st2.sync">Senkronizasyon</a></li>
   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabLifecycle" data-i18n="lc.tab">İşletim Sistemi Desteği</a></li>
+  <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabVuln" data-i18n="vd2.tab">Zafiyet Verisi</a></li>
 </ul>
 <div class="tab-content">
   <div class="tab-pane fade show active" id="tabUsers">
@@ -138,6 +139,55 @@
           <th data-i18n="lc.scope">Kapsam</th><th data-i18n="lc.target">Hedef</th><th data-i18n="lc.onlyProduct">Yalnız ürün</th>
           <th data-i18n="lc.extended">Uzatılmış</th><th data-i18n="lc.note">Not</th><th data-i18n="lc.by">Ekleyen</th><th></th></tr></thead>
           <tbody id="ovBody"></tbody></table></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="tab-pane fade" id="tabVuln">
+  <div class="row g-3">
+    <div class="col-lg-6">
+      <div class="card panel h-100">
+        <div class="card-header"><i class="bi bi-shield-check"></i> <span data-i18n="vd2.data">Çekirdek zafiyet verisi</span></div>
+        <div class="card-body">
+          <p class="text-muted small" data-i18n="vd2.desc">Kaynaklar: OSV.dev (Ubuntu, Debian, Red Hat, AlmaLinux, Rocky Linux; yalnızca çekirdek paketleri saklanır) ve CISA KEV. İnterneti olan sunucu KEV'i her gün, OSV'yi haftada bir indirir. Her kayıt için en yeni sürüm geçerlidir.</p>
+          <dl class="row small mb-3" id="vdMeta"></dl>
+          <div class="d-flex flex-wrap gap-2 mb-2">
+            <button class="btn btn-sm btn-outline-primary" id="vdSyncBtn" onclick="Settings.vdSync(false)">
+              <i class="bi bi-cloud-arrow-down"></i> <span data-i18n="vd2.syncNow">Şimdi indir (OSV + KEV)</span></button>
+            <button class="btn btn-sm btn-outline-secondary" id="vdKevBtn" onclick="Settings.vdSync(true)">
+              <i class="bi bi-lightning"></i> <span data-i18n="vd2.syncKev">Yalnız KEV</span></button>
+          </div>
+          <div class="small mt-2" id="vdMsg"></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card panel h-100">
+        <div class="card-header"><i class="bi bi-hdd-network"></i> <span data-i18n="vd2.offline">İnternetsiz sunucu</span></div>
+        <div class="card-body">
+          <ol class="small text-muted ps-3 mb-3">
+            <li data-i18n="vd2.step1">İnterneti olan kurulumda (ör. test sunucusu) verinin indirildiğini görün.</li>
+            <li data-i18n="vd2.step2">Oradan "Veri paketini indir" ile sıkıştırılmış paketi alın (yalnızca çekirdek kayıtları, birkaç MB).</li>
+            <li data-i18n="vd2.step3">Bu sunucuda "Dosya yükle" ile paketi verin. OSV all.zip, tek OSV JSON ve CISA KEV JSON da kabul edilir.</li>
+          </ol>
+          <div class="d-flex flex-wrap gap-2">
+            <a class="btn btn-sm btn-outline-success" href="/api/vulns/bundle" id="vdBundle">
+              <i class="bi bi-box-arrow-down"></i> <span data-i18n="vd2.bundle">Veri paketini indir</span></a>
+            <label class="btn btn-sm btn-outline-secondary mb-0">
+              <i class="bi bi-upload"></i> <span data-i18n="vd2.upload">Dosya yükle</span>
+              <input type="file" accept=".gz,.zip,.json,application/json,application/zip,application/gzip" id="vdFile"
+                     class="d-none" onchange="Settings.vdImport(this)"></label>
+          </div>
+          <div class="small text-muted mt-2" data-i18n="vd2.uploadHint">Yükleme ve eşleştirme arka planda çalışır; büyük bir all.zip birkaç dakika sürebilir.</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12">
+      <div class="card panel">
+        <div class="card-header"><i class="bi bi-diagram-2"></i> <span data-i18n="vd2.ecos">Ekosistemler</span></div>
+        <div class="table-responsive"><table class="table table-sm mb-0 vd-ecos"><thead><tr>
+          <th data-i18n="vd2.eco">Ekosistem</th><th class="text-end" data-i18n="vd2.cves">CVE</th></tr></thead>
+          <tbody id="vdEcos"></tbody></table></div>
       </div>
     </div>
   </div>

@@ -750,6 +750,12 @@ class ProxmoxCollector:
                             os_from_agent = True
                             entry.pop("agent_indeterminate", None)  # rescued
                         kern = _agent_kernel(result)
+                        # uname -v ("#1 SMP PREEMPT_DYNAMIC Debian 6.1.153-1 (...)",
+                        # "#136~22.04.1-Ubuntu SMP ...") carries the exact package
+                        # build the kernel CVE matching needs (Linux only)
+                        kbuild = str(result.get("kernel-version") or "").strip()
+                        if kbuild and (result.get("id") or "").lower() != "mswindows":
+                            entry["kernel_build"] = kbuild[:255]
                         if kern:
                             entry["kernel"] = kern
                         if result.get("machine"):

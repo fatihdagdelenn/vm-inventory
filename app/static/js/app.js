@@ -191,6 +191,81 @@ const App = {
       (est ? '≈ ' : '') + t(m[0], m[1]) + '</span>';
   },
 
+  /* ---------- kernel vulnerabilities (phase 160) ---------- */
+  SEV: {
+    critical: ['vu.sev.critical', 'Kritik', 'vu-crit'],
+    high:     ['vu.sev.high', 'Yüksek', 'vu-high'],
+    medium:   ['vu.sev.medium', 'Orta', 'vu-med'],
+    low:      ['vu.sev.low', 'Düşük', 'vu-low'],
+    negligible: ['vu.sev.negligible', 'Önemsiz', 'vu-low'],
+    unknown:  ['vu.sev.unknown', 'Bilinmiyor', 'vu-unk'],
+  },
+
+  sevBadge(sev) {
+    const m = App.SEV[sev] || App.SEV.unknown;
+    return '<span class="badge sp-badge ' + m[2] + '">' + t(m[0], m[1]) + '</span>';
+  },
+
+  kevBadge(due) {
+    return '<span class="badge sp-badge vu-kev" title="' +
+      App.esc(t('vu.kevTitle', 'CISA KEV: aktif olarak istismar edildiği biliniyor') +
+              (due ? ' · ' + t('vu.kevDue', 'son tarih') + ' ' + App.fmtDay(due) : '')) + '">KEV</span>';
+  },
+
+  /** VM table cell: number of open CVEs with a published fix. */
+  vulnCell(v) {
+    const st = v.vuln_status;
+    if (st !== 'evaluated') {
+      const why = v.vuln_reason || (st === 'skipped'
+        ? t('vu.skipped', 'Değerlendirilmedi') : t('vu.notYet', 'Henüz değerlendirilmedi'));
+      return '<span class="text-muted" title="' + App.esc(why) + '">—</span>';
+    }
+    const total = v.vuln_total || 0, open = v.vuln_open || 0, kev = v.vuln_kev || 0;
+    const other = total - open;
+    const tip = [v.vuln_reason,
+      t('vu.tipOpen', '{n} düzeltmesi yayımlanmış açık CVE').replace('{n}', open),
+      other ? t('vu.tipOther', '{n} düzeltmesiz / belirsiz').replace('{n}', other) : '',
+      kev ? t('vu.tipKev', '{n} tanesi CISA KEV (aktif istismar)').replace('{n}', kev) : '']
+      .filter(Boolean).join(' · ');
+    if (!total) return '<span class="vu-zero" title="' + App.esc(tip) + '">0</span>';
+    const cls = kev ? 'vu-kev' : ({critical: 'vu-crit', high: 'vu-high', medium: 'vu-med'}[v.vuln_max_sev] || 'vu-low');
+    return '<span class="badge sp-badge vu-count ' + (open ? cls : 'vu-unk') + '" title="' + App.esc(tip) + '">' +
+      (kev ? '<i class="bi bi-exclamation-octagon-fill"></i> ' : '') + open +
+      (other ? '<span class="vu-other">+' + other + '</span>' : '') + '</span>';
+  },
+
+  /** VM detail: findings list. */
+  vulnSection(v) {
+    const st = v.vuln_status;
+    const head = '<h6 class="mb-2 mt-1"><i class="bi bi-shield-exclamation"></i> ' +
+      t('vu.title', 'Çekirdek Zafiyetleri');
+    if (st !== 'evaluated') {
+      return head + '</h6><div class="small text-muted mb-3">' +
+        App.esc(v.vuln_reason || t('vu.notYet', 'Henüz değerlendirilmedi')) + '</div>';
+    }
+    const list = v.vulns || [];
+    if (!list.length) {
+      return head + '</h6><div class="small mb-3"><span class="vu-zero">' +
+        t('vu.none', 'Bilinen açık çekirdek zafiyeti yok') + '</span> <span class="text-muted">· ' +
+        App.esc(v.vuln_reason || '') + '</span></div>';
+    }
+    const show = list.slice(0, 40);
+    return head + ' (' + list.length + ')</h6><div class="small text-muted mb-2">' + App.esc(v.vuln_reason || '') + '</div>' +
+      '<div class="mb-3 small vu-findings">' + show.map(f =>
+        '<div class="border-bottom py-1">' +
+        '<div class="d-flex align-items-center gap-2 flex-wrap">' +
+        '<a class="fw-semibold" href="/vulns?q=' + encodeURIComponent(f.cve) + '">' + App.esc(f.cve) + '</a>' +
+        App.sevBadge(f.severity) + (f.kev ? App.kevBadge(f.kev_due) : '') +
+        (f.status === 'uncertain' ? '<span class="badge sp-badge sp-unk">' + t('vu.uncertain', 'Belirsiz') + '</span>'
+          : !f.fix_available ? '<span class="badge sp-badge sp-soon">' + t('vu.nofix', 'Düzeltme yok') + '</span>' : '') +
+        '<span class="ms-auto text-muted text-nowrap">' + (f.fixed ? t('vu.fixedIn', 'düzeltme') + ' ' + App.esc(f.fixed) : '') + '</span></div>' +
+        (f.summary ? '<div class="text-muted vu-sum">' + App.esc(f.summary) + '</div>' : '') +
+        '<div class="vu-reason text-muted">' + App.esc(f.reason || '') + '</div></div>').join('') +
+      (list.length > show.length ? '<div class="text-muted pt-1">+' + (list.length - show.length) + ' ' +
+        t('vu.more', 'daha') + ' · <a href="/vulns?vm=' + encodeURIComponent(v.name) + '">' +
+        t('vu.seeAll', 'tümü') + '</a></div>' : '') + '</div>';
+  },
+
   stateBadge(state) {
     const map = {
       running:   [t('st.running','Çalışıyor'),  'state-running'],
@@ -344,7 +419,7 @@ const App = {
             '<span class="badge bg-info-subtle text-info-emphasis border me-1">' + App.esc(tg) + '</span>').join('')
         : '—') +
       row(t('vd.updated', 'Son Güncelleme'), App.fmtDate(v.updated_at)) +
-      '</div>' + snapHtml + '<hr>' +
+      '</div>' + App.vulnSection(v) + snapHtml + '<hr>' +
       '<h6 class="mb-3"><i class="bi bi-pencil-square"></i> ' + t('vd.manual', 'Manuel Bilgiler') + '</h6>' +
       '<div class="mb-2"><label class="form-label small">' + t('vd.owner', 'Sahip') + '</label>' +
       '<input id="vmdOwner" class="form-control form-control-sm" value="' + App.esc(v.owner) + '"' + (canEdit ? '' : ' disabled') + '></div>' +

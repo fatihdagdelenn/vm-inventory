@@ -40,7 +40,7 @@ TRACKED_HOST_FIELDS = ["name", "mgmt_ip", "cpu_cores", "ram_total_mb", "cluster"
 # "good" value to a generic/empty one. To protect ChangeHistory from noise we keep
 # the old (good) value on such drops.
 _ENRICH_FIELDS = ("guest_os", "ip_addresses", "dns_servers", "datastore", "vlans", "networks",
-                  "mac_addresses", "kernel", "arch", "disk_total_gb", "ram_mb",
+                  "mac_addresses", "kernel", "kernel_build", "arch", "disk_total_gb", "ram_mb",
                   "guest_notes", "platform_tags", "tools_status")
 # Generic / vague OS names (from ostype/guestFullName when no agent).
 # NOTE: the Turkish words in the regex are intentional - they match data values
@@ -59,7 +59,7 @@ def _preserve_old(field, old, new) -> bool:
     if field == "guest_os":
         return new is not None and _is_generic_os(new) and old and not _is_generic_os(old)
     if field in ("ip_addresses", "datastore", "vlans", "disk_total_gb",
-                 "networks", "mac_addresses", "kernel", "arch"):
+                 "networks", "mac_addresses", "kernel", "kernel_build", "arch"):
         return (not new) and bool(old)   # old non-empty, new empty/0 -> transient drop
     return False
 
@@ -541,13 +541,13 @@ def sync_platform(platform_id: int):
                         # agent answers.
                         carry = []
                         if not os_from_agent:
-                            carry += ["guest_os", "kernel", "arch"]
+                            carry += ["guest_os", "kernel", "kernel_build", "arch"]
                         if not ip_from_agent:
                             carry += ["ip_addresses", "mac_addresses", "networks"]
                         for f in carry:
                             if getattr(old_vm, f):
                                 setattr(vm, f, getattr(old_vm, f))
-                        for f in ("kernel", "arch", "dns_servers"):   # fill gaps only
+                        for f in ("kernel", "kernel_build", "arch", "dns_servers"):   # fill gaps only
                             if not getattr(vm, f) and getattr(old_vm, f):
                                 setattr(vm, f, getattr(old_vm, f))
                         # Same VM, new row: carry everything the operator typed in.
@@ -609,7 +609,7 @@ def sync_platform(platform_id: int):
                 # (agent-sourced) value. Prevents 'Server 2019' <-> 'Windows 10' flapping
                 # (when agent osinfo intermittently fails) from polluting the History.
                 if not os_from_agent and vm.guest_os:
-                    for f in ("guest_os", "kernel", "arch"):
+                    for f in ("guest_os", "kernel", "kernel_build", "arch"):
                         if f in vd:
                             vd[f] = getattr(vm, f)
                 if not ip_from_agent and vm.ip_addresses:
@@ -727,9 +727,15 @@ def sync_platform(platform_id: int):
                                    vm_external_id=ext_id, **_meta(op))
                 # Untracked enrich fields get the same "no empty overwrite" rule
                 # (_preserve_old only runs over TRACKED_VM_FIELDS above).
-                for f in ("kernel", "arch"):
+                kbuild_in = vd.get("kernel_build")
+                for f in ("kernel", "kernel_build", "arch"):
                     if f in vd and _preserve_old(f, getattr(vm, f), vd[f]):
                         vd[f] = getattr(vm, f)
+                # A new kernel without its own uname -v: the stored build string
+                # belongs to the OLD kernel - drop it (CVE matching would read a
+                # wrong package version from it)
+                if vd.get("kernel") and vm.kernel and vd["kernel"] != vm.kernel and not kbuild_in:
+                    vd["kernel_build"] = None
                 if vm.ip_manual and vd.get("ip_addresses"):
                     _drop_manual_ip(db, vm, vd["ip_addresses"], platform.id, ptype,
                                     vd.get("cluster") or vm.cluster,

@@ -30,6 +30,97 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 Phases not yet in a release (phase 152 →; internal v1.8.1 →).
 
+### 🛡️ Kernel vulnerability matching (phase 160)
+- **What it answers:** "which of my supported Linux VMs run a kernel with a
+  known, fixed CVE - and which of those are actively exploited?" Only VMs whose
+  OS status is *supported*, *ending soon* or *extended* are matched (EOL is
+  already the bigger problem; Windows is out of scope).
+- **Data** (`vuln_advisory`, `vuln_cve`, `vuln_kev`): [OSV.dev](https://osv.dev)
+  dumps for Ubuntu, Debian, Red Hat, AlmaLinux and Rocky Linux, of which **only
+  kernel source packages** are stored (Ubuntu: GA `linux`, HWE `linux-hwe-X.Y`,
+  `linux-kvm`, `linux-lowlatency*`; cloud / OEM / board kernels are left out -
+  measured on a real record that cuts the rows from 147 to 34 per CVE), plus the
+  **CISA KEV** catalogue. A server with internet downloads KEV daily (05:23),
+  OSV weekly (Sun 03:41) and once ~150 s after start when the data is missing or
+  older than a week; **without internet it fails once, fast** and keeps the
+  stored data. Newest OSV record wins (`modified`); KEV is replaced only by a
+  newer `catalogVersion`.
+- **Offline servers:** Administration → **Vulnerability Data** on a machine
+  with internet → *Download data package* (gzip JSON, kernel rows + CVE
+  descriptions + KEV); upload it on the offline server. A raw OSV `all.zip`
+  (streamed, pre-filtered), a single OSV JSON and the KEV JSON are accepted too.
+  Imports and matching run in the background with live status.
+- **Matching** (pure-Python dpkg / rpm version comparison - no new dependency,
+  so the offline prod build keeps working):
+  - **Ubuntu:** the kernel flavor and series pick the source package (`6.8.0-124-generic`
+    on 22.04 → `linux-hwe-6.8`, on 24.04 → `linux`). `uname -r` carries the ABI
+    but not the package upload number, so the **ABI** is compared; with an equal
+    ABI the fix counts as present when it is the *first* upload of that ABI
+    (`6.8.0-136.136`, `…~22.04.1`), otherwise the finding is **uncertain**. The
+    Proxmox QEMU agent also reports `uname -v` (`#136~22.04.1-Ubuntu`, new
+    `kernel_build` column, protected against empty agent answers like `kernel`)
+    which gives the exact package version. Extended support reads the **Ubuntu
+    Pro** ecosystem first, then the standard one for older CVEs.
+  - **Debian:** the package version comes from `uname -v` (`Debian 6.1.153-1`);
+    without it (every VMware guest) the VM is *not evaluable* - no guesses.
+    Debian LTS fixes are in the same ecosystem, so extended Debian is matched.
+  - **RHEL family:** `uname -r` minus the arch is the package version-release;
+    rpm comparison. RHEL and Rocky fall back to AlmaLinux data when their own is
+    missing (same kernel NVRs; the reason says so).
+  - A record without a `fixed` version = no fix published → **affected, no fix**.
+  - Several advisories for one CVE → the earliest fix counts.
+- **Findings** (`vm_vuln`, one per VM + CVE) carry a Turkish evidence line,
+  e.g. `Ubuntu 24.04 · linux 6.8.0-124 · düzeltme 6.8.0-136.136 -> etkileniyor`.
+  They are recomputed after every platform sync, after data imports / downloads
+  and whenever the OS support status is recomputed; a fixed kernel closes them
+  (`patched`), a VM leaving the scope closes them as `not_evaluated`, a return
+  reopens them. VMs that were already evaluated get one **Change History** row
+  per change (category *Security*: "3 CVE yeni: … (KEV)" / "… kapandı"); the
+  first evaluation writes none.
+- **UI:**
+  - New **Vulnerabilities** page: summary cards (KEV-affected VMs, VMs with open
+    CVEs, distinct CVEs, evaluated / not evaluable / out of scope - each opens the
+    filtered VM list) and the CVE list (severity + CVSS, description, affected
+    VMs split into fixable / no fix / uncertain, KEV with due date and ransomware
+    use, first seen), KEV first; filters for severity, fix state and KEV only.
+  - VM table **Open CVEs** column after Support: the number of open CVEs that
+    have a published fix (red with an icon when KEV, else colored by the worst
+    severity; `+n` for no-fix / uncertain ones). The tooltip has the package,
+    version and the split; click to filter, sortable (KEV first).
+  - VM detail: **Kernel vulnerabilities** section (KEV / severity order, fix
+    version, description, evidence line).
+  - Search: `cve:CVE-2024-1086` (or a fragment `cve:2026-`, `cve:yok`),
+    `kev:evet|hayir`, `zafiyet:var|yok|belirsiz|duzeltmesiz|bilinmiyor|kapsamdisi`,
+    `acikcve:>10`.
+  - Dashboard *Needs attention*: "hit by an actively exploited CVE (KEV)" and
+    "with open CVEs that have a fix".
+  - Exports: VM report columns **Açık CVE**, **KEV**, **CVE Listesi** (also in the
+    "all" and scheduled reports) and a **Zafiyetler** sheet with every finding;
+    the Vulnerabilities page exports CVEs + findings.
+  - History filter category *Security*.
+- Demo inventory: real trimmed OSV / KEV records (the test fixtures) plus a few
+  made-up Ubuntu / Debian records.
+- Tests: `tests/test_vuln.py` with real trimmed records in `tests/fixtures/vuln`
+  (comparators, parsing / filters, newest-wins, zip / bundle / KEV import, every
+  matching path, open / close / reopen, history, offline sync, search, views,
+  exports, sync hook). **Acceptance:** CVE-2026-43040, Ubuntu 24.04, fixed
+  `6.8.0-136.136` → `6.8.0-124-generic` affected, `6.8.0-136-generic` not.
+- Honest limits:
+  - "Affected" means the **running** kernel is older than the fix (that is what
+    the platforms report): a newer kernel installed but not yet booted still
+    counts as affected - which is correct until the reboot - and livepatch is
+    not taken into account.
+  - VMware Ubuntu guests: equal-ABI cases where the fix is a later upload of
+    that ABI stay *uncertain*. Debian on VMware is not evaluable.
+  - Rocky Linux's OSV format could not be checked against a real record (parsed
+    like AlmaLinux); RHEL EUS / AUS streams, Oracle Linux, SLES, Photon OS and
+    cloud kernels are not covered.
+  - Data size is estimated, not measured on a full dump: one Ubuntu kernel CVE
+    record is 0.7-1 MB uncompressed, so Ubuntu's weekly `all.zip` is likely
+    several hundred MB up to ~1 GB and its import takes minutes (the temporary
+    file needs that much free disk). Stored: a few hundred thousand kernel rows;
+    the offline bundle is a few MB. Uploads are limited to 2 GB.
+
 ### 🐉 Rolling releases, Alpine, Photon id fix (phase 159)
 - **Rolling releases** (Kali, Arch, openSUSE Tumbleweed, Gentoo, Manjaro, Void)
   have no release cycles, so "Kali GNU/Linux Rolling" with a running agent and a

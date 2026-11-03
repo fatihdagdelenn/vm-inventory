@@ -100,6 +100,7 @@ const VMs = {
           '<td data-col="guest_os" class="small"' + VMs.ff('os', v.guest_os && '=' + v.guest_os) + '>' + App.esc(v.guest_os || '—') + '</td>' +
           '<td data-col="kernel" class="small text-muted text-nowrap"' + VMs.ff('kernel', v.kernel && '=' + v.kernel) + '>' + App.esc(v.kernel || '—') + '</td>' +
           '<td data-col="support"' + VMs.ff('destek', v.support_status || 'unknown') + '>' + App.supportBadge(v) + '</td>' +
+          '<td data-col="vuln" class="text-nowrap"' + VMs.vulnFilter(v) + '>' + App.vulnCell(v) + '</td>' +
           '<td data-col="platform" class="small text-nowrap"' + VMs.ff('type', v.platform_type) + '>' + VMs.platformCell(v.platform_type) + '</td>' +
           '<td data-col="agent" class="text-nowrap"' + VMs.ff('agent', v.agent_state) + '>' + VMs.agentCell(v.agent_state) + '</td>' +
           '<td data-col="cpu"' + VMs.ff('cpu', v.cpu_count) + '>' + (v.cpu_count || '—') + VMs.usageMini(v.cpu_usage_pct) + '</td>' +
@@ -589,6 +590,10 @@ const VMs = {
       [t('vh.g.sys', 'Sistem ve durum'), [
         F(['os'], 'os:ubuntu', t('vh.f.os', 'OS adı (kısmi). os:linux ve os:windows tüm dağıtımları/sürümleri bulur.')),
         F(['kernel', 'cekirdek'], 'kernel:5.14', t('vh.f.kernel', 'Çekirdek sürümü (kısmi). Linux/FreeBSD: kernel sürümü; Windows: NT sürümü (NT 10.0.20348…). Eski Tools / agent yoksa boştur.')),
+        F(['zafiyet', 'vuln'], 'zafiyet:var', t('vh.f.vuln', 'Çekirdek zafiyetleri: var (düzeltmesi yayımlanmış açık CVE), yok, belirsiz, duzeltmesiz, bilinmiyor (değerlendirilemedi), kapsamdisi (EOL / desteği bilinmiyor).')),
+        F(['cve'], 'cve:CVE-2024-1086', t('vh.f.cve', 'Bu CVE\'den etkilenen VM\'ler (açık bulgu). Kısmi de olur: cve:2026-. cve:yok = açık CVE\'si olmayan değerlendirilmiş VM\'ler.')),
+        F(['kev'], 'kev:evet', t('vh.f.kev', 'CISA KEV listesindeki (aktif istismar edilen) bir CVE\'den etkilenenler: evet / hayir.')),
+        F(['acikcve'], 'acikcve:>10', t('vh.f.openCve', 'Açık CVE sayısı (düzeltmesi yayımlanmış): >, <, >=, <=, =.')),
         F(['destek', 'support'], 'destek:eol', t('vh.f.support', 'İşletim sistemi desteği: eol, yakinda (soon), uzatilmis (extended), destekli (supported), bilinmiyor (unknown). Virgülle birleşir: destek:eol,yakinda.')),
         F(['osfam', 'osailesi'], 'osfam:redhat', t('vh.f.osfam', 'OS ailesi — dashboard pastasıyla aynı sınıflandırma. Değerler aşağıda.')),
         F(['status'], 'status:running', t('vh.f.status', 'Güç durumu: running, stopped, suspended (TR: çalışan, kapalı, askıda).')),
@@ -893,10 +898,20 @@ const VMs = {
    * Shift+click = exclude it. Same tokens as the quick-filter menus. */
   ff(field, value) {
     if (value === null || value === undefined || value === '' || value === false) return '';
-    // destek: the badge inside carries its own tooltip (end date + reason)
-    const tip = field === 'destek' ? '' : ' title="' +
+    // destek / zafiyet / kev: the badge inside carries its own tooltip
+    const tip = ['destek', 'zafiyet', 'kev'].includes(field) ? '' : ' title="' +
       App.esc(t('vm.cellFilterTip', 'Bu değere göre filtrele · Shift: hariç tut')) + '"';
     return ' data-ff="' + field + '" data-fv="' + App.esc(String(value)) + '"' + tip;
+  },
+
+  /** Vulnerability cell -> kev:evet / zafiyet:var|yok|bilinmiyor|kapsamdisi. */
+  vulnFilter(v) {
+    if (v.vuln_status === 'evaluated') {
+      if (v.vuln_kev) return VMs.ff('kev', 'evet');
+      return VMs.ff('zafiyet', v.vuln_open ? 'var' : (v.vuln_total ? 'duzeltmesiz,belirsiz' : 'yok'));
+    }
+    if (v.vuln_status === 'skipped') return VMs.ff('zafiyet', 'kapsamdisi');
+    return VMs.ff('zafiyet', 'bilinmiyor');
   },
 
   /** RAM in GB for ram: (stored MB) - '16', '0.5'. */

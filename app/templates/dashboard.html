@@ -160,6 +160,8 @@
     <div class="dash-widget" data-widget="attention" data-w="4" data-title="Dikkat Gerektirenler">
       <div class="card panel h-100"><div class="card-header"><i class="bi bi-exclamation-triangle text-warning"></i> <span data-i18n="dash.attention">Dikkat Gerektirenler</span></div>
         <div class="list-group list-group-flush" id="attentionList">
+          <a href="/vms?q=kev:evet&sort=vuln&order=desc" class="list-group-item attention-item"><i class="bi bi-exclamation-octagon"></i> <span data-i18n="dash.at.kev">Aktif istismar edilen CVE'den (KEV) etkilenen</span> <span class="badge" id="at-kev">—</span></a>
+          <a href="/vms?q=zafiyet:var&sort=vuln&order=desc" class="list-group-item attention-item"><i class="bi bi-shield-exclamation"></i> <span data-i18n="dash.at.vuln">Düzeltmesi yayımlanmış açık CVE'si olan</span> <span class="badge" id="at-vuln">—</span></a>
           <a href="/vms?q=ip:yok" class="list-group-item attention-item"><i class="bi bi-wifi-off"></i> <span data-i18n="dash.at.noip">IP adresi alınamayan VM</span> <span class="badge" id="at-noip">—</span></a>
           <a href="/vms?q=tools:yok" class="list-group-item attention-item"><i class="bi bi-plug"></i> <span data-i18n="dash.at.notools">Agent / Tools kurulu olmayan</span> <span class="badge" id="at-notools">—</span></a>
           <a href="/vms?q=owner:yok" class="list-group-item attention-item"><i class="bi bi-person-x"></i> <span data-i18n="dash.at.noowner">Sahibi atanmamış VM</span> <span class="badge" id="at-noowner">—</span></a>

@@ -281,11 +281,92 @@ const Settings = {
     try { await App.api('/api/lifecycle/overrides/' + id, {method: 'DELETE'}); } catch (e) { return; }
     Settings.loadLifecycle();
   },
+
+  /* ---------- Kernel vulnerability data (phase 160) ---------- */
+  _vdTimer: null,
+
+  async loadVuln() {
+    let d;
+    try { d = await App.api('/api/vulns/status'); } catch (e) { return; }
+    const dt = iso => iso ? App.fmtDate(iso.length > 19 ? iso : iso + 'Z') : '—';
+    const row = (k, v) => '<dt class="col-5 text-muted fw-normal">' + k + '</dt><dd class="col-7 mb-1">' + v + '</dd>';
+    const job = d.job || {};
+    const jobTxt = job.running
+      ? '<span class="spinner-border spinner-border-sm"></span> ' + t('vd2.running', 'çalışıyor') + ' (' + App.esc(job.kind || '') + ')'
+      : job.finished ? (job.ok ? '<span class="text-success">✓</span> ' : '<span class="text-danger">✗</span> ') +
+        dt(job.finished) + ' <span class="small text-muted">' + App.esc(job.ok ? Settings.vdJobText(job.message)
+          : (job.message || '')) + '</span>' : '—';
+    document.getElementById('vdMeta').innerHTML =
+      row(t('vd2.rows', 'Çekirdek kaydı'), d.rows.toLocaleString() + ' · ' + d.cves.toLocaleString() + ' CVE') +
+      row(t('vd2.dataDate', 'En yeni kayıt'), dt(d.data_date)) +
+      row('CISA KEV', d.kev + (d.kev_version ? ' · ' + App.esc(d.kev_version) : '')) +
+      row(t('lc.lastSync', 'Son başarılı güncelleme'), d.last_sync ? dt(d.last_sync) : t('lc.never', 'hiç (internet yok)')) +
+      (d.last_error ? row(t('lc.lastAttempt', 'Son deneme'), dt(d.last_attempt) +
+        ' <span class="badge text-bg-light border" title="' + App.esc(d.last_error) + '">' +
+        t('lc.offline', 'erişilemedi') + '</span>') : '') +
+      row(t('vd2.job', 'Son iş'), jobTxt) +
+      row(t('vd2.vms', 'VM'), '<a href="/vms?q=zafiyet:var,yok">' + d.vms_evaluated + ' ' + t('vd2.evaluated', 'değerlendirildi') +
+        '</a> · <a href="/vms?q=zafiyet:bilinmiyor">' + d.vms_unknown + ' ' + t('vd2.unknown', 'değerlendirilemedi') +
+        '</a> · <a href="/vms?q=zafiyet:kapsamdisi">' + d.vms_skipped + ' ' + t('vd2.skipped', 'kapsam dışı') + '</a>');
+    document.getElementById('vdEcos').innerHTML = Object.keys(d.by_ecosystem || {}).length
+      ? Object.entries(d.by_ecosystem).sort((a, b) => a[0].localeCompare(b[0])).map(([e, n]) =>
+          '<tr><td>' + App.esc(e) + '</td><td class="text-end">' + n.toLocaleString() + '</td></tr>').join('')
+      : '<tr><td colspan="2" class="text-muted small p-3">' + t('vd2.noData', 'Henüz veri yok.') + '</td></tr>';
+    ['vdSyncBtn', 'vdKevBtn'].forEach(id => { document.getElementById(id).disabled = !!job.running; });
+    clearTimeout(Settings._vdTimer);
+    if (job.running) Settings._vdTimer = setTimeout(() => Settings.loadVuln(), 3000);
+  },
+
+  /** Short text of a finished job result (import / sync dicts). */
+  vdJobText(m) {
+    if (!m || typeof m !== 'object') return m || '';
+    const parts = [];
+    if (m.records != null) parts.push('+' + m.records + ' ' + t('vd2.records', 'kayıt') +
+      (m.kept ? ' · =' + m.kept : ''));
+    if (m.kev && m.kev.kev != null) parts.push('KEV ' + (m.kev.kept ? '=' : m.kev.kev));
+    if (m.osv) parts.push('OSV ' + Object.keys(m.osv).filter(k => !m.osv[k].error).length + '/' + Object.keys(m.osv).length);
+    if (m.match) parts.push(t('vd2.new', 'yeni bulgu') + ' ' + m.match.new + ' · ' + t('vd2.closed', 'kapanan') + ' ' + m.match.closed);
+    return parts.join(' · ');
+  },
+
+  vdMsg(ok, text) {
+    const el = document.getElementById('vdMsg');
+    el.className = 'small mt-2 ' + (ok ? 'text-success' : 'text-danger');
+    el.textContent = text;
+  },
+
+  async vdSync(kevOnly) {
+    try {
+      await App.api('/api/vulns/sync' + (kevOnly ? '?kev_only=true' : ''), {method: 'POST', body: {}});
+      Settings.vdMsg(true, t('vd2.started', 'Başladı; durum burada güncellenir.'));
+    } catch (e) { return; }
+    Settings.loadVuln();
+  },
+
+  async vdImport(input) {
+    const f = input.files && input.files[0];
+    input.value = '';
+    if (!f) return;
+    const fd = new FormData();
+    fd.append('file', f);
+    Settings.vdMsg(true, t('vd2.uploading', 'Yükleniyor…') + ' ' + f.name);
+    const res = await fetch('/api/vulns/import', {method: 'POST', body: fd,
+      headers: {'X-CSRF-Token': App.getCookie('csrf_token')}});
+    if (!res.ok) {
+      let msg = 'HTTP ' + res.status;
+      try { msg = (await res.json()).detail || msg; } catch (e) { /* no body */ }
+      Settings.vdMsg(false, msg);
+      return;
+    }
+    Settings.vdMsg(true, t('vd2.started', 'Başladı; durum burada güncellenir.'));
+    Settings.loadVuln();
+  },
 };
 
 Settings.loadUsers();
 Settings.loadAudit();
 Settings.loadSync();
 Settings.loadLifecycle();
+Settings.loadVuln();
 document.getElementById('auditSearch').addEventListener('input', App.debounce(() => Settings.loadAudit(), 300));
 document.getElementById('auditAction').addEventListener('change', () => Settings.loadAudit());

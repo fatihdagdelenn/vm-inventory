@@ -334,6 +334,15 @@ def recompute(db, platform_id: Optional[int] = None, vm_ids=None) -> dict:
         vm.support_os, vm.support_confidence = (label or None), conf
         counts[st] += 1
     db.commit()
+    # Kernel vulnerability eligibility follows the support status
+    # (supported / soon / extended) - refresh the same VMs. A problem there
+    # never breaks the lifecycle result.
+    try:
+        from .vuln_service import recompute as _vuln_recompute
+        _vuln_recompute(db, platform_id=platform_id, vm_ids=vm_ids)
+    except Exception:
+        logger.exception("Vulnerability recompute failed")
+        db.rollback()
     return counts
 
 

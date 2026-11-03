@@ -1,0 +1,130 @@
+{
+ "schema_version": "1.7.0",
+ "id": "ALSA-2024:2394",
+ "summary": "Important: kernel security, bug fix, and enhancement update",
+ "affected": [
+  {
+   "package": {
+    "ecosystem": "AlmaLinux:9",
+    "name": "bpftool"
+   },
+   "ranges": [
+    {
+     "type": "ECOSYSTEM",
+     "events": [
+      {
+       "introduced": "0"
+      },
+      {
+       "fixed": "7.3.0-427.13.1.el9_4"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "package": {
+    "ecosystem": "AlmaLinux:9",
+    "name": "kernel"
+   },
+   "ranges": [
+    {
+     "type": "ECOSYSTEM",
+     "events": [
+      {
+       "introduced": "0"
+      },
+      {
+       "fixed": "5.14.0-427.13.1.el9_4"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "package": {
+    "ecosystem": "AlmaLinux:9",
+    "name": "kernel-tools"
+   },
+   "ranges": [
+    {
+     "type": "ECOSYSTEM",
+     "events": [
+      {
+       "introduced": "0"
+      },
+      {
+       "fixed": "5.14.0-427.13.1.el9_4"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "upstream": [
+  "CVE-2020-26555",
+  "CVE-2022-0480",
+  "CVE-2022-38096",
+  "CVE-2022-45934",
+  "CVE-2023-24023",
+  "CVE-2023-25775",
+  "CVE-2023-28464",
+  "CVE-2023-28866",
+  "CVE-2023-31083",
+  "CVE-2023-3567",
+  "CVE-2023-37453",
+  "CVE-2023-39189",
+  "CVE-2023-39193",
+  "CVE-2023-39194",
+  "CVE-2023-39198",
+  "CVE-2023-4133",
+  "CVE-2023-42754",
+  "CVE-2023-42756",
+  "CVE-2023-45863",
+  "CVE-2023-46862",
+  "CVE-2023-51043",
+  "CVE-2023-51779",
+  "CVE-2023-51780",
+  "CVE-2023-52434",
+  "CVE-2023-52448",
+  "CVE-2023-52450",
+  "CVE-2023-52476",
+  "CVE-2023-52489",
+  "CVE-2023-52522",
+  "CVE-2023-52529",
+  "CVE-2023-52574",
+  "CVE-2023-52578",
+  "CVE-2023-52580",
+  "CVE-2023-52581",
+  "CVE-2023-52597",
+  "CVE-2023-52610",
+  "CVE-2023-52620",
+  "CVE-2023-6040",
+  "CVE-2023-6121",
+  "CVE-2023-6176",
+  "CVE-2023-6531",
+  "CVE-2023-6546",
+  "CVE-2023-6622",
+  "CVE-2023-6915",
+  "CVE-2023-6931",
+  "CVE-2023-6932",
+  "CVE-2024-0565",
+  "CVE-2024-0841",
+  "CVE-2024-1085",
+  "CVE-2024-1086",
+  "CVE-2024-25744",
+  "CVE-2024-26582",
+  "CVE-2024-26583",
+  "CVE-2024-26584",
+  "CVE-2024-26585",
+  "CVE-2024-26586",
+  "CVE-2024-26593",
+  "CVE-2024-26602",
+  "CVE-2024-26609",
+  "CVE-2024-26633",
+  "CVE-2024-26671"
+ ],
+ "published": "2024-04-30T00:00:00Z",
+ "modified": "2024-11-03T22:05:30Z",
+ "details": "The kernel packages contain the Linux kernel, the core of any Linux operating system.  \n\nSecurity Fix(es):  \n\n  * kernel: GSM multiplexing race condition leads to privilege escalation (CVE-2023-6546)\n  * kernel: multiple use-after-free vulnerabilities (CVE-2024-1086, CVE-2023-3567, CVE-2023-4133, CVE-2023-6932, CVE-2023-39198, CVE-2023-51043, CVE-2023-51779, CVE-2023-51780, CVE-2024-1085, CVE-2024-26582)\n  * kernel: Bluetooth BR/EDR PIN Pairing procedure is vulnerable to an impersonation attack (CVE-2020-26555)\n  * kernel: memcg does not limit the number of POSIX file locks allowing memory exhaustion (CVE-2022-0480)\n  * kernel: multiple NULL pointer dereference vulnerabilities (CVE-2022-38096, CVE-2023-6622, CVE-2023-6915, CVE-2023-42754, CVE-2023-46862, CVE-2023-52574, CVE-2024-0841, CVE-2023-52448)\n  * kernel: integer overflow in l2cap_config_req() in net/bluetooth/l2cap_core.c (CVE-2022-45934)\n  * kernel: netfilter: nf_tables: out-of-bounds access in nf_tables_newtable() (CVE-2023-6040)\n  * kernel: GC's deletion of an SKB races with unix_stream_read_generic() leading to UAF (CVE-2023-6531)\n  * kernel: Out of boundary write in perf_read_group() as result of overflow a perf_event's read_size (CVE-2023-6931)\n  * kernel: Bluetooth Forward and Future Secrecy Attacks and Defenses (CVE-2023-24023)\n  * kernel: irdma: Improper access control (CVE-2023-25775)\n  * Kernel: double free in hci_conn_cleanup of the bluetooth subsystem (CVE-2023-28464)\n  * kernel: Bluetooth: HCI: global out-of-bounds access in net/bluetooth/hci_sync.c (CVE-2023-28866)\n  * kernel: race condition between HCIUARTSETPROTO and HCIUARTGETPROTO in hci_uart_tty_ioctl (CVE-2023-31083)\n  * kernel: multiple out-of-bounds read vulnerabilities (CVE-2023-37453, CVE-2023-39189, CVE-2023-39193, CVE-2023-6121, CVE-2023-39194)\n  * kernel: netfilter: race condition between IPSET_CMD_ADD and IPSET_CMD_SWAP (CVE-2023-42756)\n  * kernel: lib/kobject.c vulnerable to fill_kobj_path out-of-bounds write (CVE-2023-45863)\n  * kernel: smb: client: fix potential OOBs in smb2_parse_contexts() (CVE-2023-52434)\n  * kernel: mm/sparsemem: fix race in accessing memory_section->usage (CVE-2023-52489)\n  * kernel: net: fix possible store tearing in neigh_periodic_work() (CVE-2023-52522)\n  * kernel: multiple memory leak vulnerabilities (CVE-2023-52529, CVE-2023-52581)\n  * kernel: net: bridge: data races indata-races in br_handle_frame_finish() (CVE-2023-52578)\n  * kernel: net/core: kernel crash in ETH_P_1588 flow dissector (CVE-2023-52580)\n  * kernel: net/sched: act_ct: fix skb leak and crash on ooo frags (CVE-2023-52610)\n  * kernel: CIFS Filesystem Decryption Improper Input Validation Remote Code Execution Vulnerability in function receive_encrypted_standard of client (CVE-2024-0565)\n  * kernel: tls: race between async notify and socket close (CVE-2024-26583)\n  * kernel: tls: handle backlogging of crypto requests (CVE-2024-26584)\n  * kernel: tls: race between tx work scheduling and socket close (CVE-2024-26585)\n  * kernel: mlxsw: spectrum_acl_tcam: Fix stack corruption (CVE-2024-26586)\n  * kernel: i2c: i801: Fix block process call transactions (CVE-2024-26593)\n  * kernel: sched/membarrier: reduce the ability to hammer on sys_membarrier (CVE-2024-26602)\n  * kernel: netfilter: nf_tables: reject QUEUE/DROP verdict parameters (CVE-2024-26609)\n  * kernel: local dos vulnerability in scatterwalk_copychunks (CVE-2023-6176)\n  * kernel: perf/x86/lbr: Filter vsyscall addresses (CVE-2023-52476)\n  * kernel: netfilter: nf_tables: disallow timeout for anonymous sets (CVE-2023-52620)\n  * kernel: ip6_tunnel: fix NEXTHDR_FRAGMENT handling in ip6_tnl_parse_tlv_enc_lim() (CVE-2024-26633)\n\n\nFor more details about the security issue(s), including the impact, a CVSS score, acknowledgments, and other related information, refer to the CVE page(s) listed in the References section.  \n\nAdditional Changes:  \n\nFor detailed information on changes in this release, see the AlmaLinux Release Notes linked from the References section.\n"
+}

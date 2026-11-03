@@ -61,6 +61,7 @@ class VirtualMachine(Base):
     mac_addresses = Column(Text)                    # Comma-separated MAC list
     guest_os = Column(String(255), index=True)      # Operating system
     kernel = Column(String(128))                     # Kernel version (Proxmox agent / -)
+    kernel_build = Column(String(255))               # uname -v (Proxmox agent, Linux): package build
     # OS lifecycle (services/lifecycle_service.py; recomputed after every sync
     # and whenever lifecycle data, exceptions or the 'soon' threshold change)
     support_status = Column(String(12), index=True)  # supported|soon|extended|eol|unknown
@@ -68,6 +69,13 @@ class VirtualMachine(Base):
     support_reason = Column(String(32))              # reason code (UI translates it)
     support_os = Column(String(64))                  # identified release, e.g. 'Ubuntu 22.04'
     support_confidence = Column(String(12))          # high | estimated | none
+    # Kernel CVE matching (services/vuln_service.py)
+    vuln_open = Column(Integer)                      # affected, fix available (actionable)
+    vuln_total = Column(Integer)                     # all open findings (incl. no fix / uncertain)
+    vuln_kev = Column(Integer)                       # open findings listed in CISA KEV
+    vuln_max_sev = Column(String(12))                # worst severity among open findings
+    vuln_status = Column(String(12))                 # evaluated | skipped | unknown
+    vuln_reason = Column(String(255))                # why skipped / unknown (Turkish)
     arch = Column(String(32))                        # Mimari: x86_64 / aarch64 …
     cpu_count = Column(Integer)
     ram_mb = Column(BigInteger)

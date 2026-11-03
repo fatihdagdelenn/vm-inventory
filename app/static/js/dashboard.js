@@ -135,6 +135,7 @@ function barGrad(chart, base, horizontal) {
   set('at-noip', d.attention.no_ip);       set('at-notools', d.attention.no_tools);
   set('at-noowner', d.attention.no_owner);  set('at-oldsnap', d.attention.old_snapshots);
   set('at-nobackup', d.attention.no_backup);
+  set('at-kev', d.attention.vuln_kev);      set('at-vuln', d.attention.vuln_open);
   if (d.support) {
     ['eol', 'soon', 'extended', 'unknown', 'supported'].forEach(k => set('sp-' + k, d.support[k]));
     const lab = document.getElementById('sp-soon-label');

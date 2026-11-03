@@ -29,7 +29,10 @@ SORTABLE = {"name": VirtualMachine.name, "power_state": VirtualMachine.power_sta
             "kernel": VirtualMachine.kernel,
             # severity first (EOL on top when ascending), then the end date
             "support": case({"eol": 0, "soon": 1, "extended": 2, "supported": 3},
-                            value=VirtualMachine.support_status, else_=4)}
+                            value=VirtualMachine.support_status, else_=4),
+            # KEV first, then open (fixable) count; not-evaluated VMs last
+            "vuln": func.coalesce(VirtualMachine.vuln_kev, -1) * 100000 +
+                    func.coalesce(VirtualMachine.vuln_open, -1)}
 # Text columns sort case-insensitively (true alphabetical); otherwise the DB
 # sorts by byte/ASCII order (uppercase first -> not alphabetical)
 CASE_INSENSITIVE = {"name", "cluster", "guest_os", "vmid", "pool", "kernel"}
@@ -88,6 +91,12 @@ def _vm_to_dict(vm: VirtualMachine) -> dict:
         "support_until": vm.support_until.isoformat() if vm.support_until else None,
         "support_reason": vm.support_reason, "support_os": vm.support_os,
         "support_confidence": vm.support_confidence,
+        "kernel_build": vm.kernel_build,
+        # kernel vulnerabilities (services/vuln_service): vuln_open = affected
+        # findings WITH a published fix; total also holds no-fix / uncertain
+        "vuln_status": vm.vuln_status, "vuln_reason": vm.vuln_reason,
+        "vuln_open": vm.vuln_open, "vuln_total": vm.vuln_total, "vuln_kev": vm.vuln_kev,
+        "vuln_max_sev": vm.vuln_max_sev,
     }
 
 
@@ -388,6 +397,8 @@ def get_vm(vm_id: int, db: Session = Depends(get_db),
         "age_days": s.age_days, "is_current": bool(s.is_current),
         "parent": s.parent or "", "description": s.description or "",
     } for s in snaps]
+    from ..services.vuln_service import vm_findings
+    data["vulns"] = vm_findings(db, vm.id)
     return data
 
 

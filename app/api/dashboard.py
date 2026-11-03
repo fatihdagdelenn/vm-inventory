@@ -104,6 +104,9 @@ def summary(no_local: int = 0, db: Session = Depends(get_db),
     _sup = func.coalesce(VirtualMachine.support_status, "unknown")
     support = dict(base.with_entities(_sup, func.count(VirtualMachine.id)).group_by(_sup).all())
     support = {k: support.get(k, 0) for k in ("eol", "soon", "extended", "unknown", "supported")}
+    # Kernel vulnerabilities (phase 160): /vms?q=kev:evet and zafiyet:var
+    vuln_kev = base.filter(VirtualMachine.vuln_kev > 0).count()
+    vuln_open = base.filter(VirtualMachine.vuln_open > 0).count()
 
     # Snapshot queries share ONE hidden-cluster rule, applied in SQL. It used to
     # be applied in Python after a LIMIT 1000, so 1000 hidden rows (e.g. Veeam
@@ -275,7 +278,8 @@ def summary(no_local: int = 0, db: Session = Depends(get_db),
             "support": support,
             "support_meta": {"soon_days": _soon_days(db), "data_date": _data_date(db)},
             "attention": {"no_ip": no_ip, "no_tools": no_tools, "no_owner": no_owner,
-                          "old_snapshots": old_snapshots, "no_backup": no_backup},
+                          "old_snapshots": old_snapshots, "no_backup": no_backup,
+                          "vuln_kev": vuln_kev, "vuln_open": vuln_open},
             "env_distribution": env_dist, "cluster_distribution": cluster_dist,
             "top_os": top_os, "recent_changes": recent_changes,
             "top_cpu_vms": top_cpu_vms, "top_ram_vms": top_ram_vms,

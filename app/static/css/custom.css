@@ -1406,6 +1406,7 @@ html.theme-dark .net-modes .btn { background: #151f32; }
 .cat-migrate   { background: #f3f0fe; color: #6d28d9; }
 .cat-lifecycle { background: #e9f8f0; color: #047857; }
 .cat-os        { background: #eaf2ff; color: #1d4ed8; }
+.cat-security  { background: #fdecec; color: #b42318; }
 .cat-console   { background: #fdeeee; color: #b91c1c; }
 .cat-other     { background: #f1f5f9; color: #64748b; }
 .op-created    { background: #e9f8f0; color: #047857; }
@@ -1421,6 +1422,7 @@ html.theme-dark .cat-power     { background: rgba(245,158,11,.14);  color: #f3c5
 html.theme-dark .cat-migrate   { background: rgba(167,139,250,.16); color: #cabdf9; }
 html.theme-dark .cat-lifecycle { background: rgba(16,185,129,.14);  color: #7fd9b3; }
 html.theme-dark .cat-os        { background: rgba(59,130,246,.15);  color: #9ec2f7; }
+html.theme-dark .cat-security  { background: rgba(229,83,75,.16);   color: #ff9b94; }
 html.theme-dark .cat-console   { background: rgba(239,68,68,.14);   color: #f0a3a3; }
 html.theme-dark .cat-other     { background: rgba(148,163,184,.12); color: #aebfd6; }
 html.theme-dark .op-created    { background: rgba(16,185,129,.14);  color: #7fd9b3; }
@@ -1530,3 +1532,33 @@ html.theme-dark .disk-item { background: color-mix(in srgb, var(--accent) 12%, t
 .disk-cell { display: flex; flex-direction: column; gap: 2px; min-width: 92px; }
 .disk-cell-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .disk-cell .usage-mini { width: 100%; }
+
+/* ---------- Kernel vulnerabilities (phase 160) ---------- */
+.vu-crit { background: rgba(190,24,93,.13); color: #a3124e; border-color: rgba(190,24,93,.34); }
+.vu-high { background: rgba(229,83,75,.13); color: #b8322b; border-color: rgba(229,83,75,.34); }
+.vu-med  { background: rgba(232,161,60,.16); color: #9a5f06; border-color: rgba(232,161,60,.38); }
+.vu-low  { background: rgba(47,129,247,.10); color: #1f63c8; border-color: rgba(47,129,247,.26); }
+.vu-unk  { background: rgba(100,116,139,.1); color: #5b6b80; border-color: rgba(100,116,139,.24); }
+.vu-kev  { background: #b8322b; color: #fff; border-color: #b8322b; }
+html.theme-dark .vu-crit { color: #ff7eb3; }
+html.theme-dark .vu-high { color: #ff8a80; }
+html.theme-dark .vu-med  { color: #f0b860; }
+html.theme-dark .vu-low  { color: #7fb0ff; }
+html.theme-dark .vu-unk  { color: #9fb0c6; }
+html.theme-dark .vu-kev  { background: #c9443c; border-color: #c9443c; color: #fff; }
+.vu-count { font-variant-numeric: tabular-nums; min-width: 2.1rem; }
+.vu-count .vu-other { opacity: .62; font-weight: 500; margin-left: .25rem; font-size: .9em; }
+.vu-zero { font-variant-numeric: tabular-nums; opacity: .7; }
+.vu-findings .vu-sum { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.vu-findings .vu-reason, .vu-table .vu-reason { font-size: .74rem; }
+.vu-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .75rem; }
+.vu-stat { padding: .75rem .9rem; border-radius: .6rem; cursor: pointer; transition: border-color .15s; }
+.vu-stat:hover { border-color: var(--accent, #2f81f7); }
+.vu-stat .vu-n { font-size: 1.45rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.vu-stat .vu-l { font-size: .76rem; }
+.vu-stat.vu-stat-kev .vu-n { color: #c9443c; }
+.vu-table td.vu-sumcell { max-width: 520px; }
+.vu-table td.vu-sumcell div { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.vu-table .vu-vms { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.vd-ecos th:first-child, .vd-ecos td:first-child { padding-left: 1rem; }
+.vd-ecos th:last-child, .vd-ecos td:last-child { padding-right: 1rem; }

@@ -52,11 +52,58 @@ except Exception as exc:  # pragma: no cover - font registration is non-critical
 SUPPORT_LABELS = {"supported": "Destekli", "soon": "Yakında bitiyor",
                   "extended": "Uzatılmış destek", "eol": "EOL", "unknown": "Bilinmiyor"}
 
+VULN_STATUS_LABELS = {"skipped": "Kapsam dışı", "unknown": "Değerlendirilemedi"}
+VULN_FINDING_STATUS = {"affected": "Etkileniyor", "uncertain": "Belirsiz"}
+SEVERITY_LABELS = {"critical": "Kritik", "high": "Yüksek", "medium": "Orta", "low": "Düşük",
+                   "negligible": "Önemsiz", "unknown": "Bilinmiyor"}
+VULN_COLUMNS = [
+    ("VM Adı", "vm"), ("CVE", "cve"), ("Önem", "severity"), ("KEV", "kev"),
+    ("Durum", "status"), ("Düzeltme Var", "fix"), ("Düzeltilen Sürüm", "fixed"),
+    ("Paket", "package"), ("Gerekçe", "reason"), ("İlk Görülme", "first_seen"),
+]
+CVE_COLUMNS = [
+    ("CVE", "cve"), ("Önem", "severity"), ("CVSS", "score"), ("KEV", "kev"),
+    ("KEV Son Tarih", "kev_due"), ("Etkilenen VM", "vms"), ("Düzeltilebilir", "fixable"),
+    ("Düzeltmesiz", "nofix"), ("Belirsiz", "uncertain"), ("Açıklama", "summary"),
+]
+
+
+def attach_vulns(db, vms) -> list:
+    """Set vm._vuln_cves (open CVEs with a fix, KEV first) and return one row
+    per open finding for the 'Zafiyetler' sheet."""
+    from ..models import VmVuln
+    ids = [v.id for v in vms]
+    by_vm = {}
+    for i in range(0, len(ids), 500):
+        for r in db.query(VmVuln).filter(VmVuln.vm_id.in_(ids[i:i + 500]),
+                                         VmVuln.closed_at.is_(None)).all():
+            by_vm.setdefault(r.vm_id, []).append(r)
+    rows = []
+    for v in vms:
+        found = sorted(by_vm.get(v.id, []), key=lambda r: (not r.kev, r.cve))
+        fixable = [r.cve + (" (KEV)" if r.kev else "") for r in found
+                   if r.status == "affected" and r.fix_available]
+        # an old kernel can have hundreds: keep the cell readable (and under
+        # Excel's 32767-character limit); the Zafiyetler sheet has them all
+        v._vuln_cves = ", ".join(fixable[:40]) + (f" … +{len(fixable) - 40}" if len(fixable) > 40 else "")
+        for r in found:
+            rows.append({"vm": v.name, "cve": r.cve,
+                         "severity": SEVERITY_LABELS.get(r.severity or "unknown", r.severity),
+                         "kev": "Evet" if r.kev else "", "status": VULN_FINDING_STATUS.get(r.status, r.status),
+                         "fix": "Evet" if r.fix_available else "Hayır", "fixed": r.fixed or "",
+                         "package": r.package or "", "reason": r.reason or "",
+                         "first_seen": r.first_seen.strftime("%Y-%m-%d") if r.first_seen else ""})
+    return rows
+
+
 VM_COLUMNS = [
     ("VM Adı", "name"), ("VM ID", "vmid"), ("IP Adresleri", "ip_addresses"),
     ("MAC Adresleri", "mac_addresses"), ("İşletim Sistemi", "guest_os"),
     ("Çekirdek", "kernel"),
     ("Destek", "support_status"), ("Destek Bitişi", "support_until"),
+    # kernel vulnerabilities (phase 160): open = affected with a published fix;
+    # the list holds those CVEs (KEV marked), see attach_vulns
+    ("Açık CVE", "vuln_open_x"), ("KEV", "vuln_kev_x"), ("CVE Listesi", "vuln_cves"),
     ("CPU (adet)", "cpu_count"), ("CPU Kullanım (%)", "cpu_usage_pct"),
     ("RAM Tahsis (MB)", "ram_mb"), ("RAM Kullanım (MB)", "ram_usage_mb"),
     ("Disk Tahsis (GB)", "disk_total_gb"), ("Disk Kullanım (GB)", "disk_used_gb"),
@@ -137,6 +184,14 @@ def _row_values(obj, columns):
             else:
                 from ..core.weblinks import address_url
                 values.append(getattr(obj, "web_url", None) or address_url(getattr(obj, "mgmt_ip", None)))
+        elif field in ("vuln_open_x", "vuln_kev_x") and not is_physical:
+            st = get("vuln_status")
+            if st == "evaluated":
+                values.append(get("vuln_open" if field == "vuln_open_x" else "vuln_kev") or 0)
+            else:
+                values.append(VULN_STATUS_LABELS.get(st, "") if field == "vuln_open_x" else "")
+        elif field == "vuln_cves" and not is_physical:
+            values.append(getattr(obj, "_vuln_cves", "") if not is_dict else obj.get("_vuln_cves", ""))
         elif field == "host_name":  # VM -> related host name
             values.append(obj.host_ref.name if getattr(obj, "host_ref", None) else "")
         elif field == "device_type":

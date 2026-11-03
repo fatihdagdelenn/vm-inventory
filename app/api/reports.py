@@ -57,10 +57,13 @@ def export_vms(fmt: str = "xlsx", q: str = "", db: Session = Depends(get_db),
     db.commit()
     if fmt not in MEDIA:
         raise HTTPException(400, "Format xlsx, csv veya pdf olmalı")
+    vuln_rows = rs.attach_vulns(db, items)
     sections = [
         ("Sanal Makineler", items, rs.VM_COLUMNS),
         ("Diskler", rs.disk_rows(items), rs.DISK_COLUMNS),
     ]
+    if vuln_rows:
+        sections.append(("Zafiyetler", vuln_rows, rs.VULN_COLUMNS))
     if fmt == "xlsx":
         content = rs.export_excel_multi(sections, "VM Envanteri")
     elif fmt == "csv":
@@ -115,6 +118,7 @@ def export_all(fmt: str = "xlsx", q: str = "", db: Session = Depends(get_db),
     hosts = annotate_hosts(db, db.query(Host).order_by(Host.name).all())
     dstores = db.query(Datastore).order_by(Datastore.name).all()
     phys = physical_export_rows(db)
+    rs.attach_vulns(db, vms)
     sections = [
         ("Sanal Makineler", vms, rs.VM_COLUMNS),
         ("Diskler", rs.disk_rows(vms), rs.DISK_COLUMNS),
@@ -137,6 +141,30 @@ def export_all(fmt: str = "xlsx", q: str = "", db: Session = Depends(get_db),
     filename = f"tum_envanter_{now_local():%Y%m%d_%H%M}.{ext}"
     return Response(content, media_type=media, headers={
         "Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@router.get("/vulns/export")
+def export_vulns(fmt: str = "xlsx", db: Session = Depends(get_db),
+                 user: User = Depends(get_current_user)):
+    """Vulnerabilities page: CVE list + every open finding per VM."""
+    from ..services.vuln_service import cve_list
+    cves = cve_list(db)
+    for c in cves:
+        c["severity"] = rs.SEVERITY_LABELS.get(c["severity"], c["severity"])
+        c["kev"] = "Evet" if c["kev"] else ""
+    vms = db.query(VirtualMachine).filter(VirtualMachine.vuln_total > 0) \
+        .order_by(VirtualMachine.name).all()
+    findings = rs.attach_vulns(db, vms)
+    log_audit(db, user, "export", target=f"vulns ({fmt})", detail=f"cves={len(cves)}")
+    db.commit()
+    if fmt not in ("xlsx", "csv"):
+        raise HTTPException(400, "Format xlsx veya csv olmalı")
+    sections = [("CVE'ler", cves, rs.CVE_COLUMNS), ("Bulgular", findings, rs.VULN_COLUMNS)]
+    content = (rs.export_excel_multi(sections, "Zafiyetler") if fmt == "xlsx"
+               else rs.export_csv_multi(sections))
+    media, ext = MEDIA[fmt]
+    return Response(content, media_type=media, headers={
+        "Content-Disposition": f'attachment; filename="zafiyetler_{now_local():%Y%m%d_%H%M}.{ext}"'})
 
 
 @router.get("/snapshots/export")
@@ -192,6 +220,7 @@ def _build_items(db: Session, target: str, q: str):
         vms = apply_vm_search(db.query(VirtualMachine).options(
             joinedload(VirtualMachine.host_ref)).filter_by(is_template=False),
             q).order_by(VirtualMachine.name).all()
+        rs.attach_vulns(db, vms)
         sections = [
             ("Sanal Makineler", vms, rs.VM_COLUMNS),
             ("Diskler", rs.disk_rows(vms), rs.DISK_COLUMNS),
@@ -204,6 +233,7 @@ def _build_items(db: Session, target: str, q: str):
     query = db.query(VirtualMachine).options(
         joinedload(VirtualMachine.host_ref)).filter_by(is_template=False)
     items = apply_vm_search(query, q).order_by(VirtualMachine.name).all()
+    rs.attach_vulns(db, items)
     return items, rs.VM_COLUMNS, "VM"
 
 
