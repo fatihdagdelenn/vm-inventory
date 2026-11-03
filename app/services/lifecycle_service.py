@@ -22,14 +22,18 @@ import os
 from datetime import date, datetime
 from typing import Optional
 
-from ..core.os_identity import identify
+from ..core.os_identity import KERNEL_PRODUCT, identify, kernel_cycle
 from ..models import LifecycleOverride, OsLifecycle, VirtualMachine
 
 logger = logging.getLogger("lifecycle")
 
 PRODUCTS = ("ubuntu", "debian", "rhel", "centos", "centos-stream", "rocky-linux",
             "almalinux", "oracle-linux", "sles", "opensuse", "fedora", "amazon-linux",
-            "windows-server", "windows", "freebsd", "vmware-photon")
+            "windows-server", "windows", "freebsd", "photon", "alpine-linux",
+            KERNEL_PRODUCT)
+# Product ids that were wrong in an earlier seed -> the API id (the API names a
+# product by its endoflife.date permalink: /photon, not the file vmware-photon.md)
+RENAMED = {"vmware-photon": "photon"}
 API_URL = "https://endoflife.date/api/v1/products/{}"
 # NOT under app/data/: ".gitignore" ignores every data/ folder (database files)
 SEED_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "resources",
@@ -270,6 +274,18 @@ def compute(vm, index, soon: int, today: date):
     """-> (status, until, reason, os_label, confidence)"""
     ident = identify(vm.guest_os, vm.kernel)
     label, conf = ident.label or None, ident.confidence
+    if ident.rolling:
+        # No release cycles. A rolling system is supported as long as it is kept
+        # updated - the running kernel tells: once its upstream series is out
+        # of support, the system has not been updated for a long time.
+        kc = kernel_cycle(vm.kernel)
+        krec = index.cycles.get((KERNEL_PRODUCT, kc)) if kc else None
+        if krec is None:
+            return "unknown", None, "rolling_no_kernel", label, conf
+        label = f"{label} · kernel {kc}"
+        if krec.eol_reached or (krec.eol_standard and krec.eol_standard < today):
+            return "eol", krec.eol_standard, "rolling_kernel_eol", label, "estimated"
+        return "supported", krec.eol_standard, "rolling_kernel", label, "estimated"
     rec = index.find(ident) if ident.version else None
     if rec is None:
         if ident.distro and ident.version:
@@ -352,11 +368,24 @@ def scheduled_sync():
         db.close()
 
 
+def apply_renames(db) -> int:
+    """Drop cycles stored under a wrong product id and move exceptions to the
+    right one (RENAMED). Returns the number of dropped rows."""
+    n = 0
+    for old, new in RENAMED.items():
+        n += db.query(OsLifecycle).filter(OsLifecycle.distro == old).delete(synchronize_session=False)
+        db.query(LifecycleOverride).filter(LifecycleOverride.distro == old) \
+            .update({LifecycleOverride.distro: new}, synchronize_session=False)
+    return n
+
+
 def startup():
     """App start: apply the seed (newest-wins) and compute every VM once."""
     from ..database import SessionLocal
     db = SessionLocal()
     try:
+        if apply_renames(db):
+            logger.info("Lifecycle: product ids renamed %s", RENAMED)
         res = ensure_seed(db)
         db.commit()
         if res["added"] or res["updated"]:

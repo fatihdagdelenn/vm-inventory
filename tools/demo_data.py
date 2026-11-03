@@ -235,6 +235,7 @@ LC = [  # name, host, guest_os, kernel, tools, power, booted, tags
     ("appliance-lb-01", east, "Other 3.x or later Linux (64-bit)", None, "guestToolsRunning", "running", True, []),
     ("old-tools-rhel7", east, "Red Hat Enterprise Linux 7 (64-bit)", None, "guestToolsRunning", "running", True, []),
     ("tmpl-new-ubuntu", east, "Ubuntu Linux (64-bit)", None, "guestToolsNotRunning", "stopped", False, []),
+    ("pentest-kali-01", east, "Kali GNU/Linux Rolling", "5.18.0-kali5-amd64", "guestToolsRunning", "running", True, []),
 ]
 for name, h, gos, kern, ts, st, booted, tg in LC:
     vmid += 1

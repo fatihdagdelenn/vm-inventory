@@ -30,6 +30,27 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 Phases not yet in a release (phase 152 →; internal v1.8.1 →).
 
+### 🐉 Rolling releases, Alpine, Photon id fix (phase 159)
+- **Rolling releases** (Kali, Arch, openSUSE Tumbleweed, Gentoo, Manjaro, Void)
+  have no release cycles, so "Kali GNU/Linux Rolling" with a running agent and a
+  kernel used to end as *unknown - release not identified*. They are now judged
+  by the **running kernel**: once its upstream series is out of support the
+  system has not been updated for a long time -> **EOL** (estimated), e.g.
+  kernel 5.18 -> EOL since 2022-08-21; a maintained series -> supported. Without
+  a kernel: unknown, "rolling release, how current cannot be measured". Kernel
+  support data comes from endoflife.date's `linux` product (now in the seed).
+- **Alpine Linux** is tracked (`Alpine Linux v3.20`).
+- **Fix:** endoflife.date names a product by its permalink - Photon OS is
+  `photon`, not `vmware-photon` (the data file's name), so the weekly sync would
+  have got 404 for it. The seed and identity use `photon`; rows stored under the
+  old id are dropped on startup and exceptions moved.
+- The "estimated" note in the tooltip now says what the estimate is based on
+  (VM settings name / running kernel / every possible release).
+- Seed: 18 products, 428 release cycles.
+- Honest limit: a rolling system on a maintained kernel series is shown as
+  supported even if its other packages are old - the kernel is the only
+  version signal the platforms report.
+
 ### 🛡️ OS lifecycle (EOL) tracking (phase 158)
 - **Identity** (`app/core/os_identity.py`): the stored OS name (+ kernel) is
   mapped to an [endoflife.date](https://endoflife.date) product and release

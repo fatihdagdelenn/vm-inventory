@@ -61,10 +61,20 @@ CASES = [
     ("Fedora Linux 40 (Server Edition)", None, "fedora", "40", H, "agent"),
     ("Amazon Linux 2023", None, "amazon-linux", "2023", H, "agent"),
     ("Amazon Linux 2", None, "amazon-linux", "2", H, "agent"),
-    ("VMware Photon OS/Linux", "6.1.126-5.ph5", "vmware-photon", "5.0", H, "kernel"),
-    ("VMware Photon OS/Linux", "5.10.252-4.ph4", "vmware-photon", "4.0", H, "kernel"),
-    ("VMware Photon OS 5.0", None, "vmware-photon", "5.0", H, "agent"),
-    ("VMware Photon OS (64-bit)", None, "vmware-photon", None, E, "catalog"),
+    ("VMware Photon OS/Linux", "6.1.126-5.ph5", "photon", "5.0", H, "kernel"),
+    ("VMware Photon OS/Linux", "5.10.252-4.ph4", "photon", "4.0", H, "kernel"),
+    ("VMware Photon OS 5.0", None, "photon", "5.0", H, "agent"),
+    ("VMware Photon OS (64-bit)", None, "photon", None, E, "catalog"),
+    # ---- rolling releases (no cycles; judged by the kernel - see test_lifecycle)
+    ("Kali GNU/Linux Rolling", "5.18.0-kali5-amd64", "kali-linux", None, H, "agent"),   # prod
+    ("Arch Linux", "6.11.5-arch1-1", "arch-linux", None, H, "agent"),
+    ("Archlinux", None, "arch-linux", None, E, "ostype"),                              # Proxmox LXC
+    ("openSUSE Tumbleweed", "6.11.3-1-default", "opensuse-tumbleweed", None, H, "agent"),
+    ("Gentoo Linux", None, "gentoo", None, H, "agent"),
+    ("Manjaro Linux", None, "manjaro", None, H, "agent"),
+    # ---- Alpine
+    ("Alpine Linux v3.20", None, "alpine-linux", "3.20", H, "agent"),
+    ("Alpine", None, "alpine-linux", None, E, "ostype"),
     # ---- FreeBSD
     ("FreeBSD 13.2-RELEASE-p4", "13.2-RELEASE-p4", "freebsd", "13.2", H, "agent"),
     ("FreeBSD 14.1-RELEASE", None, "freebsd", "14.1", H, "agent"),
@@ -119,6 +129,14 @@ assert identify("Microsoft Windows 10 Enterprise LTSC 2021", "NT 10.0.19044").cy
 assert identify("Microsoft Windows 10 IoT Enterprise LTSC 2021", "NT 10.0.19044").cycles()[0] == "10-21h2-iot-lts"
 assert identify("Ubuntu 24.04.2 LTS").cycles() == ["24.04"]
 assert identify("Ubuntu Linux (64-bit)").cycles() == []
+# rolling flag + kernel series
+from app.core.os_identity import kernel_cycle  # noqa: E402
+assert identify("Kali GNU/Linux Rolling", "5.18.0-kali5-amd64").rolling
+assert not identify("Ubuntu 24.04.2 LTS").rolling
+assert identify("Kali GNU/Linux Rolling").label == "Kali Linux (rolling)"
+assert kernel_cycle("5.18.0-kali5-amd64") == "5.18" and kernel_cycle("6.8.0-45-generic") == "6.8"
+assert kernel_cycle("NT 10.0.20348") is None and kernel_cycle("13.2-RELEASE-p4") is None
+assert kernel_cycle(None) is None and kernel_cycle("") is None
 # labels
 assert identify("Ubuntu 24.04.2 LTS").label == "Ubuntu 24.04"
 assert identify("Microsoft Windows Server 2012 R2 Standard").label == "Windows Server 2012 R2"

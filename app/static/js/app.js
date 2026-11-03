@@ -168,12 +168,19 @@ const App = {
       no_agent: [t('sp.r.noAgent', 'Agent / Tools çalışmıyor; sürüm tespit edilemedi')],
       tools_old: [t('sp.r.toolsOld', 'VMware Tools ayrıntılı OS bilgisi göndermiyor (11.2\'den eski)')],
       version_unknown: [t('sp.r.verUnknown', 'İşletim sistemi sürümü tespit edilemedi')],
+      rolling_kernel: [t('sp.r.rolling', 'Rolling release, sabit bitiş tarihi yok; güncel tutuldukça desteklenir. Çalışan çekirdeğin upstream desteği {d} tarihine kadar')],
+      rolling_kernel_eol: [t('sp.r.rollingEol', 'Rolling release, sabit bitiş tarihi yok; ama çalışan çekirdeğin upstream desteği {d} tarihinde bitti, yani sistem uzun süredir güncellenmemiş')],
+      rolling_no_kernel: [t('sp.r.rollingNoKernel', 'Rolling release, sabit bitiş tarihi yok; çekirdek sürümü bilinmediği için güncelliği ölçülemiyor')],
     }[v.support_reason] || [''];
     const parts = [];
     if (v.support_os) parts.push(v.support_os);
     if (R[0]) parts.push(R[0].replace('{d}', d || '?'));
-    if (v.support_confidence === 'estimated')
-      parts.push(t('sp.estimated', 'tahmini: VM ayarındaki / platformun önerdiği addan'));
+    if (v.support_confidence === 'estimated') {
+      const r = v.support_reason || '';
+      parts.push(r.startsWith('rolling') ? t('sp.estKernel', 'tahmini: çalışan çekirdekten')
+        : r === 'all_releases_eol' ? t('sp.estAll', 'tahmini: ürünün olası tüm sürümlerinden')
+        : t('sp.estimated', 'tahmini: VM ayarındaki / platformun önerdiği addan'));
+    }
     return parts.join(' · ');
   },
 

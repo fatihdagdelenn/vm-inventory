@@ -7,7 +7,9 @@ into an endoflife.date product + release cycle:
     "Red Hat Enterprise Linux 7 (64-bit)"             -> rhel 7               (estimated)
     "Microsoft Windows Server 2016 or later (64-bit)"
         + kernel "NT 10.0.20348.2582"                 -> windows-server 2022  (high, kernel)
-    "VMware Photon OS/Linux" + kernel "6.1.126-5.ph5" -> vmware-photon 5.0    (high, kernel)
+    "VMware Photon OS/Linux" + kernel "6.1.126-5.ph5" -> photon 5.0           (high, kernel)
+    "Kali GNU/Linux Rolling" + kernel "5.18.0-kali5"  -> kali-linux, rolling   (no cycles:
+        judged by the running kernel's upstream support - see kernel_cycle)
     "Other 2.6.x Linux (64-bit)"                      -> unknown
 
 `distro` is the endoflife.date product id and `version` its release-cycle id,
@@ -35,8 +37,21 @@ PRODUCT_NAMES = {
     "almalinux": "AlmaLinux", "oracle-linux": "Oracle Linux", "sles": "SLES",
     "opensuse": "openSUSE Leap", "fedora": "Fedora", "amazon-linux": "Amazon Linux",
     "windows-server": "Windows Server", "windows": "Windows",
-    "freebsd": "FreeBSD", "vmware-photon": "Photon OS",
+    "freebsd": "FreeBSD", "photon": "Photon OS", "alpine-linux": "Alpine Linux",
+    # rolling releases: no release cycles on endoflife.date
+    "kali-linux": "Kali Linux", "arch-linux": "Arch Linux",
+    "opensuse-tumbleweed": "openSUSE Tumbleweed", "gentoo": "Gentoo", "manjaro": "Manjaro",
+    "void-linux": "Void Linux",
+    "linux": "Linux kernel",
 }
+# endoflife.date product of the Linux kernel itself (used for rolling releases)
+KERNEL_PRODUCT = "linux"
+# Rolling releases (checked before the versioned rules): (product, pattern)
+_ROLLING = [
+    ("kali-linux", r"\bkali\b"), ("arch-linux", r"\barch\s*linux\b|\barchlinux\b"),
+    ("opensuse-tumbleweed", r"tumbleweed"), ("gentoo", r"\bgentoo\b"),
+    ("manjaro", r"\bmanjaro\b"), ("void-linux", r"\bvoid\s+linux\b"),
+]
 RHEL_FAMILY = ("rhel", "centos", "rocky-linux", "almalinux", "oracle-linux")
 
 
@@ -48,6 +63,7 @@ class OsIdentity:
     source: str                 # agent | catalog | ostype | kernel | none
     edition: Optional[str] = None   # Windows client cycle suffix: w | e | e-lts | iot-lts
     prefix: Optional[str] = None    # Windows client without a build: "10-" / "11-"
+    rolling: bool = False           # rolling release: no cycles, judged by its kernel
 
     @property
     def label(self) -> str:
@@ -55,6 +71,8 @@ class OsIdentity:
         if not self.distro:
             return ""
         name = PRODUCT_NAMES.get(self.distro, self.distro)
+        if self.rolling:
+            return f"{name} (rolling)"
         if not self.version:
             return name
         v = self.version
@@ -188,7 +206,8 @@ _LINUX_RULES = [
     ("fedora", r"fedora(?:\s+linux)?\s*(\d+)", lambda m: m.group(1)),
     ("amazon-linux", r"amazon\s+linux(?:\s+ami)?\s*(2023|2018\.03|2017\.09|2\b)", lambda m: m.group(1)),
     ("freebsd", r"freebsd\s*(\d+)(?:\.(\d+))?", lambda m: m.group(1) + (f".{m.group(2)}" if m.group(2) else "")),
-    ("vmware-photon", r"photon\s*(?:os)?\s*(\d+)(?:\.(\d+))?", lambda m: f"{m.group(1)}.{m.group(2) or 0}"),
+    ("photon", r"photon\s*(?:os)?\s*(\d+)(?:\.(\d+))?", lambda m: f"{m.group(1)}.{m.group(2) or 0}"),
+    ("alpine-linux", r"alpine(?:\s+linux)?\s+v?(\d+\.\d+)", lambda m: m.group(1)),
 ]
 # Name without a version -> product only
 _PRODUCT_ONLY = [
@@ -197,8 +216,19 @@ _PRODUCT_ONLY = [
     ("rhel", r"red\s*hat\s+enterprise\s+linux|\brhel\b"), ("ubuntu", r"ubuntu"),
     ("debian", r"debian"), ("opensuse", r"opensuse"), ("sles", r"suse\s+linux\s+enterprise|\bsles\b"),
     ("fedora", r"fedora"), ("amazon-linux", r"amazon\s+linux"), ("freebsd", r"freebsd"),
-    ("vmware-photon", r"photon"),
+    ("photon", r"photon"), ("alpine-linux", r"\balpine\b"),
 ]
+
+
+def kernel_cycle(kernel: Optional[str]) -> Optional[str]:
+    """Upstream Linux kernel series of a kernel release string:
+    '5.18.0-kali5-amd64' -> '5.18', '6.8.0-45-generic' -> '6.8'.
+    None for Windows ('NT ...') and FreeBSD ('13.2-RELEASE') strings."""
+    k = (kernel or "").strip()
+    if not k or k.upper().startswith("NT ") or re.search(r"-(release|stable|rc|current)", k, re.I):
+        return None
+    m = re.match(r"(\d+)\.(\d+)", k)
+    return f"{m.group(1)}.{m.group(2)}" if m else None
 
 
 def identify(guest_os: Optional[str], kernel: Optional[str] = None) -> OsIdentity:
@@ -224,6 +254,10 @@ def identify(guest_os: Optional[str], kernel: Optional[str] = None) -> OsIdentit
             m = re.search(r"windows\s*(10|11)\b", low)
             prefix = f"{m.group(1)}-" if m else None
         return OsIdentity(distro, ver, conf, source, edition, prefix)
+
+    for product, pattern in _ROLLING:
+        if re.search(pattern, low):
+            return OsIdentity(product, None, conf, source, rolling=True)
 
     distro = ver = None
     if not re.search(r"\d+\s*/\s*\d+", low):          # "CentOS 4/5": two releases, no version
@@ -254,7 +288,7 @@ def identify(guest_os: Optional[str], kernel: Optional[str] = None) -> OsIdentit
         if conf != "high":
             return OsIdentity(distro, ver, "high", "kernel")
     km = re.search(r"\.ph(\d+)\b", k)
-    if km and distro == "vmware-photon" and not ver:
+    if km and distro == "photon" and not ver:
         return OsIdentity(distro, f"{km.group(1)}.0", "high", "kernel")
     km = re.match(r"(\d+)\.(\d+)-(?:release|stable|rc)", k)
     if km and distro == "freebsd" and (not ver or "." not in ver):

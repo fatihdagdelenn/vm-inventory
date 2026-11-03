@@ -33,8 +33,17 @@ r2 = ls.ensure_seed(db); db.commit()
 assert r2["added"] == 0 and r2["updated"] == 0 and r2["kept"] == r1["added"], r2
 u2404 = db.query(OsLifecycle).filter_by(distro="ubuntu", version="24.04").one()
 assert u2404.eol_standard == date(2029, 5, 31) and u2404.eol_extended == date(2034, 4, 25)
-assert db.query(OsLifecycle).filter_by(distro="vmware-photon", version="5.0").one().eol_standard is None
+assert db.query(OsLifecycle).filter_by(distro="photon", version="5.0").one().eol_standard is None
 print("1) seed ok")
+
+# renamed product id (vmware-photon -> photon): old rows dropped, exceptions moved
+db.add(OsLifecycle(distro="vmware-photon", version="5.0", source="seed", updated_at=datetime(2026, 1, 1)))
+db.add(LifecycleOverride(scope="all", distro="vmware-photon", extended=True)); db.commit()
+assert ls.apply_renames(db) == 1; db.commit()
+assert db.query(OsLifecycle).filter_by(distro="vmware-photon").count() == 0
+assert db.query(LifecycleOverride).one().distro == "photon"
+db.query(LifecycleOverride).delete(); db.commit()
+assert db.query(OsLifecycle).filter_by(distro="linux", version="5.18").one().eol_standard == date(2022, 8, 21)
 
 # ------------------------------------------------------------ 2) import / newest wins
 v1 = {"schema_version": "1.2.0", "generated_at": "2027-01-01T00:00:00+00:00",
@@ -105,6 +114,15 @@ s = st(ph5)
 assert s[0] == "supported" and s[1] is None and s[2] == "no_end_date" and s[3] == "Photon OS 5.0"
 w12 = vm("Microsoft Windows Server 2012 R2 Standard")
 assert st(w12)[:3] == ("eol", date(2023, 10, 10), "ended")              # ESU ended 2026-10-13
+# rolling releases: judged by the running kernel's upstream support
+kali = vm("Kali GNU/Linux Rolling", "5.18.0-kali5-amd64")                    # prod case
+s = st(kali)
+assert s[:3] == ("eol", date(2022, 8, 21), "rolling_kernel_eol") and s[4] == "estimated", s
+assert s[3] == "Kali Linux (rolling) · kernel 5.18", s
+arch = vm("Arch Linux", "6.12.10-arch1-1")
+assert st(arch)[:3] == ("supported", date(2028, 12, 31), "rolling_kernel"), st(arch)
+assert st(vm("Kali GNU/Linux Rolling"))[:3] == ("unknown", None, "rolling_no_kernel")
+assert st(vm("Alpine Linux v3.20"))[0] in ("supported", "soon", "eol")        # versioned, not rolling
 # release unknown, but every possible release is past EOL
 c45 = vm("CentOS 4/5 (64-bit)")
 s = st(c45)
@@ -195,7 +213,7 @@ assert "ConnectionError" in m["last_error"] and m["last_sync"] is None and m["cy
 
 class Resp:
     def __init__(self, url):
-        self.status_code = 404 if url.endswith("/vmware-photon") else 200
+        self.status_code = 404 if url.endswith("/photon") else 200
         self.url = url
 
     def raise_for_status(self):
@@ -210,7 +228,7 @@ class Resp:
 requests.get = lambda url, **kw: Resp(url)
 res = ls.sync_from_api(db)
 requests.get = _orig
-assert res["ok"] and "vmware-photon" not in res["products"] and len(res["products"]) == len(ls.PRODUCTS) - 1
+assert res["ok"] and "photon" not in res["products"] and len(res["products"]) == len(ls.PRODUCTS) - 1
 assert ls.meta(db)["last_error"] is None and ls.meta(db)["last_sync"]
 assert db.query(OsLifecycle).filter_by(distro="debian", version="1").one().source == "endoflife.date"
 print("7) endoflife.date sync offline / online ok")

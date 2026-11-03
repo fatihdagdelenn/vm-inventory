@@ -50,7 +50,9 @@ def lifecycle_status(db: Session = Depends(get_db),
                   .group_by(func.coalesce(VirtualMachine.support_status, "unknown")).all())
     return {"meta": ls.meta(db), "products": products,
             "counts": {s: counts.get(s, 0) for s in ls.STATUSES},
-            "product_names": PRODUCT_NAMES}
+            # exceptions can target only products that have release data
+            "product_names": {k: PRODUCT_NAMES.get(k, k) for k in ls.PRODUCTS
+                              if k != "linux"}}
 
 
 @router.post("/sync")
