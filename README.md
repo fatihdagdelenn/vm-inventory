@@ -354,7 +354,7 @@ Tracked: **hardware** (vCPU, RAM, OS type), **disk & storage** (size, datastore)
 | `kernel:` | `kernel:5.14` `kernel:NT` | Kernel (partial): Linux / FreeBSD kernel release, Windows NT version (`NT 10.0.20348.2582`). Needs VMware Tools 11.2+ or the QEMU agent; empty otherwise |
 | `osfam:` | `osfam:windows,linux` `osfam:redhat` | OS family (same as the dashboard pie): `windows` `linux` `ubuntu` `debian` `redhat` `suse` `otherlinux` `bsd` `vmware` `macos` `other` |
 | `status:` | `status:running,stopped` | running / stopped / suspended |
-| `tools:` / `agent:` | `tools:none` | `running` = running; `none` = not installed or not running |
+| `tools:` / `agent:` | `tools:none` `tools:passive` | `running` = running; `passive` = installed but not running (VMware); `none` = not installed or not running |
 | `host:` / `node:` | `host:esx01` | ESXi host / Proxmox node |
 | `cluster:` / `datastore:` | `cluster:"DC East"` `cluster:=Lab` | Quote values with spaces. A value starting with `=` is an exact match (`cluster:=Lab` does not find Lab2); `=` alone means empty (`cluster:=` = VMs without a cluster, `cluster:=,=Lab` both). A query containing `cluster:` also searches hidden clusters |
 | `pool:` / `folder:` | `pool:Prod` | Resource pool (vCenter) / pool (Proxmox); VM folder (vCenter only) |

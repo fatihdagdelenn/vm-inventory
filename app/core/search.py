@@ -127,6 +127,14 @@ def parse_query(q: str):
     return fields, free_text
 
 
+def _split_values(value: str):
+    """Comma-separated OR parts. An exact list ('=a,=b') splits only at commas
+    followed by '=', so an exact value may itself contain a comma
+    (os:"=Windows Server 2022, 64-bit (Build 20348)")."""
+    pat = r",(?=\s*=)" if value.lstrip().startswith("=") else ","
+    return [p.strip() for p in re.split(pat, value) if p.strip()]
+
+
 def _ilike_or(column, value: str):
     """Build an OR'ed condition for comma-separated values.
 
@@ -139,7 +147,7 @@ def _ilike_or(column, value: str):
         if p.startswith("="):
             return func.lower(func.coalesce(column, "")) == p[1:].lower()
         return _like(column, f"%{p}%")
-    parts = [p.strip() for p in value.split(",") if p.strip()]
+    parts = _split_values(value)
     return or_(*[one(p) for p in parts]) if parts else None
 
 
@@ -212,6 +220,11 @@ def _field_condition(field: str, value: str):
         return or_(*[_like(VirtualMachine.power_state, f"%{p}%") for p in parts])
     if field in ("tools", "agent"):
         def _tools_one(part):
+            if part in ("passive", "pasif", "stopped"):
+                # Installed but not running - the "Passive" badge; only vCenter
+                # can tell installed-but-stopped apart (see api/vms._agent_state)
+                return and_(_like(VirtualMachine.tools_status, "%NotRunning%"),
+                            VirtualMachine.platform.has(Platform.type == "vcenter"))
             if part in ("yok", "notrunning", "kapali", "kapalı", "none"):
                 # Agent/Tools not installed: NotRunning, unknown or empty
                 return or_(_like(VirtualMachine.tools_status, "%NotRunning%"),
@@ -223,8 +236,10 @@ def _field_condition(field: str, value: str):
         return or_(*[_tools_one(p) for p in parts]) if parts else None
     if field == "os":
         conds = []
-        for part in (p.strip().lower() for p in value.split(",") if p.strip()):
-            if part in OS_ALIASES:      # family search: match all distro names
+        for part in (p.lower() for p in _split_values(value)):
+            if part.startswith("="):    # exact OS name (table cell click)
+                conds.append(_ilike_or(VirtualMachine.guest_os, part))
+            elif part in OS_ALIASES:      # family search: match all distro names
                 conds.append(or_(*[_like(VirtualMachine.guest_os, f"%{a}%")
                                    for a in OS_ALIASES[part]]))
             else:

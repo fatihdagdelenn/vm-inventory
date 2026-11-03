@@ -492,6 +492,43 @@ th.sorted-asc::after  { content: " ▲"; color: var(--accent); font-size: .65rem
 th.sorted-desc::after { content: " ▼"; color: var(--accent); font-size: .65rem; }
 
 /* Hücreden filtreleme */
+/* ---------- VM table: own scroll box, sticky header + name, resizable
+   columns, click-to-filter cells (phase 157) ---------- */
+.vm-scroll { overflow: auto; overscroll-behavior: contain; }
+/* One line per row: with its own horizontal scroll the table can grow instead
+   of wrapping names / hosts / OS into ragged multi-line rows. Narrow a column
+   by dragging its edge - long values are then cut with an ellipsis. */
+.vm-scroll #vmTable td { white-space: nowrap; }
+.vm-scroll #vmTable thead th {
+  position: sticky; top: 0; z-index: 3;
+  background: #fafbfd; box-shadow: inset 0 -2px 0 var(--border);
+}
+html.theme-dark .vm-scroll #vmTable thead th { background: #151f32; }
+.vm-scroll #vmTable [data-col="name"] {
+  position: sticky; left: 0; z-index: 2; background-color: var(--panel);
+  box-shadow: inset -1px 0 0 var(--border);
+}
+.vm-scroll #vmTable thead th[data-col="name"] { z-index: 4; }
+html.theme-dark .vm-scroll #vmTable tbody [data-col="name"] { background-color: #151f32; }
+.vm-scroll #vmTable tbody tr:hover > [data-col="name"] { box-shadow: inset -1px 0 0 var(--border), inset 0 0 0 9999px var(--bs-table-hover-bg); }
+/* Handle stays INSIDE its header: the next (sticky) header is painted on top
+   of anything that sticks out, so an overhanging handle would not get the drag. */
+#vmTable thead th .col-resizer {
+  position: absolute; top: 0; right: 0; width: 8px; height: 100%;
+  cursor: col-resize; z-index: 5; touch-action: none;
+}
+#vmTable thead th .col-resizer::after {
+  content: ""; position: absolute; top: 25%; bottom: 25%; right: 0; width: 1px;
+  background: var(--border); transition: background .12s;
+}
+#vmTable thead th:hover .col-resizer::after { background: var(--text-muted); }
+#vmTable thead th .col-resizer:hover::after,
+body.col-resizing #vmTable thead th .col-resizer::after { background: var(--accent); width: 2px; }
+body.col-resizing { cursor: col-resize; user-select: none; }
+#vmTable.cols-fixed th, #vmTable.cols-fixed td { overflow: hidden; text-overflow: ellipsis; }
+#vmTable tbody td[data-ff] { cursor: pointer; }
+#vmTable tbody td[data-ff]:hover { color: var(--accent); }
+#vmTable tbody td[data-ff]:hover .badge { box-shadow: 0 0 0 2px var(--accent-soft); }
 .cell-filter { cursor: pointer; }
 .cell-filter:hover { color: var(--accent); text-decoration: underline dotted; }
 

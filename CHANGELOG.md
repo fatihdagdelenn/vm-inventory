@@ -30,6 +30,36 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 Phases not yet in a release (phase 152 →; internal v1.8.1 →).
 
+### ↔️ Virtual Machines table: scroll, resize, click-to-filter (phase 157)
+- **Horizontal scroll is always on screen.** The table now scrolls inside its
+  own box sized to the window; before, the horizontal scrollbar sat below all
+  50 rows and looked missing once more columns were shown. The **header row and
+  the VM name column stay in place** while scrolling. Rows stay on one line
+  (no more ragged two-line host / OS / name cells).
+- **Resizable columns:** drag a header's right edge; double-click it for the
+  automatic width; **Columns → Reset column widths** restores all. A column can
+  also be made narrower than its content (cut with "…"). Widths are remembered
+  in the browser, like the column chooser; only the columns you dragged are
+  fixed, the rest keep sizing to their content.
+- **Click a cell to filter:** Agent (Active / Passive / None), Operating
+  System, Kernel, Platform, Status, CPU and RAM join Host / Cluster / Pool /
+  Folder / VLAN. Click = only that value (exact for OS / kernel / cluster),
+  clicking the same value again removes the filter, **Shift+click excludes** it.
+  The row's other cells still open the detail panel.
+- New search value `tools:passive` (`pasif`, `stopped`): Tools installed but not
+  running - the "Passive" badge (vCenter). The "None" badge filters
+  `tools:none -tools:passive`. `tools:none` keeps its documented meaning.
+- Search: `os:` accepts exact values (`os:"=Ubuntu 24.04.1 LTS"`), and an exact
+  value may contain a comma (`os:"=Windows Server 2022, 64-bit (Build …)"`) -
+  exact lists split only at `,=`.
+- Fix: table cell filters were inline `onclick` code with the value pasted in,
+  so a name with an apostrophe broke the click; cells now carry data attributes.
+- Fix: the column-resize handle of each header sat half under the next header.
+- Tests: new `tests/test_vm_cell_filters.py` (every cell token returns exactly
+  the VMs showing that value, incl. comma OS names and the three agent badges).
+- Honest limits: column widths are per browser (not per account); the PDF
+  export still uses its own fixed layout.
+
 ### 🪟 Kernel for Windows and non-Linux guests (phase 156)
 - **Windows** now shows its **NT kernel version** instead of an empty cell:
   VMware `NT 10.0.20348.2582` (NT version + build + update revision from the

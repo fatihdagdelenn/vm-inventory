@@ -97,12 +97,12 @@ const VMs = {
               '<span class="badge text-bg-light border me-1">' + App.esc(tg.name) + '</span>').join('') + '</small>' : '') + '</td>' +
           '<td data-col="vmid" class="small text-muted text-nowrap">' + App.esc(v.vmid || '—') + '</td>' +
           '<td data-col="ip" class="text-nowrap small">' + App.ipHtml(v) + '</td>' +
-          '<td data-col="guest_os" class="small">' + App.esc(v.guest_os || '—') + '</td>' +
-          '<td data-col="kernel" class="small text-muted text-nowrap">' + App.esc(v.kernel || '—') + '</td>' +
-          '<td data-col="platform" class="small text-nowrap">' + VMs.platformCell(v.platform_type) + '</td>' +
-          '<td data-col="agent" class="text-nowrap">' + VMs.agentCell(v.agent_state) + '</td>' +
-          '<td data-col="cpu">' + (v.cpu_count || '—') + VMs.usageMini(v.cpu_usage_pct) + '</td>' +
-          '<td data-col="ram">' + App.fmtRam(v.ram_mb) +
+          '<td data-col="guest_os" class="small"' + VMs.ff('os', v.guest_os && '=' + v.guest_os) + '>' + App.esc(v.guest_os || '—') + '</td>' +
+          '<td data-col="kernel" class="small text-muted text-nowrap"' + VMs.ff('kernel', v.kernel && '=' + v.kernel) + '>' + App.esc(v.kernel || '—') + '</td>' +
+          '<td data-col="platform" class="small text-nowrap"' + VMs.ff('type', v.platform_type) + '>' + VMs.platformCell(v.platform_type) + '</td>' +
+          '<td data-col="agent" class="text-nowrap"' + VMs.ff('agent', v.agent_state) + '>' + VMs.agentCell(v.agent_state) + '</td>' +
+          '<td data-col="cpu"' + VMs.ff('cpu', v.cpu_count) + '>' + (v.cpu_count || '—') + VMs.usageMini(v.cpu_usage_pct) + '</td>' +
+          '<td data-col="ram"' + VMs.ff('ram', v.ram_mb && VMs.ramGb(v.ram_mb)) + '>' + App.fmtRam(v.ram_mb) +
             VMs.usageMini(v.ram_mb ? 100 * (v.ram_usage_mb || 0) / v.ram_mb : null,
                           v.ram_usage_mb) + '</td>' +
           '<td data-col="disk"><div class="disk-cell">' +
@@ -116,20 +116,21 @@ const VMs = {
             VMs.usageMini(v.disk_total_gb ? 100 * (v.disk_used_gb || 0) / v.disk_total_gb : null,
                           null, v.disk_used_gb) +
           '</div></td>' +
-          '<td data-col="host" class="small cell-filter" onclick="VMs.cellFilter(event,\'host\',\'' + App.esc(v.host || '') + '\')" title="' + t('vm.filterByHost','Bu host\'a göre filtrele') + '">' + App.esc(v.host || '—') + '</td>' +
-          '<td data-col="cluster" class="small cell-filter" onclick="VMs.cellFilter(event,\'cluster\',\'' + App.esc(v.cluster || '') + '\')" title="' + t('vm.filterByCluster','Bu cluster\'a göre filtrele') + '">' + App.esc(v.cluster || '—') + '</td>' +
-          '<td data-col="pool" class="small cell-filter" onclick="VMs.cellFilter(event,\'pool\',\'' + App.esc(v.pool || '') + '\')" title="' + t('vm.filterByPool','Bu pool\'a göre filtrele') + '">' + App.esc(v.pool || '—') + '</td>' +
-          '<td data-col="folder" class="small cell-filter" onclick="VMs.cellFilter(event,\'folder\',\'' + App.esc(v.folder || '') + '\')" title="' + t('vm.filterByFolder','Bu klasöre göre filtrele') + '">' + App.esc(v.folder || '—') + '</td>' +
-          '<td data-col="vlan" class="cell-filter" onclick="VMs.cellFilter(event,\'vlan\',\'' + App.esc((v.vlans || '').split(',')[0]) + '\')" title="' + t('vm.filterByVlan','Bu VLAN\'a göre filtrele') + '">' + App.esc(v.vlans || '—') + '</td>' +
+          '<td data-col="host" class="small"' + VMs.ff('host', v.host) + '>' + App.esc(v.host || '—') + '</td>' +
+          '<td data-col="cluster" class="small"' + VMs.ff('cluster', v.cluster && '=' + v.cluster) + '>' + App.esc(v.cluster || '—') + '</td>' +
+          '<td data-col="pool" class="small"' + VMs.ff('pool', v.pool) + '>' + App.esc(v.pool || '—') + '</td>' +
+          '<td data-col="folder" class="small"' + VMs.ff('folder', v.folder) + '>' + App.esc(v.folder || '—') + '</td>' +
+          '<td data-col="vlan"' + VMs.ff('vlan', (v.vlans || '').split(',')[0]) + '>' + App.esc(v.vlans || '—') + '</td>' +
           '<td data-col="ptags" class="small">' + (v.platform_tags
             ? v.platform_tags.split(',').map(tg => tg.trim()).filter(Boolean).map(tg =>
                 '<span class="badge bg-info-subtle text-info-emphasis border me-1">' + App.esc(tg) + '</span>').join('')
             : '—') + '</td>' +
-          '<td data-col="power_state">' + App.stateBadge(v.power_state) + '</td>' +
+          '<td data-col="power_state"' + VMs.ff('status', v.power_state) + '>' + App.stateBadge(v.power_state) + '</td>' +
           '<td data-col="uptime" class="small text-nowrap">' + App.fmtUptime(v.last_boot) + '</td></tr>';
       }).join('');
     }
     VMs.applyCols();
+    VMs.fitScroll();
     document.getElementById('vmCount').textContent =
       VMs.total + ' VM — ' + t('vm.page','sayfa') + ' ' + data.page + '/' + Math.max(1, Math.ceil(VMs.total / VMs.perPage));
     VMs.renderPager(data.page);
@@ -589,7 +590,7 @@ const VMs = {
         F(['kernel', 'cekirdek'], 'kernel:5.14', t('vh.f.kernel', 'Çekirdek sürümü (kısmi). Linux/FreeBSD: kernel sürümü; Windows: NT sürümü (NT 10.0.20348…). Eski Tools / agent yoksa boştur.')),
         F(['osfam', 'osailesi'], 'osfam:redhat', t('vh.f.osfam', 'OS ailesi — dashboard pastasıyla aynı sınıflandırma. Değerler aşağıda.')),
         F(['status'], 'status:running', t('vh.f.status', 'Güç durumu: running, stopped, suspended (TR: çalışan, kapalı, askıda).')),
-        F(['tools', 'agent'], 'tools:' + QF_NONE, t('vh.f.tools', 'VMware Tools / QEMU Agent: running = çalışıyor; yok = kurulu değil veya çalışmıyor.')),
+        F(['tools', 'agent'], 'tools:' + QF_NONE, t('vh.f.tools', 'VMware Tools / QEMU Agent: running = çalışıyor; pasif = kurulu ama çalışmıyor (VMware); yok = kurulu değil veya çalışmıyor.')),
       ]],
       [t('vh.g.infra', 'Altyapı ve platform'), [
         F(['host', 'node'], 'host:esx01', t('vh.f.host', 'Bağlı ESXi host / Proxmox node. host:yok = host\'u bilinmeyen.')),
@@ -856,6 +857,7 @@ const VMs = {
       document.querySelectorAll('#vmTable [data-col="' + c.id + '"]')
         .forEach(el => { el.style.display = show ? '' : 'none'; });
     });
+    this.applyWidths();
   },
 
   /** Menüyü kur (her kolon için onay kutusu). */
@@ -868,7 +870,10 @@ const VMs = {
         '<input class="form-check-input" type="checkbox" id="col_' + c.id + '" ' +
           (hidden.has(c.id) ? '' : 'checked') + ' onchange="VMs.toggleCol(\'' + c.id + '\', this.checked)">' +
         '<label class="form-check-label small" for="col_' + c.id + '">' + c.label + '</label>' +
-      '</div>').join('');
+      '</div>').join('') +
+      '<div class="dropdown-divider"></div>' +
+      '<button type="button" class="btn btn-link btn-sm p-0 small" onclick="VMs.resetWidths()">' +
+        '<i class="bi bi-arrows-angle-contract"></i> ' + t('vm.colResetWidths', 'Sütun genişliklerini sıfırla') + '</button>';
   },
 
   /** Bir kolonu aç/kapat, kaydet, uygula. */
@@ -879,10 +884,166 @@ const VMs = {
     this.applyCols();
   },
 
+  /* ---------- Click-to-filter table cells (phase 157) ----------
+   * Cells carry data-ff (field) / data-fv (value) instead of inline onclick
+   * code, so a value with quotes or commas can never break the handler.
+   * Click = filter by that value (clicking the same value again removes it),
+   * Shift+click = exclude it. Same tokens as the quick-filter menus. */
+  ff(field, value) {
+    if (value === null || value === undefined || value === '' || value === false) return '';
+    return ' data-ff="' + field + '" data-fv="' + App.esc(String(value)) + '" title="' +
+      App.esc(t('vm.cellFilterTip', 'Bu değere göre filtrele · Shift: hariç tut')) + '"';
+  },
+
+  /** RAM in GB for ram: (stored MB) - '16', '0.5'. */
+  ramGb(mb) { return String(Math.round(mb / 1024 * 100) / 100); },
+
+  /** Search tokens a cell stands for. Agent badges map to the tools: field:
+   *  Active = running, Passive = installed but stopped (vCenter), None =
+   *  not installed (tools:none also covers passive, so it is excluded). */
+  cellTokens(field, value, neg) {
+    const q = v => (/[\s"]/.test(v) ? '"' + v.replace(/"/g, '') + '"' : v);
+    const m = neg ? '-' : '';
+    if (field === 'agent') {
+      const f = 'tools';
+      if (value === 'running') return {f, toks: [m + f + ':running']};
+      if (value === 'stopped') return {f, toks: [m + f + ':passive']};
+      return {f, toks: neg ? ['-' + f + ':none'] : [f + ':none', '-' + f + ':passive']};
+    }
+    return {f: field, toks: [m + field + ':' + q(value)]};
+  },
+
   cellFilter(event, field, value) {
-    event.stopPropagation();    // satırın detay açmasını önle
+    event.stopPropagation();    // keep the row from opening the detail panel
     if (!value || value === '—') return;
-    VMs.setToken(field, field === 'cluster' ? '=' + value : value);   // cluster: tam eşleşme
+    const {f, toks} = VMs.cellTokens(field, value, event.shiftKey);
+    const input = document.getElementById('vmSearch');
+    const cur = ' ' + input.value + ' ';
+    const already = toks.every(tk => cur.includes(' ' + tk + ' '));
+    const re = new RegExp('(^|\\s)-?' + f + ':("[^"]*"|\\S+)', 'gi');
+    let q = input.value.replace(re, ' ').replace(/\s+/g, ' ').trim();
+    if (!already) q = (q + ' ' + toks.join(' ')).trim();
+    input.value = q;
+    VMs.q = q; VMs.page = 1;
+    VMs.updateAdvCount();
+    VMs.load();
+  },
+
+  /* ---------- Scroll area + column widths (phase 157) ---------- */
+
+  /** The table scrolls inside its own box sized to the window, so the
+   *  horizontal scrollbar is always on screen (it used to sit below 50 rows)
+   *  and the sticky header / VM name column stay visible while scrolling. */
+  fitScroll() {
+    const box = document.getElementById('vmScroll');
+    if (!box) return;
+    const top = box.getBoundingClientRect().top + window.scrollY;
+    const pager = document.getElementById('vmPager');
+    const foot = pager && pager.closest('.card-footer');
+    const reserve = (foot ? foot.offsetHeight : 0) + 24;
+    box.style.maxHeight = Math.max(340, window.innerHeight - top - reserve) + 'px';
+  },
+
+  WIDTH_KEY: 'vmColWidths',
+  widths() {
+    try { return JSON.parse(localStorage.getItem(this.WIDTH_KEY) || '{}') || {}; }
+    catch (e) { return {}; }
+  },
+  saveWidths(w) {
+    try {
+      if (Object.keys(w).length) localStorage.setItem(this.WIDTH_KEY, JSON.stringify(w));
+      else localStorage.removeItem(this.WIDTH_KEY);
+    } catch (e) { /* ignore */ }
+  },
+
+  /** Apply saved widths. Without any saved width the table keeps its natural
+   *  (auto) layout. Otherwise every visible column gets a fixed width - the
+   *  saved one, or its natural width measured first - so a column can also be
+   *  made NARROWER than its content (text is cut with an ellipsis). */
+  applyWidths() {
+    const table = document.getElementById('vmTable');
+    if (!table) return;
+    const w = VMs.widths();
+    const ths = [...table.querySelectorAll('thead th[data-col]')];
+    ths.forEach(th => { th.style.width = ''; });
+    table.style.width = ''; table.style.tableLayout = '';
+    table.classList.remove('cols-fixed');
+    if (!Object.keys(w).length) return;
+    const vis = ths.filter(th => th.style.display !== 'none');
+    const natural = vis.map(th => th.getBoundingClientRect().width);
+    let total = 0;
+    vis.forEach((th, i) => {
+      // ceil: rounding a sub-pixel natural width down cuts the header text
+      const px = w[th.dataset.col] ? Math.round(w[th.dataset.col]) : Math.ceil(natural[i]) + 1;
+      th.style.width = px + 'px'; total += px;
+    });
+    table.style.width = total + 'px';
+    table.style.tableLayout = 'fixed';
+    table.classList.add('cols-fixed');
+  },
+
+  resetWidths() {
+    VMs.saveWidths({});
+    VMs.applyWidths();
+  },
+
+  /** Drag handle on every header's right edge; double-click = auto width. */
+  initResizers() {
+    document.querySelectorAll('#vmTable thead th[data-col]').forEach(th => {
+      if (th.querySelector('.col-resizer')) return;
+      // Keep the translated label in its own span: I18N.apply rewrites the
+      // textContent of [data-i18n] elements and would drop the handle.
+      if (th.dataset.i18n) {
+        const sp = document.createElement('span');
+        sp.dataset.i18n = th.dataset.i18n;
+        if (th.dataset.i18nOrig !== undefined) sp.dataset.i18nOrig = th.dataset.i18nOrig;
+        sp.textContent = th.textContent;
+        delete th.dataset.i18n;
+        th.textContent = '';
+        th.appendChild(sp);
+      }
+      const h = document.createElement('span');
+      h.className = 'col-resizer';
+      h.title = t('vm.colResize', 'Sürükle: genişlik · Çift tık: otomatik');
+      th.appendChild(h);
+      h.addEventListener('click', e => e.stopPropagation());
+      h.addEventListener('dblclick', e => {
+        e.stopPropagation();
+        const w = VMs.widths(); delete w[th.dataset.col]; VMs.saveWidths(w);
+        VMs.applyWidths();
+      });
+      h.addEventListener('pointerdown', e => {
+        e.preventDefault(); e.stopPropagation();
+        // Freeze the current layout (fixed widths) so only this column moves;
+        // only the dragged column is saved - the others keep sizing to content.
+        const startW = th.getBoundingClientRect().width;
+        const w = VMs.widths();
+        w[th.dataset.col] = Math.round(startW);
+        VMs.saveWidths(w); VMs.applyWidths();
+        const startX = e.clientX;
+        const table = document.getElementById('vmTable');
+        const startT = table.getBoundingClientRect().width;
+        h.setPointerCapture(e.pointerId);
+        document.body.classList.add('col-resizing');
+        const move = ev => {
+          const nw = Math.max(48, Math.round(startW + ev.clientX - startX));
+          th.style.width = nw + 'px';
+          table.style.width = Math.round(startT - startW + nw) + 'px';
+        };
+        const up = () => {
+          h.removeEventListener('pointermove', move);
+          h.removeEventListener('pointerup', up);
+          document.body.classList.remove('col-resizing');
+          const w2 = VMs.widths();
+          w2[th.dataset.col] = Math.round(th.getBoundingClientRect().width);
+          VMs.saveWidths(w2);
+          VMs._justResized = true;            // swallow the click that follows
+          setTimeout(() => { VMs._justResized = false; }, 0);
+        };
+        h.addEventListener('pointermove', move);
+        h.addEventListener('pointerup', up);
+      });
+    });
   },
 };
 
@@ -973,10 +1134,20 @@ const VMs = {
   });
   VMs.loadFacets();
 
+  // Click-to-filter cells: capture phase, so it runs BEFORE the row's own
+  // onclick (open detail) and can stop it.
+  document.getElementById('vmBody').addEventListener('click', e => {
+    const c = e.target.closest('[data-ff]');
+    if (c) VMs.cellFilter(e, c.dataset.ff, c.dataset.fv);
+  }, true);
+
   // Sıralanabilir başlıklar
+  VMs.initResizers();
+  window.addEventListener('resize', App.debounce(() => VMs.fitScroll(), 150));
   document.querySelectorAll('#vmTable th.sortable').forEach(th => {
     th.style.cursor = 'pointer';
     th.addEventListener('click', () => {
+      if (VMs._justResized) return;       // end of a column drag, not a sort
       const col = th.dataset.sort;
       if (VMs.sort === col) VMs.order = VMs.order === 'asc' ? 'desc' : 'asc';
       else { VMs.sort = col; VMs.order = 'asc'; }
@@ -989,6 +1160,7 @@ const VMs = {
 
   VMs.buildColChooser();
   VMs.applyCols();
+  VMs.fitScroll();
 
   VMs.load();
 })();

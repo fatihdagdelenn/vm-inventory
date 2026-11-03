@@ -371,7 +371,7 @@ yazılır. Mevcut konsol kayıtları aynı ekrandaki butonla toplu silinebilir.
 | `kernel:` / `cekirdek:` | `kernel:5.14` `kernel:NT` | Çekirdek (kısmi): Linux / FreeBSD kernel sürümü, Windows NT sürümü (`NT 10.0.20348.2582`). VMware Tools 11.2+ veya QEMU agent gerekir; yoksa boş |
 | `osfam:` | `osfam:windows,linux` `osfam:redhat` | OS ailesi (dashboard pastasıyla aynı): `windows` `linux` `ubuntu` `debian` `redhat` `suse` `otherlinux` `bsd` `vmware` `macos` `other` |
 | `status:` | `status:running,stopped` | running / stopped / suspended (TR: `çalışan`, `kapalı`, `askıda`) |
-| `tools:` / `agent:` | `tools:yok` | `running` = çalışıyor; `yok` = kurulu değil veya çalışmıyor |
+| `tools:` / `agent:` | `tools:yok` `tools:pasif` | `running` = çalışıyor; `pasif` = kurulu ama çalışmıyor (VMware); `yok` = kurulu değil veya çalışmıyor |
 | `host:` / `node:` | `host:esx01` | Bağlı ESXi host / Proxmox node |
 | `cluster:` / `datastore:` | `cluster:"Ankara Prod"` `cluster:=Lab` | Boşluklu değerler tırnaklanır; `=` ile başlayan değer tam eşleşir (`cluster:=Lab`, Lab2'yi bulmaz); yalnız `=` boş değer demektir (`cluster:=` cluster'sız VM'ler, `cluster:=,=Lab` ikisi birden). Sorguda `cluster:` varsa gizli cluster'lar da aranır |
 | `pool:` / `havuz:` | `pool:Prod` | Resource pool (vCenter) / pool (Proxmox) |
