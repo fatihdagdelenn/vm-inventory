@@ -450,9 +450,29 @@ def export_bundle(db) -> bytes:
     return gzip.compress(json.dumps(doc, separators=(",", ":")).encode())
 
 
+def source_of(ecosystem: str) -> Optional[str]:
+    """Stored ecosystem ("Ubuntu:24.04:LTS") -> source name ("Ubuntu")."""
+    return next((n for n, m in SOURCES.items() if ecosystem.startswith(m["prefix"])), None)
+
+
+def bundle_contents(doc: dict) -> dict:
+    """{source: distinct CVEs} of a bundle (+ "CISA KEV": entries)."""
+    per = defaultdict(set)
+    for r in doc.get("records") or []:
+        for row in r.get("rows") or []:
+            src = source_of(row[1]) if len(row) > 1 else None
+            if src:
+                per[src].add(row[0])
+    out = {k: len(v) for k, v in sorted(per.items())}
+    if doc.get("kev"):
+        out["CISA KEV"] = len(doc["kev"])
+    return out
+
+
 def import_bundle(db, doc: dict) -> dict:
     if doc.get("schema") != 1:
         raise ValueError(f"desteklenmeyen paket sürümü: {doc.get('schema')}")
+    contents = bundle_contents(doc)
     keys = ("cve", "ecosystem", "package", "introduced", "fixed")
     res = _store(db, ({"id": r.get("id"), "modified": _ts(r.get("modified")),
                        "severity": r.get("severity") or "unknown", "score": r.get("score"),
@@ -477,6 +497,8 @@ def import_bundle(db, doc: dict) -> dict:
                                          {"cveID": c, "dateAdded": a, "dueDate": du,
                                           "knownRansomwareCampaignUse": rw, "vulnerabilityName": n}
                                          for c, a, du, rw, n in doc["kev"]]})
+    res["contents"] = contents
+    res["generated_at"] = doc.get("generated_at")
     return res
 
 

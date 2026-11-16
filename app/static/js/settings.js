@@ -312,11 +312,15 @@ const Settings = {
         '</a> · <a href="/vms?q=zafiyet:bilinmiyor">' + d.vms_unknown + ' ' + t('vd2.unknown', 'değerlendirilemedi') +
         '</a> · <a href="/vms?q=zafiyet:kapsamdisi">' + d.vms_skipped + ' ' + t('vd2.skipped', 'kapsam dışı') + '</a>');
     const ecoNames = [...new Set(Object.keys(d.by_ecosystem || {}).map(e => e.split(':')[0]))].sort();
-    document.getElementById('vdBundleInfo').innerHTML = (ecoNames.length || d.kev)
+    document.getElementById('vdBundleInfo').innerHTML = ecoNames.length
       ? '<i class="bi bi-box-seam"></i> ' + t('vd2.bundleHas', 'Paket bu sunucudaki verinin tamamını içerir:') + ' <b>' +
         App.esc(ecoNames.concat(d.kev ? ['CISA KEV'] : []).join(', ')) + '</b>. ' +
         t('vd2.bundleHas2', 'Yükleyen sunucuda kendi VM\'leriyle eşleştirilir; sonuçlar orada görünür.')
-      : '<span class="text-muted">' + t('vd2.bundleEmpty', 'Henüz paketlenecek veri yok.') + '</span>';
+      : d.kev
+        ? '<div class="alert alert-warning py-2 mb-0"><i class="bi bi-exclamation-triangle"></i> ' +
+          t('vd2.bundleKevOnly', 'Bu sunucuda çekirdek verisi yok - paket yalnızca CISA KEV listesini içerir ve yüklendiği sunucuda hiçbir VM için bulgu üretmez. Önce "İndirilecek dağıtımlar"dan hedef sunucunun dağıtımlarını seçip "Şimdi indir" çalıştırın, sonra paketi alın.') + '</div>'
+        : '<span class="text-muted">' + t('vd2.bundleEmpty', 'Henüz paketlenecek veri yok.') + '</span>';
+    Settings.renderImportResult(job);
     document.getElementById('vdEcos').innerHTML = Object.keys(d.by_ecosystem || {}).length
       ? Object.entries(d.by_ecosystem).sort((a, b) => a[0].localeCompare(b[0])).map(([e, n]) =>
           '<tr><td>' + App.esc(e) + '</td><td class="text-end">' + n.toLocaleString() + '</td></tr>').join('')
@@ -326,6 +330,47 @@ const Settings = {
     if (job.running) Settings._vdTimer = setTimeout(() => Settings.loadVuln(), 3000);
     else if (Settings._vdWasRunning) Settings.loadSources();
     Settings._vdWasRunning = !!job.running;
+  },
+
+  /** After an upload: what the file contained and whether the VMs here got data. */
+  renderImportResult(job) {
+    const box = document.getElementById('vdImportResult');
+    const m = job && job.kind === 'import' && !job.running ? job.message : null;
+    if (!m || typeof m !== 'object' || job.ok === false) {
+      box.classList.toggle('d-none', !(job && job.kind === 'import' && job.ok === false));
+      if (job && job.kind === 'import' && job.ok === false)
+        box.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + App.esc(String(job.message || '')) + '</div>';
+      return;
+    }
+    const nf = n => Number(n || 0).toLocaleString();
+    const lines = [];
+    const typeTxt = {bundle: t('vd2.tBundle', 'Veri paketi'), 'osv-zip': 'OSV all.zip', 'osv-tar': 'OSV .tar.gz',
+                     'osv-json': 'OSV JSON', kev: 'CISA KEV'}[m.type] || m.type;
+    if (m.contents) {
+      const parts = Object.entries(m.contents).map(([k, v]) => k + ' ' + nf(v));
+      lines.push('<b>' + App.esc(typeTxt) + '</b>' + (m.generated_at ? ' (' + App.fmtDate(m.generated_at) + ')' : '') + ': ' +
+        (parts.length ? App.esc(parts.join(' · ')) : t('vd2.empty', 'boş')));
+    } else {
+      lines.push('<b>' + App.esc(typeTxt) + '</b>');
+    }
+    if (m.records != null) lines.push(t('vd2.newRecords', 'Yeni / güncellenen kayıt') + ': ' + nf(m.records) +
+      (m.kept ? ' · ' + t('vd2.keptRecords', 'zaten yüklü (değişmedi)') + ': ' + nf(m.kept) : ''));
+    if (m.match) lines.push(t('vd2.matched', 'Değerlendirilen VM') + ': ' + nf(m.vms_evaluated) + ' · ' +
+      t('vd2.new', 'yeni bulgu') + ' ' + nf(m.match.new) + ' · ' + t('vd2.closed', 'kapanan') + ' ' + nf(m.match.closed));
+    const kernelSources = Object.keys(m.contents || {}).filter(k => k !== 'CISA KEV');
+    let cls = 'alert-success';
+    if (m.contents && !kernelSources.length) {
+      cls = 'alert-warning';
+      lines.push(t('vd2.onlyKev', 'Dosyada çekirdek verisi yok (yalnızca KEV) - bu yüzden VM\'lerde değişiklik olmadı. İnternetli sunucuda dağıtımları seçip "Şimdi indir" ile veriyi indirin, paketi yeniden alın.'));
+    } else if (m.records === 0 && m.kept) {
+      lines.push(t('vd2.sameData', 'Paketteki veri zaten yüklüydü; yeni bir şey yok.'));
+    }
+    if ((m.missing || []).length) {
+      cls = 'alert-warning';
+      lines.push(t('vd2.stillMissing', 'Bu sunucuda VM\'i olup hâlâ verisi olmayan dağıtımlar:') + ' <b>' + m.missing.map(App.esc).join(', ') + '</b>');
+    }
+    box.innerHTML = '<div class="alert ' + cls + ' py-2 mb-0">' + lines.join('<br>') + '</div>';
+    box.classList.remove('d-none');
   },
 
   /** Short text of a finished job result (import / sync dicts). */

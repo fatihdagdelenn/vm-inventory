@@ -153,6 +153,10 @@ async def vuln_import(request: Request, file: UploadFile = File(...),
         try:
             res = vs.import_file(d, path)
             res["match"] = vs.recompute(d)
+            # what the operator needs to see: did this help the VMs here?
+            ov = vs.sources_overview(d)
+            res["missing"] = ov["missing"]
+            res["vms_evaluated"] = vs.summary(d)["vms_evaluated"]
             vs._meta_set(d, "vuln_last_import", f"{datetime.utcnow().isoformat(timespec='seconds')} {name}")
             d.commit()
             return res

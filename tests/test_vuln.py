@@ -292,7 +292,10 @@ assert r["type"] == "bundle" and r["records"] == db.query(VulnAdvisory.osv_id).d
 assert db2.query(VulnAdvisory).count() == db.query(VulnAdvisory).count()
 assert db2.get(VulnCve, "CVE-2024-1086").summary == db.get(VulnCve, "CVE-2024-1086").summary
 assert db2.query(VulnKev).count() == 2
+assert r["contents"] == {"AlmaLinux": 61, "Debian": 2, "Red Hat": 1, "Ubuntu": 3, "CISA KEV": 2}, r["contents"]
 assert vs.import_file(db2, bp)["kept"] == r["records"]          # same bundle again: nothing new
+kev_only = dict(doc, records=[], cves=[])
+assert vs.bundle_contents(kev_only) == {"CISA KEV": 2}
 for bad in (b"{}", b"[1,2]"):
     p = os.path.join(tmp, "bad.json")
     with open(p, "wb") as fh:

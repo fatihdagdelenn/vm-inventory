@@ -30,6 +30,22 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 Phases not yet in a release (phase 152 →; internal v1.8.1 →).
 
+### 📦 Upload result says what the file contained (phase 165)
+- Reported: a package downloaded on the test machine and uploaded on prod
+  "changed nothing", with no explanation. The import itself works (re-checked
+  end to end over HTTP: export on one server, upload on an empty one → 81 VMs
+  evaluated); the likely cause is a package without kernel data - a server
+  stores (and packages) only the distributions it downloaded, which since
+  phase 163 follow ITS OWN inventory.
+- After an upload, a result box under the buttons shows: file type and date,
+  what it contained per distribution (CVEs) and KEV entries, new / already
+  loaded records, VMs evaluated and new / closed findings, and the
+  distributions that have VMs on this server but still no data. A KEV-only
+  file gets an explicit warning ("no kernel data - that is why nothing
+  changed for the VMs").
+- The export side warns before downloading a package when the server holds
+  no kernel data (the package would contain KEV only).
+
 ### ⚡ Open CVEs by name, fast Vulnerabilities page at real scale (phase 164)
 - **"Open CVEs" cell** used to show "7480 +1073" - unclear which CVEs those
   were. It now names the **most urgent open CVE** (KEV first, then fix
