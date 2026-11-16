@@ -1563,3 +1563,11 @@ html.theme-dark .vu-kev  { background: #c9443c; border-color: #c9443c; color: #f
 .vd-ecos th:first-child, .vd-ecos td:first-child { padding-left: 1rem; }
 .vd-ecos th:last-child, .vd-ecos td:last-child { padding-right: 1rem; }
 .vd-probe td { padding: .3rem .5rem; vertical-align: middle; }
+
+/* Open CVEs cell (phase 164): top CVE name + "+N" link */
+.vu-cell { white-space: nowrap; }
+.vu-cell .vu-top { text-decoration: none; font-variant-numeric: tabular-nums; }
+.vu-cell .vu-top:hover { filter: brightness(.95); text-decoration: underline; }
+.vu-cell .vu-more { font-size: .78rem; color: var(--accent, #2f81f7); text-decoration: none; margin-left: .15rem; font-variant-numeric: tabular-nums; }
+.vu-cell .vu-more:hover { text-decoration: underline; }
+.vu-pager { display: flex; gap: .4rem; align-items: center; justify-content: flex-end; padding: .5rem .75rem; }

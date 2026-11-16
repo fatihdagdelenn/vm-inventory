@@ -68,31 +68,50 @@ CVE_COLUMNS = [
 ]
 
 
-def attach_vulns(db, vms) -> list:
-    """Set vm._vuln_cves (open CVEs with a fix, KEV first) and return one row
-    per open finding for the 'Zafiyetler' sheet."""
-    from ..models import VmVuln
-    ids = [v.id for v in vms]
-    by_vm = {}
-    for i in range(0, len(ids), 500):
-        for r in db.query(VmVuln).filter(VmVuln.vm_id.in_(ids[i:i + 500]),
-                                         VmVuln.closed_at.is_(None)).all():
-            by_vm.setdefault(r.vm_id, []).append(r)
-    rows = []
+FINDINGS_MAX_ROWS = 100_000      # Excel's sheet limit is 1,048,576; keep files usable
+
+
+def attach_vulns(db, vms, max_rows: int = FINDINGS_MAX_ROWS) -> list:
+    """Set vm._vuln_cves (the 40 most urgent open CVEs with a fix, KEV first)
+    and return the 'Zafiyetler' sheet rows: per VM its open findings, most
+    urgent first, at most `max_rows` in all (an old kernel has thousands of
+    CVEs; a few hundred such VMs would exceed what a spreadsheet can hold).
+    A last row says how many were left out."""
+    from sqlalchemy import and_, case, func
+    from ..models import VmVuln, VulnCve
+    from .vuln_service import _sev_rank_expr
+    fixable = case((and_(VmVuln.status == "affected", VmVuln.fix_available == True), 1), else_=0)  # noqa: E712
+    rows, left = [], 0
     for v in vms:
-        found = sorted(by_vm.get(v.id, []), key=lambda r: (not r.kev, r.cve))
-        fixable = [r.cve + (" (KEV)" if r.kev else "") for r in found
-                   if r.status == "affected" and r.fix_available]
-        # an old kernel can have hundreds: keep the cell readable (and under
-        # Excel's 32767-character limit); the Zafiyetler sheet has them all
-        v._vuln_cves = ", ".join(fixable[:40]) + (f" … +{len(fixable) - 40}" if len(fixable) > 40 else "")
-        for r in found:
+        if not (v.vuln_total or 0):
+            v._vuln_cves = ""
+            continue
+        budget = max(max_rows - len(rows), 40)
+        found = (db.query(VmVuln.cve, VmVuln.kev, VmVuln.status, VmVuln.fix_available,
+                          VmVuln.severity, VmVuln.fixed, VmVuln.package, VmVuln.reason,
+                          VmVuln.first_seen)
+                 .outerjoin(VulnCve, VulnCve.cve == VmVuln.cve)
+                 .filter(VmVuln.vm_id == v.id, VmVuln.closed_at.is_(None))
+                 .order_by(VmVuln.kev.desc(), fixable.desc(), _sev_rank_expr().desc(),
+                           func.coalesce(VulnCve.score, 0).desc(), VmVuln.cve.desc())
+                 .limit(budget).all())
+        fix = [r.cve + (" (KEV)" if r.kev else "") for r in found if r.status == "affected" and r.fix_available]
+        n_fix = v.vuln_open or 0
+        v._vuln_cves = ", ".join(fix[:40]) + (f" … +{n_fix - 40}" if n_fix > 40 else "")
+        take = found[:max(0, max_rows - len(rows))]
+        left += (v.vuln_total or 0) - len(take)
+        for r in take:
             rows.append({"vm": v.name, "cve": r.cve,
                          "severity": SEVERITY_LABELS.get(r.severity or "unknown", r.severity),
                          "kev": "Evet" if r.kev else "", "status": VULN_FINDING_STATUS.get(r.status, r.status),
                          "fix": "Evet" if r.fix_available else "Hayır", "fixed": r.fixed or "",
                          "package": r.package or "", "reason": r.reason or "",
                          "first_seen": r.first_seen.strftime("%Y-%m-%d") if r.first_seen else ""})
+    if left > 0:
+        rows.append({"vm": f"… {left:,} bulgu daha listelenmedi (sınır {max_rows:,} satır) - "
+                           "tam liste: Zafiyetler sayfası".replace(",", "."),
+                     "cve": "", "severity": "", "kev": "", "status": "", "fix": "", "fixed": "",
+                     "package": "", "reason": "", "first_seen": ""})
     return rows
 
 

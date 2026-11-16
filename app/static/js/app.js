@@ -212,7 +212,8 @@ const App = {
               (due ? ' · ' + t('vu.kevDue', 'son tarih') + ' ' + App.fmtDay(due) : '')) + '">KEV</span>';
   },
 
-  /** VM table cell: number of open CVEs with a published fix. */
+  /** VM table cell: the most urgent open CVE by name (click -> that CVE) and
+   *  how many more there are (click -> this VM's CVE list). */
   vulnCell(v) {
     const st = v.vuln_status;
     if (st !== 'evaluated') {
@@ -221,17 +222,27 @@ const App = {
       return '<span class="text-muted" title="' + App.esc(why) + '">—</span>';
     }
     const total = v.vuln_total || 0, open = v.vuln_open || 0, kev = v.vuln_kev || 0;
+    const nf = n => Number(n || 0).toLocaleString(window.I18N && I18N.lang === 'en' ? 'en' : 'tr');
+    if (!total) return '<span class="vu-zero" title="' + App.esc(v.vuln_reason || '') + '">' +
+      t('vu.noneShort', 'yok') + '</span>';
     const other = total - open;
+    const sevs = [v.vuln_crit ? nf(v.vuln_crit) + ' ' + t('vu.sev.critical', 'Kritik').toLowerCase() : '',
+                  v.vuln_high ? nf(v.vuln_high) + ' ' + t('vu.sev.high', 'Yüksek').toLowerCase() : ''].filter(Boolean);
     const tip = [v.vuln_reason,
-      t('vu.tipOpen', '{n} düzeltmesi yayımlanmış açık CVE').replace('{n}', open),
-      other ? t('vu.tipOther', '{n} düzeltmesiz / belirsiz').replace('{n}', other) : '',
-      kev ? t('vu.tipKev', '{n} tanesi CISA KEV (aktif istismar)').replace('{n}', kev) : '']
-      .filter(Boolean).join(' · ');
-    if (!total) return '<span class="vu-zero" title="' + App.esc(tip) + '">0</span>';
-    const cls = kev ? 'vu-kev' : ({critical: 'vu-crit', high: 'vu-high', medium: 'vu-med'}[v.vuln_max_sev] || 'vu-low');
-    return '<span class="badge sp-badge vu-count ' + (open ? cls : 'vu-unk') + '" title="' + App.esc(tip) + '">' +
-      (kev ? '<i class="bi bi-exclamation-octagon-fill"></i> ' : '') + open +
-      (other ? '<span class="vu-other">+' + other + '</span>' : '') + '</span>';
+      t('vu.tipOpen', '{n} düzeltmesi yayımlanmış açık CVE').replace('{n}', nf(open)) +
+        (sevs.length ? ' (' + sevs.join(', ') + ')' : ''),
+      other ? t('vu.tipOther', '{n} düzeltmesiz / belirsiz').replace('{n}', nf(other)) : '',
+      kev ? t('vu.tipKev', '{n} tanesi CISA KEV (aktif istismar)').replace('{n}', nf(kev)) : '',
+      t('vu.tipClick', 'CVE adına tıklayın: o CVE · sayıya tıklayın: bu VM\'in tüm CVE listesi')]
+      .filter(Boolean).join('\n');
+    const cls = kev ? 'vu-kev' : ({critical: 'vu-crit', high: 'vu-high', medium: 'vu-med'}[v.vuln_top_sev] || 'vu-low');
+    const top = v.vuln_top
+      ? '<a class="badge sp-badge vu-top ' + cls + '" href="/vulns?q=' + encodeURIComponent(v.vuln_top) + '">' +
+        (kev ? '<i class="bi bi-exclamation-octagon-fill"></i> ' : '') + App.esc(v.vuln_top) + '</a>'
+      : '';
+    const more = total > 1
+      ? ' <a class="vu-more" href="/vulns?vm=' + v.id + '">+' + nf(total - 1) + '</a>' : '';
+    return '<span class="vu-cell" title="' + App.esc(tip) + '">' + top + more + '</span>';
   },
 
   /** VM detail: findings list. */
@@ -249,8 +260,10 @@ const App = {
         t('vu.none', 'Bilinen açık çekirdek zafiyeti yok') + '</span> <span class="text-muted">· ' +
         App.esc(v.vuln_reason || '') + '</span></div>';
     }
-    const show = list.slice(0, 40);
-    return head + ' (' + list.length + ')</h6><div class="small text-muted mb-2">' + App.esc(v.vuln_reason || '') + '</div>' +
+    const show = list;
+    const total = v.vuln_total || list.length;
+    return head + ' (' + total.toLocaleString() + ')</h6><div class="small text-muted mb-2">' + App.esc(v.vuln_reason || '') +
+      (total > list.length ? ' · <a href="/vulns?vm=' + v.id + '">' + t('vu.seeAllN', 'tüm liste') + '</a>' : '') + '</div>' +
       '<div class="mb-3 small vu-findings">' + show.map(f =>
         '<div class="border-bottom py-1">' +
         '<div class="d-flex align-items-center gap-2 flex-wrap">' +
@@ -261,8 +274,8 @@ const App = {
         '<span class="ms-auto text-muted text-nowrap">' + (f.fixed ? t('vu.fixedIn', 'düzeltme') + ' ' + App.esc(f.fixed) : '') + '</span></div>' +
         (f.summary ? '<div class="text-muted vu-sum">' + App.esc(f.summary) + '</div>' : '') +
         '<div class="vu-reason text-muted">' + App.esc(f.reason || '') + '</div></div>').join('') +
-      (list.length > show.length ? '<div class="text-muted pt-1">+' + (list.length - show.length) + ' ' +
-        t('vu.more', 'daha') + ' · <a href="/vulns?vm=' + encodeURIComponent(v.name) + '">' +
+      (total > show.length ? '<div class="text-muted pt-1">' + t('vu.mostUrgent', 'En acil {n} gösteriliyor').replace('{n}', show.length) +
+        ' · +' + (total - show.length).toLocaleString() + ' ' + t('vu.more', 'daha') + ' · <a href="/vulns?vm=' + v.id + '">' +
         t('vu.seeAll', 'tümü') + '</a></div>' : '') + '</div>';
   },
 

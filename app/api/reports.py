@@ -153,7 +153,8 @@ def export_vulns(fmt: str = "xlsx", db: Session = Depends(get_db),
         c["severity"] = rs.SEVERITY_LABELS.get(c["severity"], c["severity"])
         c["kev"] = "Evet" if c["kev"] else ""
     vms = db.query(VirtualMachine).filter(VirtualMachine.vuln_total > 0) \
-        .order_by(VirtualMachine.name).all()
+        .order_by(VirtualMachine.vuln_kev.desc(), VirtualMachine.vuln_open.desc(),
+                  VirtualMachine.name).all()
     findings = rs.attach_vulns(db, vms)
     log_audit(db, user, "export", target=f"vulns ({fmt})", detail=f"cves={len(cves)}")
     db.commit()

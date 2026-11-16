@@ -58,7 +58,7 @@ from sqlalchemy import and_, func
 from ..core.os_identity import identify
 from ..core.pkgversion import cvss3_score, dpkg_cmp, rpm_cmp, severity_of_score
 from ..models import (ChangeHistory, VirtualMachine, VmVuln, VulnAdvisory, VulnCve,
-                      VulnKev)
+                      VulnCveStat, VulnKev)
 
 logger = logging.getLogger("vuln")
 
@@ -800,6 +800,8 @@ class _Data:
         self.kev = {k for (k,) in db.query(VulnKev.cve).all()}
         self.cve_sev = {c: s for c, s in db.query(VulnCve.cve, VulnCve.severity)
                         .filter(VulnCve.specific == True).all()}  # noqa: E712
+        self.cve_score = {c: sc for c, sc in db.query(VulnCve.cve, VulnCve.score)
+                          .filter(VulnCve.score.isnot(None)).all()}
         self._rows = {}
         self._series = {}
 
@@ -1051,81 +1053,151 @@ def evaluate(vm, data):
     return "evaluated", head, {c: f for c, f in findings.items() if f}
 
 
+_FIELDS = ("osv_id", "package", "fixed", "status", "fix_available", "kev", "severity", "reason")
+
+
+def _top_key(data, cve, f):
+    """Most urgent finding first: KEV, fix available, severity, CVSS, newest."""
+    return (f["kev"], f["status"] == "affected" and f["fix_available"],
+            SEV_RANK.get(f["severity"], 0), data.cve_score.get(cve) or 0, cve)
+
+
+def _vm_summary(data, status, found) -> dict:
+    if status != "evaluated":
+        return dict(vuln_total=None, vuln_open=None, vuln_kev=None, vuln_max_sev=None,
+                    vuln_top=None, vuln_top_sev=None, vuln_crit=None, vuln_high=None)
+    fixable = [f for f in found.values() if f["status"] == "affected" and f["fix_available"]]
+    top = max(found.items(), key=lambda kv: _top_key(data, *kv)) if found else None
+    return dict(
+        vuln_total=len(found), vuln_open=len(fixable),
+        vuln_kev=sum(1 for f in found.values() if f["kev"]),
+        vuln_max_sev=(max((f["severity"] for f in found.values()), key=lambda x: SEV_RANK.get(x, 0))
+                      if found else None),
+        vuln_top=top[0] if top else None, vuln_top_sev=top[1]["severity"] if top else None,
+        vuln_crit=sum(1 for f in fixable if f["severity"] == "critical"),
+        vuln_high=sum(1 for f in fixable if f["severity"] == "high"))
+
+
+# Bump when the matching rules change, so every VM is evaluated again once.
+MATCH_VERSION = 3
+
+
+def _data_signature(db) -> str:
+    adv = db.query(func.count(VulnAdvisory.id), func.max(VulnAdvisory.id)).one()
+    cve = db.query(func.count(VulnCve.cve), func.max(VulnCve.modified)).one()
+    kev = db.query(func.count(VulnKev.cve)).scalar()
+    return f"{MATCH_VERSION}|{adv[0]}|{adv[1]}|{cve[0]}|{cve[1]}|{kev}|{_setting(db, 'vuln_kev_version')}"
+
+
+def _vm_signature(vm, base: str) -> str:
+    import hashlib
+    key = (bool(vm.is_template), vm.support_status, vm.guest_os, vm.kernel, vm.kernel_build)
+    return hashlib.sha1((repr(key) + base).encode()).hexdigest()
+
+
 def recompute(db, platform_id: Optional[int] = None, vm_ids=None) -> dict:
-    """Evaluate VMs, open / update / close findings, refresh VM summaries."""
+    """Evaluate VMs, open / update / close findings, refresh VM summaries.
+
+    Scale (an old Ubuntu kernel has thousands of CVEs, so a few hundred VMs
+    mean ~1M findings): VMs sharing OS + kernel are evaluated once, existing
+    findings are read as plain tuples in small VM batches, and only rows that
+    really change are written (bulk insert / update) - a sync with no kernel
+    change writes nothing."""
     data = _Data(db)
     q = db.query(VirtualMachine)
     if platform_id is not None:
         q = q.filter(VirtualMachine.platform_id == platform_id)
     if vm_ids is not None:
         q = q.filter(VirtualMachine.id.in_(list(vm_ids)))
-    vms = q.all()
-    ids = [v.id for v in vms]
-    existing = defaultdict(dict)
-    for i in range(0, len(ids), 500):
-        for r in db.query(VmVuln).filter(VmVuln.vm_id.in_(ids[i:i + 500])).all():
-            existing[r.vm_id][r.cve] = r
+    vms = q.order_by(VirtualMachine.id).all()
     now = datetime.utcnow()
     memo = {}
-    tot = {"evaluated": 0, "skipped": 0, "unknown": 0, "new": 0, "closed": 0, "open": 0}
+    tot = {"evaluated": 0, "skipped": 0, "unknown": 0, "new": 0, "closed": 0, "open": 0,
+           "unchanged": 0}
+    # A VM whose inputs (OS, kernel, support status) and the data are the same
+    # as at its last evaluation is skipped without reading its findings - the
+    # recompute after every platform sync then costs next to nothing.
+    base = _data_signature(db)
+    todo = []
     for vm in vms:
-        was_evaluated = vm.vuln_status == "evaluated"
-        # VMs on the same OS + kernel share one evaluation
-        key = (bool(vm.is_template), vm.support_status, vm.guest_os, vm.kernel, vm.kernel_build)
-        if key not in memo:
-            memo[key] = evaluate(vm, data)
-        status, reason, found = memo[key]
-        tot[status] += 1
-        mine = existing.get(vm.id, {})
-        new_cves, closed_cves = [], []
-        for cve, f in found.items():
-            row = mine.get(cve)
-            if row is None:
-                row = VmVuln(vm_id=vm.id, cve=cve, first_seen=now)
-                db.add(row)
-                new_cves.append(cve)
-            elif row.closed_at is not None:
-                row.closed_at, row.closed_reason, row.first_seen = None, None, now
-                new_cves.append(cve)
-            row.osv_id, row.package, row.fixed = f["osv_id"], f["package"], f["fixed"]
-            row.status, row.fix_available, row.kev = f["status"], f["fix_available"], f["kev"]
-            row.severity, row.reason, row.last_seen = f["severity"], f["reason"], now
-        for cve, row in mine.items():
-            if cve not in found and row.closed_at is None:
-                row.closed_at = now
-                row.closed_reason = "patched" if status == "evaluated" else "not_evaluated"
-                if status == "evaluated":
-                    closed_cves.append(cve)
-        opened = list(found.values())
-        vm.vuln_status, vm.vuln_reason = status, (reason or None)
-        vm.vuln_total = len(opened) if status == "evaluated" else None
-        vm.vuln_open = sum(1 for f in opened if f["status"] == "affected" and f["fix_available"]) \
-            if status == "evaluated" else None
-        vm.vuln_kev = sum(1 for f in opened if f["kev"]) if status == "evaluated" else None
-        vm.vuln_max_sev = (max((f["severity"] for f in opened), key=lambda s: SEV_RANK.get(s, 0))
-                           if opened else None)
-        tot["open"] += len(opened)
-        tot["new"] += len(new_cves)
-        tot["closed"] += len(closed_cves)
-        # Change History: only for a VM that had been evaluated before, so the
-        # first data import does not write thousands of rows
-        if was_evaluated and (new_cves or closed_cves):
-            if new_cves:
-                kev_new = [c for c in new_cves if found[c]["kev"]]
+        sig = _vm_signature(vm, base)
+        if vm.vuln_sig == sig and vm.vuln_status:
+            tot[vm.vuln_status] = tot.get(vm.vuln_status, 0) + 1
+            tot["unchanged"] += 1
+            tot["open"] += vm.vuln_total or 0
+        else:
+            todo.append((vm, sig))
+    vms = [v for v, _ in todo]
+    sigs = {v.id: sg for v, sg in todo}
+    changed = False
+    cols = (VmVuln.id, VmVuln.vm_id, VmVuln.cve, VmVuln.closed_at) + \
+        tuple(getattr(VmVuln, f) for f in _FIELDS)
+    for i in range(0, len(vms), 25):
+        chunk = vms[i:i + 25]
+        existing = defaultdict(dict)
+        for r in db.query(*cols).filter(VmVuln.vm_id.in_([v.id for v in chunk])):
+            existing[r[1]][r[2]] = r
+        inserts, updates = [], []
+        for vm in chunk:
+            was_evaluated = vm.vuln_status == "evaluated"
+            key = (bool(vm.is_template), vm.support_status, vm.guest_os, vm.kernel, vm.kernel_build)
+            if key not in memo:
+                st, why, fnd = evaluate(vm, data)
+                memo[key] = (st, why, fnd, _vm_summary(data, st, fnd))
+            status, reason, found, summ = memo[key]
+            tot[status] += 1
+            mine = existing.get(vm.id, {})
+            new_cves, closed_cves = [], []
+            for cve, f in found.items():
+                vals = {k: f[k] for k in _FIELDS}
+                r = mine.get(cve)
+                if r is None:
+                    inserts.append(dict(vm_id=vm.id, cve=cve, first_seen=now, last_seen=now, **vals))
+                    new_cves.append(cve)
+                elif r[3] is not None:                      # closed earlier -> reopened
+                    updates.append(dict(id=r[0], closed_at=None, closed_reason=None,
+                                        first_seen=now, last_seen=now, **vals))
+                    new_cves.append(cve)
+                elif tuple(r[4:]) != tuple(vals[k] for k in _FIELDS):
+                    updates.append(dict(id=r[0], last_seen=now, **vals))
+            for cve, r in mine.items():
+                if r[3] is None and cve not in found:
+                    updates.append(dict(id=r[0], closed_at=now, last_seen=now,
+                                        closed_reason="patched" if status == "evaluated" else "not_evaluated"))
+                    if status == "evaluated":
+                        closed_cves.append(cve)
+            vm.vuln_status, vm.vuln_reason = status, (reason or None)
+            vm.vuln_sig = sigs[vm.id]
+            for k, v in summ.items():
+                setattr(vm, k, v)
+            tot["open"] += len(found)
+            tot["new"] += len(new_cves)
+            tot["closed"] += len(closed_cves)
+            # Change History: only for a VM that had been evaluated before, so
+            # the first data import does not write thousands of rows
+            if was_evaluated and new_cves:
                 db.add(ChangeHistory(
                     entity_type="vm", entity_name=vm.name, platform_id=vm.platform_id,
                     change_type="updated", field="vuln", category="security",
                     old_value=None, vm_external_id=vm.external_id, cluster=vm.cluster,
-                    new_value=_cve_list(new_cves, kev_new, "yeni")))
-            if closed_cves:
+                    new_value=_cve_list(new_cves, [c for c in new_cves if found[c]["kev"]], "yeni")))
+            if was_evaluated and closed_cves:
                 db.add(ChangeHistory(
                     entity_type="vm", entity_name=vm.name, platform_id=vm.platform_id,
                     change_type="updated", field="vuln", category="security",
                     old_value=_cve_list(closed_cves, [], "kapandı"), new_value=None,
                     vm_external_id=vm.external_id, cluster=vm.cluster))
+        if inserts:
+            db.bulk_insert_mappings(VmVuln, inserts)
+        if updates:
+            db.bulk_update_mappings(VmVuln, updates)
+        changed = changed or bool(inserts or updates)
+        db.flush()
     if platform_id is None and vm_ids is None:          # findings of deleted VMs
-        db.query(VmVuln).filter(~VmVuln.vm_id.in_(db.query(VirtualMachine.id))) \
-            .delete(synchronize_session=False)
+        changed = bool(db.query(VmVuln).filter(~VmVuln.vm_id.in_(db.query(VirtualMachine.id)))
+                       .delete(synchronize_session=False)) or changed
+    if changed or not db.query(VulnCveStat.cve).first():
+        refresh_stats(db)
     db.commit()
     if tot["new"]:
         try:
@@ -1135,6 +1207,23 @@ def recompute(db, platform_id: Optional[int] = None, vm_ids=None) -> dict:
         except Exception:
             pass
     return tot
+
+
+def refresh_stats(db) -> None:
+    """Rebuild vuln_cve_stat from the open findings (one INSERT ... SELECT)."""
+    from sqlalchemy import case, insert, select
+    agg = (select(VmVuln.cve, func.count(VmVuln.id),
+                  func.sum(case((and_(VmVuln.status == "affected", VmVuln.fix_available == True), 1),  # noqa: E712
+                                else_=0)),
+                  func.sum(case((VmVuln.status == "uncertain", 1), else_=0)),
+                  func.sum(case((VmVuln.fix_available == False, 1), else_=0)),  # noqa: E712
+                  func.max(_sev_rank_expr()),
+                  func.max(case((VmVuln.kev == True, 1), else_=0)) == 1,  # noqa: E712
+                  func.max(VmVuln.first_seen))
+           .where(VmVuln.closed_at.is_(None)).group_by(VmVuln.cve))
+    db.query(VulnCveStat).delete(synchronize_session=False)
+    db.execute(insert(VulnCveStat).from_select(
+        ["cve", "vms", "fixable", "uncertain", "nofix", "rank", "kev", "first_seen"], agg))
 
 
 def _cve_list(cves, kev, word):
@@ -1248,78 +1337,134 @@ def _sev_key(s):
     return -SEV_RANK.get(s or "unknown", 0)
 
 
-def vm_findings(db, vm_id: int) -> list:
-    """Open findings of one VM, KEV / severity first (VM detail)."""
-    rows = db.query(VmVuln).filter(VmVuln.vm_id == vm_id, VmVuln.closed_at.is_(None)).all()
-    cves = {c.cve: c for c in db.query(VulnCve).filter(VulnCve.cve.in_([r.cve for r in rows]))} \
-        if rows else {}
-    kev = {k.cve: k for k in db.query(VulnKev).filter(VulnKev.cve.in_([r.cve for r in rows]))} \
-        if rows else {}
-    out = [{"cve": r.cve, "status": r.status, "fix_available": bool(r.fix_available),
-            "fixed": r.fixed, "package": r.package, "severity": r.severity or "unknown",
-            "score": cves[r.cve].score if r.cve in cves else None,
-            "summary": cves[r.cve].summary if r.cve in cves else None,
-            "kev": bool(r.kev), "kev_due": kev[r.cve].due_date.isoformat()
-            if r.cve in kev and kev[r.cve].due_date else None,
-            "ransomware": (kev[r.cve].ransomware == "Known") if r.cve in kev else False,
-            "reason": r.reason, "osv_id": r.osv_id,
-            "first_seen": r.first_seen.isoformat(timespec="seconds") + "Z" if r.first_seen else None}
-           for r in rows]
-    out.sort(key=lambda f: (not f["kev"], f["status"] != "affected", not f["fix_available"],
-                            _sev_key(f["severity"]), -(f["score"] or 0), f["cve"]))
-    return out
+_RANK_SEV = {v: k for k, v in SEV_RANK.items() if k not in ("none",)}
+
+
+def _sev_rank_expr():
+    from sqlalchemy import case
+    return case(*[(VmVuln.severity == k, v) for k, v in SEV_RANK.items() if v], else_=0)
+
+
+def _kev_info(db, cves) -> dict:
+    return {k.cve: k for k in db.query(VulnKev).filter(VulnKev.cve.in_(list(cves)))} if cves else {}
+
+
+def vm_findings(db, vm_id: int, limit: int = 50) -> list:
+    """The most urgent open findings of one VM (VM detail panel): KEV, fix
+    available, severity, CVSS. The full list is the Vulnerabilities page
+    filtered to the VM (an old kernel can have thousands)."""
+    from sqlalchemy import case
+    fixable = case((and_(VmVuln.status == "affected", VmVuln.fix_available == True), 1),  # noqa: E712
+                   else_=0)
+    rows = (db.query(VmVuln, VulnCve.score, VulnCve.summary)
+            .outerjoin(VulnCve, VulnCve.cve == VmVuln.cve)
+            .filter(VmVuln.vm_id == vm_id, VmVuln.closed_at.is_(None))
+            .order_by(VmVuln.kev.desc(), fixable.desc(), _sev_rank_expr().desc(),
+                      func.coalesce(VulnCve.score, 0).desc(), VmVuln.cve.desc())
+            .limit(limit).all())
+    kev = _kev_info(db, [r.cve for r, *_ in rows])
+    return [{"cve": r.cve, "status": r.status, "fix_available": bool(r.fix_available),
+             "fixed": r.fixed, "package": r.package, "severity": r.severity or "unknown",
+             "score": score, "summary": summ, "kev": bool(r.kev),
+             "kev_due": kev[r.cve].due_date.isoformat() if r.cve in kev and kev[r.cve].due_date else None,
+             "ransomware": (kev[r.cve].ransomware == "Known") if r.cve in kev else False,
+             "reason": r.reason, "osv_id": r.osv_id,
+             "first_seen": r.first_seen.isoformat(timespec="seconds") + "Z" if r.first_seen else None}
+            for r, score, summ in rows]
+
+
+def cve_page(db, q: str = "", kev_only: bool = False, severity: str = "", fix: str = "",
+             vm_id: Optional[int] = None, page: int = 1, per_page: Optional[int] = 100):
+    """CVEs with at least one open finding, one aggregate query in SQL
+    (counts, worst severity, KEV) ordered KEV > severity > CVSS > fixable VMs,
+    paged. -> (items, total)."""
+    from sqlalchemy import case, select
+    if not vm_id:
+        return _cve_page_stats(db, q, kev_only, severity, fix, page, per_page)
+    fixable = func.sum(case((and_(VmVuln.status == "affected", VmVuln.fix_available == True), 1),  # noqa: E712
+                            else_=0))
+    nofix = func.sum(case((VmVuln.fix_available == False, 1), else_=0))  # noqa: E712
+    rank = func.max(_sev_rank_expr())
+    kev = func.max(case((VmVuln.kev == True, 1), else_=0))  # noqa: E712
+    agg = (select(VmVuln.cve.label("cve"), func.count(VmVuln.id).label("vms"),
+                  fixable.label("fixable"),
+                  func.sum(case((VmVuln.status == "uncertain", 1), else_=0)).label("uncertain"),
+                  nofix.label("nofix"), rank.label("rank"), kev.label("kev"),
+                  func.max(VmVuln.first_seen).label("first"))
+           .where(VmVuln.closed_at.is_(None)).group_by(VmVuln.cve))
+    if q:
+        agg = agg.where(VmVuln.cve.ilike(f"%{q.strip()}%"))
+    if vm_id:
+        agg = agg.where(VmVuln.vm_id == vm_id)
+    if kev_only:
+        agg = agg.where(VmVuln.kev == True)  # noqa: E712
+    if severity in SEV_RANK:
+        agg = agg.having(rank == SEV_RANK[severity])
+    if fix == "fixable":
+        agg = agg.having(fixable > 0)
+    elif fix == "nofix":
+        agg = agg.having(nofix > 0)
+    sub = agg.subquery()
+    total = db.execute(select(func.count()).select_from(sub)).scalar() or 0
+    stmt = (select(sub, VulnCve.score, VulnCve.summary)
+            .outerjoin(VulnCve, VulnCve.cve == sub.c.cve)
+            .order_by(sub.c.kev.desc(), sub.c.rank.desc(), func.coalesce(VulnCve.score, 0).desc(),
+                      sub.c.fixable.desc(), sub.c.cve.desc()))
+    if per_page:
+        stmt = stmt.limit(per_page).offset((max(page, 1) - 1) * per_page)
+    return _page_items(db, db.execute(stmt).all()), total
+
+
+def _page_items(db, rows) -> list:
+    kv = _kev_info(db, [r.cve for r in rows])
+    items = []
+    for r in rows:
+        k = kv.get(r.cve)
+        items.append({"cve": r.cve, "vms": r.vms, "fixable": int(r.fixable or 0),
+                      "uncertain": int(r.uncertain or 0), "nofix": int(r.nofix or 0),
+                      "severity": _RANK_SEV.get(r.rank or 0, "unknown"), "score": r.score,
+                      "summary": r.summary, "kev": bool(r.kev),
+                      "kev_added": k.date_added.isoformat() if k and k.date_added else None,
+                      "kev_due": k.due_date.isoformat() if k and k.due_date else None,
+                      "kev_name": k.name if k else None,
+                      "ransomware": bool(k and k.ransomware == "Known"),
+                      "first_seen": r.first.isoformat(timespec="seconds") + "Z" if r.first else None})
+    return items
+
+
+def _cve_page_stats(db, q, kev_only, severity, fix, page, per_page):
+    """Same answer as the aggregate, read from vuln_cve_stat (milliseconds)."""
+    from sqlalchemy import select
+    S = VulnCveStat
+    stmt = select(S.cve, S.vms, S.fixable, S.uncertain, S.nofix, S.rank, S.kev,
+                  S.first_seen.label("first"), VulnCve.score, VulnCve.summary) \
+        .outerjoin(VulnCve, VulnCve.cve == S.cve)
+    conds = []
+    if q:
+        conds.append(S.cve.ilike(f"%{q.strip()}%"))
+    if kev_only:
+        conds.append(S.kev == True)  # noqa: E712
+    if severity in SEV_RANK:
+        conds.append(S.rank == SEV_RANK[severity])
+    if fix == "fixable":
+        conds.append(S.fixable > 0)
+    elif fix == "nofix":
+        conds.append(S.nofix > 0)
+    if conds:
+        stmt = stmt.where(*conds)
+    total = db.execute(select(func.count()).select_from(S).where(*conds)).scalar() or 0
+    stmt = stmt.order_by(S.kev.desc(), S.rank.desc(), func.coalesce(VulnCve.score, 0).desc(),
+                         S.fixable.desc(), S.cve.desc())
+    if per_page:
+        stmt = stmt.limit(per_page).offset((max(page, 1) - 1) * per_page)
+    return _page_items(db, db.execute(stmt).all()), total
 
 
 def cve_list(db, q: str = "", kev_only: bool = False, severity: str = "",
              fix: str = "", vm_id: Optional[int] = None) -> list:
-    """CVEs with at least one open finding, with affected VM counts."""
-    from sqlalchemy import case
-    fq = db.query(VmVuln.cve,
-                  func.count(VmVuln.id),
-                  func.sum(case((and_(VmVuln.status == "affected",
-                                      VmVuln.fix_available == True), 1), else_=0)),  # noqa: E712
-                  func.sum(case((VmVuln.status == "uncertain", 1), else_=0)),
-                  func.sum(case((VmVuln.fix_available == False, 1), else_=0)),  # noqa: E712
-                  func.max(VmVuln.severity), func.max(VmVuln.first_seen)) \
-        .filter(VmVuln.closed_at.is_(None))
-    if q:
-        fq = fq.filter(VmVuln.cve.ilike(f"%{q.strip()}%"))
-    if kev_only:
-        fq = fq.filter(VmVuln.kev == True)  # noqa: E712
-    if vm_id:
-        fq = fq.filter(VmVuln.vm_id == vm_id)
-    agg = fq.group_by(VmVuln.cve).all()
-    names = [a[0] for a in agg]
-    cves, kev, sev_by = {}, {}, defaultdict(set)
-    for i in range(0, len(names), 500):
-        part = names[i:i + 500]
-        cves.update({c.cve: c for c in db.query(VulnCve).filter(VulnCve.cve.in_(part))})
-        kev.update({k.cve: k for k in db.query(VulnKev).filter(VulnKev.cve.in_(part))})
-        for c, s in db.query(VmVuln.cve, VmVuln.severity).filter(
-                VmVuln.cve.in_(part), VmVuln.closed_at.is_(None)).distinct():
-            sev_by[c].add(s or "unknown")
-    out = []
-    for cve, n, fixable, uncertain, nofix, _s, first in agg:
-        sev = max(sev_by.get(cve) or {"unknown"}, key=lambda s: SEV_RANK.get(s, 0))
-        if severity and sev != severity:
-            continue
-        if fix == "fixable" and not fixable:
-            continue
-        if fix == "nofix" and not nofix:
-            continue
-        c, k = cves.get(cve), kev.get(cve)
-        out.append({"cve": cve, "vms": n, "fixable": int(fixable or 0),
-                    "uncertain": int(uncertain or 0), "nofix": int(nofix or 0),
-                    "severity": sev, "score": c.score if c else None,
-                    "summary": c.summary if c else None, "kev": bool(k),
-                    "kev_added": k.date_added.isoformat() if k and k.date_added else None,
-                    "kev_due": k.due_date.isoformat() if k and k.due_date else None,
-                    "kev_name": k.name if k else None,
-                    "ransomware": bool(k and k.ransomware == "Known"),
-                    "first_seen": first.isoformat(timespec="seconds") + "Z" if first else None})
-    out.sort(key=lambda r: (not r["kev"], _sev_key(r["severity"]), -(r["score"] or 0),
-                            -r["fixable"], r["cve"]))
-    return out
+    """Every CVE with an open finding (exports); the page uses cve_page."""
+    return cve_page(db, q=q, kev_only=kev_only, severity=severity, fix=fix, vm_id=vm_id,
+                    per_page=None)[0]
 
 
 def summary(db) -> dict:
@@ -1327,15 +1472,13 @@ def summary(db) -> dict:
     vm_counts = dict(db.query(func.coalesce(VirtualMachine.vuln_status, "unknown"),
                               func.count(VirtualMachine.id))
                      .group_by(func.coalesce(VirtualMachine.vuln_status, "unknown")).all())
-    open_q = db.query(VmVuln).filter(VmVuln.closed_at.is_(None))
     return {
         "vms_evaluated": vm_counts.get("evaluated", 0),
         "vms_skipped": vm_counts.get("skipped", 0),
         "vms_unknown": vm_counts.get("unknown", 0),
         "vms_open": db.query(func.count(VirtualMachine.id)).filter(VirtualMachine.vuln_open > 0).scalar() or 0,
         "vms_kev": db.query(func.count(VirtualMachine.id)).filter(VirtualMachine.vuln_kev > 0).scalar() or 0,
-        "cves_open": open_q.with_entities(func.count(func.distinct(VmVuln.cve))).scalar() or 0,
-        "cves_kev": open_q.filter(VmVuln.kev == True)  # noqa: E712
-        .with_entities(func.count(func.distinct(VmVuln.cve))).scalar() or 0,
+        "cves_open": db.query(func.count(VulnCveStat.cve)).scalar() or 0,
+        "cves_kev": db.query(func.count(VulnCveStat.cve)).filter(VulnCveStat.kev == True).scalar() or 0,  # noqa: E712
         "has_data": bool(db.query(VulnAdvisory.id).first()),
     }

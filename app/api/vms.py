@@ -96,7 +96,8 @@ def _vm_to_dict(vm: VirtualMachine) -> dict:
         # findings WITH a published fix; total also holds no-fix / uncertain
         "vuln_status": vm.vuln_status, "vuln_reason": vm.vuln_reason,
         "vuln_open": vm.vuln_open, "vuln_total": vm.vuln_total, "vuln_kev": vm.vuln_kev,
-        "vuln_max_sev": vm.vuln_max_sev,
+        "vuln_max_sev": vm.vuln_max_sev, "vuln_top": vm.vuln_top, "vuln_top_sev": vm.vuln_top_sev,
+        "vuln_crit": vm.vuln_crit, "vuln_high": vm.vuln_high,
     }
 
 

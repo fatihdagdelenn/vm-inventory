@@ -23,11 +23,14 @@ MAX_UPLOAD = 2 * 1024 ** 3        # an Ubuntu all.zip is several hundred MB
 
 @router.get("")
 def list_cves(q: str = "", kev: bool = False, severity: str = "", fix: str = "",
-              vm: Optional[int] = None,
+              vm: Optional[int] = None, page: int = 1, per_page: int = 100,
               db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    items = vs.cve_list(db, q=q, kev_only=kev, severity=severity, fix=fix, vm_id=vm)
+    per_page = max(10, min(per_page, 500))
+    items, total = vs.cve_page(db, q=q, kev_only=kev, severity=severity, fix=fix, vm_id=vm,
+                               page=page, per_page=per_page)
     vm_row = db.get(VirtualMachine, vm) if vm else None
-    return {"items": items, "total": len(items), "summary": vs.summary(db),
+    return {"items": items, "total": total, "page": page, "per_page": per_page,
+            "summary": vs.summary(db),
             "vm": {"id": vm_row.id, "name": vm_row.name, "reason": vm_row.vuln_reason}
             if vm_row else None}
 

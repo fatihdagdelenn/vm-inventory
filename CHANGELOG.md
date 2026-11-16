@@ -30,6 +30,32 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 Phases not yet in a release (phase 152 →; internal v1.8.1 →).
 
+### ⚡ Open CVEs by name, fast Vulnerabilities page at real scale (phase 164)
+- **"Open CVEs" cell** used to show "7480 +1073" - unclear which CVEs those
+  were. It now names the **most urgent open CVE** (KEV first, then fix
+  available, severity, CVSS) as a coloured badge, e.g. `CVE-2024-1086`, and
+  `+N` for the rest. Clicking the CVE opens it on the Vulnerabilities page;
+  clicking `+N` opens that VM's full CVE list there. The tooltip keeps the
+  numbers: open with a fix (critical / high), without a fix / uncertain, KEV.
+  Clicking the empty part of the cell still filters the list as before.
+- **VM detail** shows the 50 most urgent findings (was: all, thousands for an
+  old kernel) with a link to the full list.
+- **Vulnerabilities page**: paged (100 per page) and read from a small per-CVE
+  table (`vuln_cve_stat`) rebuilt after a recompute that changed findings,
+  instead of aggregating every finding on each load. Measured on 150 Ubuntu
+  VMs x 8,000 CVEs (752,218 findings, SQLite): page load 3.3 s → 0.01 s.
+- **Recompute after each sync**: a VM whose OS / kernel / support status and
+  the vulnerability data are unchanged since its last evaluation is skipped
+  (fingerprint in `virtual_machines.vuln_sig`); only changed findings are
+  written, in bulk. Same data set: 40.6 s → 0.1 s per sync with no change;
+  first evaluation 53 s → 19 s.
+- **Exports**: the "Zafiyetler" sheet lists the most urgent findings first
+  and stops at 100,000 rows with a note row ("… N more, full list on the
+  Vulnerabilities page") - a sheet holds at most 1,048,576 rows.
+- `ensure_schema` now also creates named indexes declared on existing tables
+  (two new `vm_vuln` indexes); on first start it may also build indexes that
+  older `ALTER`-added columns never got - a one-off, logged as "Index created".
+
 ### 🧩 Choose which distributions to download; SUSE / openSUSE (phase 163)
 - **Administration → Vulnerability Data → Distributions to download.**
   *Automatic* (default) downloads only what the inventory needs: a source is

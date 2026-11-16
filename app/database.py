@@ -59,3 +59,13 @@ def ensure_schema(engine):
                 # (multi-worker) - don't block startup, log and continue.
                 logger.warning("Kolon eklenemedi %s.%s: %s",
                                table.name, col.name, exc)
+        # Named indexes declared in __table_args__ after the table existed
+        # (create_all only builds indexes together with a NEW table).
+        existing_idx = {i["name"] for i in inspector.get_indexes(table.name)}
+        for idx in table.indexes:
+            if idx.name and idx.name not in existing_idx:
+                try:
+                    idx.create(bind=engine, checkfirst=True)
+                    logger.info("Index created: %s.%s", table.name, idx.name)
+                except Exception as exc:
+                    logger.warning("Index could not be created %s.%s: %s", table.name, idx.name, exc)

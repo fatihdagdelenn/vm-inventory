@@ -5,6 +5,8 @@
  */
 const Vu = {
   vm: null,
+  page: 1,
+  perPage: 100,
 
   query() {
     const p = new URLSearchParams();
@@ -16,6 +18,8 @@ const Vu = {
     if (fix) p.set('fix', fix);
     if (document.getElementById('vuKev').checked) p.set('kev', 'true');
     if (this.vm) p.set('vm', this.vm);
+    p.set('page', this.page);
+    p.set('per_page', this.perPage);
     return p.toString();
   },
 
@@ -37,7 +41,8 @@ const Vu = {
     document.getElementById('vuNoData').classList.toggle('d-none', !!s.has_data);
   },
 
-  async load() {
+  async load(keepPage) {
+    if (!keepPage) this.page = 1;
     let data;
     try { data = await App.api('/api/vulns?' + this.query()); } catch (e) { return; }
     this.stats(data.summary);
@@ -75,8 +80,19 @@ const Vu = {
               App.esc(t('vu.ransom', 'Fidye yazılımı kampanyalarında kullanıldığı biliniyor')) + '"></i>' : '') : '') + '</td>' +
           '<td class="text-nowrap text-muted small">' + App.fmtDate(r.first_seen) + '</td></tr>';
       }).join('');
+      if (keepPage) document.getElementById('vuTable').scrollIntoView({block: 'start'});
     }
-    document.getElementById('vuCount').textContent = data.total + ' CVE';
+    const nf = n => Number(n).toLocaleString(window.I18N && I18N.lang === 'en' ? 'en' : 'tr');
+    const from = data.total ? (data.page - 1) * data.per_page + 1 : 0;
+    const to = Math.min(data.total, data.page * data.per_page);
+    const pages = Math.max(1, Math.ceil(data.total / data.per_page));
+    document.getElementById('vuCount').innerHTML =
+      '<div class="vu-pager"><span class="text-muted me-auto">' + nf(from) + '–' + nf(to) + ' / ' + nf(data.total) + ' CVE</span>' +
+      '<button class="btn btn-sm btn-outline-secondary" id="vuPrev"' + (data.page <= 1 ? ' disabled' : '') + '>‹ ' + t('vu.prev', 'Önceki') + '</button>' +
+      '<span class="text-muted">' + data.page + ' / ' + pages + '</span>' +
+      '<button class="btn btn-sm btn-outline-secondary" id="vuNext"' + (data.page >= pages ? ' disabled' : '') + '>' + t('vu.next', 'Sonraki') + ' ›</button></div>';
+    document.getElementById('vuPrev').onclick = () => { this.page--; this.load(true); };
+    document.getElementById('vuNext').onclick = () => { this.page++; this.load(true); };
   },
 
   init() {

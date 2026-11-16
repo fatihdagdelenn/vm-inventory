@@ -239,6 +239,8 @@ const I18N = {
     'vd2.noData': 'No data yet.', 'vd2.started': 'Started; the status updates here.', 'vd2.uploading': 'Uploading…',
     'vd2.probe': 'Test sources', 'vd2.probing': 'Trying…', 'vd2.reach': 'reachable', 'vd2.noReach': 'unreachable',
     'vd2.osvSrc': 'OSV source',
+    'vu.noneShort': 'none', 'vu.tipClick': 'Click the CVE name: that CVE · click the number: every CVE of this VM',
+    'vu.seeAllN': 'full list', 'vu.mostUrgent': 'Showing the {n} most urgent', 'vu.prev': 'Previous', 'vu.next': 'Next',
     'vd2.srcTitle': 'Distributions to download', 'vd2.modeAuto': 'Automatic (from inventory)', 'vd2.modeManual': 'Choose',
     'vd2.srcDesc': 'In automatic mode only the distributions that have a supported VM in your inventory are downloaded (the small AlmaLinux data covers RHEL and Rocky too). Preparing a package for another server (e.g. an offline prod)? Use "Choose" and tick its distributions too.',
     'vd2.srcDistro': 'Distribution', 'vd2.srcVms': 'VMs to match', 'vd2.srcData': 'Stored data', 'vd2.srcFrom': 'Last source',

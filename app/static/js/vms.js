@@ -1156,6 +1156,9 @@ const VMs = {
   // Click-to-filter cells: capture phase, so it runs BEFORE the row's own
   // onclick (open detail) and can stop it.
   document.getElementById('vmBody').addEventListener('click', e => {
+    // a real link inside a cell (Open CVEs: CVE id / count) navigates instead
+    const a = e.target.closest('a[href]');
+    if (a) { e.stopPropagation(); return; }
     const c = e.target.closest('[data-ff]');
     if (c) VMs.cellFilter(e, c.dataset.ff, c.dataset.fv);
   }, true);

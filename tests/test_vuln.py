@@ -635,4 +635,38 @@ assert "SUSE" in vs.auto_sources(db) and "openSUSE" in vs.auto_sources(db)
 assert vs.sources_overview(db)["missing"] == []             # every needed source has data
 print("12) source choice + SUSE ok")
 
+# ------------------------------------------------------------ 13) scale paths (phase 164)
+db.expire_all()
+a124 = db.get(VirtualMachine, a124.id)
+assert a124.vuln_top in ("CVE-2026-43040", "CVE-2026-9999") and a124.vuln_top_sev == "medium"
+alma_r = db.get(VirtualMachine, alma.id)
+assert alma_r.vuln_top == "CVE-2024-1086" and alma_r.vuln_crit == 0 and alma_r.vuln_high == 61
+# nothing changed -> every VM skipped without reading its findings
+r2 = vs.recompute(db)
+assert r2["unchanged"] == db.query(VirtualMachine).count() and r2["new"] == 0, r2
+# a kernel change re-evaluates only that VM
+a124.kernel = "6.8.0-136-generic"; db.commit()
+r3 = vs.recompute(db)
+assert r3["unchanged"] == db.query(VirtualMachine).count() - 1 and r3["closed"] == 2, r3
+a124.kernel = "6.8.0-124-generic"; db.commit(); vs.recompute(db)
+# the stats table answers like the raw aggregate
+from app.models import VulnCveStat  # noqa: E402
+fast, n_fast = vs.cve_page(db, per_page=500)
+db.query(VulnCveStat).delete(); db.commit()
+assert vs.cve_page(db, per_page=500)[1] == 0              # (empty until rebuilt)
+vs.refresh_stats(db); db.commit()
+again, _ = vs.cve_page(db, per_page=500)
+assert [(x["cve"], x["vms"], x["fixable"], x["severity"], x["kev"]) for x in fast] == \
+    [(x["cve"], x["vms"], x["fixable"], x["severity"], x["kev"]) for x in again]
+page2, total = vs.cve_page(db, page=2, per_page=10)
+assert total == n_fast and len(page2) == 10 and page2[0]["cve"] == fast[10]["cve"]
+vm_list, vm_total = vs.cve_page(db, vm_id=alma.id, per_page=5)       # raw path (VM filter)
+assert vm_total == 61 and vm_list[0]["cve"] == "CVE-2024-1086" and len(vm_list) == 5
+assert len(vs.vm_findings(db, alma.id, limit=7)) == 7
+# export cap: a note row says how many were left out
+rows = rs.attach_vulns(db, [alma_r, db.get(VirtualMachine, u22ga.id)], max_rows=30)
+assert len(rows) == 31 and rows[-1]["vm"].startswith("… 34 bulgu daha listelenmedi"), rows[-1]
+assert "CVE-2024-1086 (KEV)" in alma_r._vuln_cves and alma_r._vuln_cves.endswith("… +21")
+print("13) scale paths ok")
+
 print("ALL VULN TESTS PASSED")

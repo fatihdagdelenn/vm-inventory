@@ -76,6 +76,11 @@ class VirtualMachine(Base):
     vuln_max_sev = Column(String(12))                # worst severity among open findings
     vuln_status = Column(String(12))                 # evaluated | skipped | unknown
     vuln_reason = Column(String(255))                # why skipped / unknown (Turkish)
+    vuln_top = Column(String(32))                    # most urgent open CVE (KEV > fixable > severity > CVSS)
+    vuln_top_sev = Column(String(12))
+    vuln_crit = Column(Integer)                      # fixable open findings rated critical
+    vuln_high = Column(Integer)                      # ... rated high
+    vuln_sig = Column(String(40))                    # inputs + data fingerprint of the last evaluation
     arch = Column(String(32))                        # Mimari: x86_64 / aarch64 …
     cpu_count = Column(Integer)
     ram_mb = Column(BigInteger)

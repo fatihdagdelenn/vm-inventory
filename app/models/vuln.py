@@ -12,7 +12,7 @@ VM is no longer affected (patched or no longer evaluable - closed_reason says
 which), and cleared again if it reappears.
 """
 from datetime import datetime
-from sqlalchemy import (Boolean, Column, Date, DateTime, Float, Integer, String, Text,
+from sqlalchemy import (Boolean, Column, Date, DateTime, Float, Index, Integer, String, Text,
                         UniqueConstraint)
 from ..database import Base
 
@@ -60,7 +60,10 @@ class VulnKev(Base):
 
 class VmVuln(Base):
     __tablename__ = "vm_vuln"
-    __table_args__ = (UniqueConstraint("vm_id", "cve", name="uq_vm_vuln_vm_cve"),)
+    __table_args__ = (UniqueConstraint("vm_id", "cve", name="uq_vm_vuln_vm_cve"),
+                      # open-findings aggregates (Vulnerabilities page) scan by these
+                      Index("ix_vm_vuln_open_cve", "closed_at", "cve"),
+                      Index("ix_vm_vuln_vm_open", "vm_id", "closed_at"))
 
     id = Column(Integer, primary_key=True)
     vm_id = Column(Integer, index=True, nullable=False)   # virtual_machines.id (logical)
@@ -77,3 +80,19 @@ class VmVuln(Base):
     last_seen = Column(DateTime, default=datetime.utcnow)
     closed_at = Column(DateTime, index=True)   # None = open
     closed_reason = Column(String(16))         # patched | not_evaluated
+
+
+class VulnCveStat(Base):
+    """Per-CVE counts over the OPEN findings, rebuilt after a recompute that
+    changed findings. The Vulnerabilities page reads this small table instead
+    of aggregating ~1M vm_vuln rows on every page load."""
+    __tablename__ = "vuln_cve_stat"
+
+    cve = Column(String(32), primary_key=True)
+    vms = Column(Integer)
+    fixable = Column(Integer)
+    uncertain = Column(Integer)
+    nofix = Column(Integer)
+    rank = Column(Integer, index=True)          # worst severity (vuln_service.SEV_RANK)
+    kev = Column(Boolean, index=True)
+    first_seen = Column(DateTime)
