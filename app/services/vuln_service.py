@@ -465,23 +465,15 @@ def _meta_set(db, key, value):
 
 
 # ================================================================ online sync
-def _proxies():
-    """VULN_PROXY: proxy for these downloads only (vCenter / Proxmox calls must
-    not go through it). Without it requests honours HTTPS_PROXY / NO_PROXY."""
-    from ..config import get_settings
-    settings = get_settings()
-    p = (getattr(settings, "vuln_proxy", "") or "").strip()
-    return {"http": p, "https": p} if p else None
-
-
 def _get(url, stream=False, timeout=(8, 60), headers=None):
-    """Single place for outbound HTTP (tests replace it)."""
-    import requests
+    """Single place for outbound HTTP (tests replace it). Extra company CAs
+    and VULN_PROXY come from core/outbound."""
+    from ..core import outbound
     h = dict(_UA)
     if "api.github.com" in url:
         h["Accept"] = "application/vnd.github.raw"
     h.update(headers or {})
-    return requests.get(url, stream=stream, timeout=timeout, headers=h, proxies=_proxies())
+    return outbound.get(url, stream=stream, timeout=timeout, headers=h)
 
 
 def _download(url, suffix, timeout=(8, 300)) -> str:
@@ -527,7 +519,7 @@ _ERR_TEXT = (  # requests' messages are very long; the Administration table show
     (r"(?:timed out|Timeout)", "Zaman aşımı"),
     (r"Connection refused", "Bağlantı reddedildi"),
     (r"No route to host|Network is unreachable", "Ağ erişimi yok"),
-    (r"certificate verify failed", "Sertifika doğrulanamadı (araya giren SSL denetimi?)"),
+    (r"certificate verify failed", "Sertifika doğrulanamadı (SSL denetimi)"),
     (r"(\d{3}) (?:Client|Server) Error", "HTTP {}"),
 )
 
@@ -637,8 +629,13 @@ def probe() -> list:
                 why = f"HTTP {r.status_code}"
         except Exception as exc:
             ok, why = False, _err(exc)
-        return {"group": group, "name": name, "url": url, "ok": ok, "detail": why,
-                "ms": int((time.monotonic() - t0) * 1000)}
+        res = {"group": group, "name": name, "url": url, "ok": ok, "detail": why,
+               "ms": int((time.monotonic() - t0) * 1000)}
+        if not ok and "Sertifika" in why:
+            # name the CA that signed what this server is shown (TLS inspection)
+            from ..core.outbound import peer_issuer
+            res["issuer"] = peer_issuer(url)
+        return res
     with ThreadPoolExecutor(max_workers=8) as ex:
         return list(ex.map(one, targets))
 

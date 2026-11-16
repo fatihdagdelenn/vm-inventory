@@ -163,11 +163,11 @@ def _meta_set(db, key, value):
 def sync_from_api(db, timeout: int = 10) -> dict:
     """Fetch every product from endoflife.date. Stops at the first connection
     error (no internet -> one short failure, not 16 timeouts)."""
-    import requests
+    from ..core import outbound              # company CAs / VULN_PROXY
     rows, stamp, done = [], None, []
     try:
         for product in PRODUCTS:
-            r = requests.get(API_URL.format(product), timeout=timeout,
+            r = outbound.get(API_URL.format(product), timeout=timeout,
                              headers={"User-Agent": "vm-inventory lifecycle sync"})
             if r.status_code == 404:
                 logger.warning("endoflife.date has no product '%s' - skipped", product)

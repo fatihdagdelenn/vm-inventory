@@ -349,7 +349,55 @@ const Settings = {
       '<td class="text-nowrap" title="' + App.esc(r.url) + '">' + App.esc(r.name) + '</td>' +
       '<td class="text-nowrap">' + (r.ok ? '<span class="badge sp-badge sp-ok">' + t('vd2.reach', 'erişiliyor') + '</span>'
         : '<span class="badge sp-badge sp-eol">' + t('vd2.noReach', 'erişilemiyor') + '</span>') + '</td>' +
-      '<td class="text-muted text-nowrap">' + App.esc(r.ok ? r.ms + ' ms' : r.detail) + '</td></tr>').join('') + '</tbody></table>';
+      '<td class="text-muted">' + App.esc(r.ok ? r.ms + ' ms' : r.detail) + '</td></tr>').join('') + '</tbody></table>';
+    const iss = [...new Set(d.items.map(r => r.issuer).filter(Boolean))];
+    if (iss.length) {
+      box.innerHTML += '<div class="alert alert-warning small mt-2 mb-0"><i class="bi bi-shield-lock"></i> ' +
+        t('vd2.caHint', 'Bu sunucuya gösterilen sertifikaları imzalayan:') + ' <b>' + iss.map(App.esc).join(', ') + '</b>. ' +
+        t('vd2.caHint2', 'Bu, ağınızın SSL denetim sertifikası. Kök sertifikasını aşağıdaki "Kurum sertifikası" bölümünden yükleyin.') + '</div>';
+    }
+  },
+
+  /* ---------- company CA for data downloads (phase 162) ---------- */
+  async loadCa() {
+    let d;
+    try { d = await App.api('/api/vulns/ca'); } catch (e) { return; }
+    const box = document.getElementById('vdCa');
+    const parts = [];
+    if (!d.sources.length) {
+      parts.push('<span class="text-muted">' + t('vd2.caNone', 'Ek sertifika yok - yalnızca genel (herkese açık) kök sertifikalar kullanılıyor.') + '</span>');
+    } else {
+      parts.push(d.sources.map(s => '<div><i class="bi bi-file-earmark-lock"></i> ' +
+        (s.uploaded ? t('vd2.caUploaded', 'Yüklenen dosya') : App.esc(s.path) + ' <span class="text-muted">(OUTBOUND_CA_BUNDLE)</span>') +
+        ' · ' + s.count + ' ' + t('vd2.caCerts', 'sertifika') + '</div>').join(''));
+      parts.push(d.extra.length
+        ? '<div class="mt-1">' + t('vd2.caCompany', 'Kuruma özel olanlar:') + ' ' + d.extra.map(c =>
+            '<span class="badge sp-badge sp-ext me-1" title="' + App.esc(t('vd2.caIssuer', 'Yayıncı') + ': ' + c.issuer + ' · SHA-256 ' + c.sha256) + '">' +
+            App.esc(c.subject) + ' · ' + t('vd2.caUntil', 'bitiş') + ' ' + App.fmtDay(c.not_after) + '</span>').join('') + '</div>'
+        : '<div class="mt-1 text-muted">' + t('vd2.caOnlyPublic', 'Dosyadaki sertifikaların hepsi zaten genel listede; SSL denetim sertifikası içermiyor olabilir.') + '</div>');
+    }
+    box.innerHTML = parts.join('');
+    document.getElementById('vdCaDel').classList.toggle('d-none', !d.uploaded);
+  },
+
+  async vdCaUpload(input) {
+    const f = input.files && input.files[0];
+    input.value = '';
+    if (!f) return;
+    const fd = new FormData();
+    fd.append('file', f);
+    const res = await fetch('/api/vulns/ca', {method: 'POST', body: fd,
+      headers: {'X-CSRF-Token': App.getCookie('csrf_token')}});
+    let body = {};
+    try { body = await res.json(); } catch (e) { /* no body */ }
+    if (!res.ok) { App.toast(body.detail || ('HTTP ' + res.status), 'danger'); return; }
+    App.toast(t('vd2.caSaved', 'Sertifika kaydedildi; "Kaynakları test et" ile deneyin.'));
+    Settings.loadCa();
+  },
+
+  async vdCaRemove() {
+    try { await App.api('/api/vulns/ca', {method: 'DELETE'}); } catch (e) { return; }
+    Settings.loadCa();
   },
 
   vdMsg(ok, text) {
@@ -391,5 +439,6 @@ Settings.loadAudit();
 Settings.loadSync();
 Settings.loadLifecycle();
 Settings.loadVuln();
+Settings.loadCa();
 document.getElementById('auditSearch').addEventListener('input', App.debounce(() => Settings.loadAudit(), 300));
 document.getElementById('auditAction').addEventListener('change', () => Settings.loadAudit());

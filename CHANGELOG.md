@@ -30,6 +30,34 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 Phases not yet in a release (phase 152 →; internal v1.8.1 →).
 
+### 🔐 Company certificate for networks with TLS inspection (phase 162)
+- **Problem seen on the user's network:** every source - cisa.gov, GitHub,
+  osv.dev - failed with "certificate verify failed". The firewall re-signs
+  HTTPS with the company's own root CA; the host OS and browsers trust it,
+  the container does not (Python's `requests` uses its own list, certifi).
+- **Administration → Vulnerability Data → Company certificate (TLS
+  inspection)**: upload the company root CA - PEM / `.crt`, a Windows `.cer`
+  (DER), or the server's whole bundle (e.g. `/etc/ssl/certs/ca-certificates.crt`).
+  It is **added** to the public list for data downloads only (vulnerability
+  data and endoflife.date); verification stays on, vCenter / Proxmox
+  connections are untouched. Kept in the data volume, so it survives rebuilds.
+  The card lists the company-specific certificates (name, expiry) and can
+  remove the upload.
+- **Test sources** now names the CA that signed the certificate this server is
+  shown when verification fails (direct connections), e.g. "signed by:
+  Example Corp SSL Inspection CA" - that is the certificate to ask IT for.
+- `OUTBOUND_CA_BUNDLE` (`.env`): a PEM file or a folder of `.pem/.crt/.cer`
+  files, for setups that mount the host's CA store instead of uploading.
+  `VULN_PROXY` now applies to the endoflife.date sync too.
+- New shared module `app/core/outbound.py`; tests `tests/test_outbound.py` run a
+  local HTTPS server signed by a made-up company CA (fails → issuer named →
+  PEM / DER / whole-bundle upload / env folder → works → removal → fails again).
+- Honest limits: TLS verification is never switched off (no "ignore
+  certificates" option on purpose). The issuer hint needs a direct connection
+  (not through a configured proxy). Python 3.13+ rejects CA certificates
+  without a key-usage extension (strict mode); the image runs Python 3.12,
+  where such older inspection CAs still work.
+
 ### 🌐 Vulnerability data from GitHub when cisa.gov / osv.dev are blocked (phase 161)
 - **CISA KEV** is tried from four sources, each on a different host because
   firewalls allow them separately: cisa.gov → `raw.githubusercontent.com` →

@@ -51,6 +51,44 @@ def vuln_probe(request: Request, user: User = Depends(require_role("admin"))):
     return {"items": vs.probe()}
 
 
+@router.get("/ca")
+def ca_status(user: User = Depends(require_role("admin"))):
+    """Extra CA certificates trusted for data downloads (TLS inspection)."""
+    from ..core import outbound
+    return outbound.status()
+
+
+@router.post("/ca")
+async def ca_upload(request: Request, file: UploadFile = File(...),
+                    db: Session = Depends(get_db),
+                    user: User = Depends(require_role("admin"))):
+    """Company root CA (PEM / DER, or a whole bundle) for data downloads only."""
+    from ..core import outbound
+    validate_csrf(request, None)
+    data = await file.read(outbound.MAX_UPLOAD + 1)
+    try:
+        certs = outbound.save_upload(data)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    company = [c for c in certs if not c["public"]]
+    log_audit(db, user, "vuln_ca_upload", target=(file.filename or "ca")[:120],
+              detail=f"certs={len(certs)} company={','.join(c['subject'] for c in company)[:200]}",
+              request=request)
+    db.commit()
+    return {"certs": certs, **outbound.status()}
+
+
+@router.delete("/ca")
+def ca_remove(request: Request, db: Session = Depends(get_db),
+              user: User = Depends(require_role("admin"))):
+    from ..core import outbound
+    validate_csrf(request, None)
+    removed = outbound.remove_upload()
+    log_audit(db, user, "vuln_ca_remove", target="extra-ca.pem", detail=str(removed), request=request)
+    db.commit()
+    return outbound.status()
+
+
 @router.post("/sync")
 def vuln_sync(request: Request, kev_only: bool = False, db: Session = Depends(get_db),
               user: User = Depends(require_role("admin"))):
