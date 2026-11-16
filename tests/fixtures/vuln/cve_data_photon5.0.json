@@ -1,0 +1,45 @@
+[
+ {
+  "cve_id": "CVE-2026-6001",
+  "pkg": "linux",
+  "cve_score": 7.8,
+  "aff_ver": "all versions before 6.1.130-1.ph5 are vulnerable",
+  "res_ver": "6.1.130-1.ph5"
+ },
+ {
+  "cve_id": "CVE-2026-6001",
+  "pkg": "linux-esx",
+  "cve_score": 7.8,
+  "aff_ver": "all versions before 6.1.130-1.ph5 are vulnerable",
+  "res_ver": "6.1.130-1.ph5"
+ },
+ {
+  "cve_id": "CVE-2026-6002",
+  "pkg": "linux",
+  "cve_score": 5.5,
+  "aff_ver": "all versions before 6.1.120-2.ph5 are vulnerable",
+  "res_ver": "6.1.120-2.ph5"
+ },
+ {
+  "cve_id": "CVE-2026-6003",
+  "pkg": "linux",
+  "cve_score": 9.1,
+  "aff_ver": "all versions are vulnerable",
+  "res_ver": "NA"
+ },
+ {
+  "cve_id": "CVE-2026-6004",
+  "pkg": "linux",
+  "cve_score": 6.1,
+  "aff_ver": "NA",
+  "res_ver": "NA",
+  "status": "Not Affected"
+ },
+ {
+  "cve_id": "CVE-2026-6005",
+  "pkg": "curl",
+  "cve_score": 7.3,
+  "aff_ver": "all versions before 8.11.1-1.ph5 are vulnerable",
+  "res_ver": "8.11.1-1.ph5"
+ }
+]

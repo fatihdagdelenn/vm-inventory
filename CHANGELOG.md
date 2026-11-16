@@ -30,6 +30,40 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 Phases not yet in a release (phase 152 →; internal v1.8.1 →).
 
+### 🟥 Oracle Linux and Photon OS kernels are matched (phase 167)
+- Prod's inventory is mostly **Oracle Linux 8 / 9 / 10 with UEK kernels**,
+  plus Photon OS - all were "not evaluable" because neither is in OSV.
+- **Oracle Linux**: Oracle's own OVAL feed
+  (`linux.oracle.com/security/oval/com.oracle.elsa-ol{8,9,10}.xml.bz2`, the
+  all-in-one `com.oracle.elsa-all.xml.bz2` when a per-release file is
+  missing), streamed and kept to kernel advisories. **UEK** (`…el8uek`) and
+  **RHCK** (`…el8_10`) are matched separately; the UEK streams (5.4 / 5.15 /
+  6.12) each get their own data (`kernel-uek-5.15`), because an advisory for
+  one stream says nothing about the others. One advisory often covers two
+  releases with a build each (`…el6uek` / `…el7uek`) - every release gets
+  only its own build. Per-CVE CVSS scores from the OVAL set the severity.
+  RHCK falls back to the AlmaLinux data (same RHEL versions) when Oracle's is
+  not loaded. Format checked against a real Oracle OVAL file (2018 ELSAs,
+  quay/claircore testdata).
+- **Photon OS**: Broadcom's CVE list per release
+  (`packages.broadcom.com/photon/photon_cve_metadata/cve_data_photon5.0.json`,
+  old `packages.vmware.com` as fallback) - `linux`, `linux-esx`, `linux-secure`,
+  `linux-rt`, `linux-aws`; "Not Affected" entries skipped, "all versions are
+  vulnerable" without a fixed build = no fix yet. Format checked against
+  aquasecurity/vuln-list-update testdata.
+- Both are selectable sources ("Distributions to download"); automatic mode
+  fetches only the releases the inventory runs. Downloaded files and uploads
+  (`.xml.bz2` / `.xml`, `cve_data_photon*.json`) go through the same import,
+  and the offline package carries them.
+- **Rocky Linux from CIQ - LTS** is recognised ("Rocky Linux from CIQ - LTS
+  9.6", kernels `…el9_6_ciq`) so its support status is known; its kernels are
+  reported as not evaluable on purpose - CIQ backports fixes under its own
+  version numbers, so comparing with Rocky / RHEL data would mislead.
+- Honest limits: Debian on VMware still cannot be evaluated (uname -r has the
+  ABI, not the package version; only the Proxmox agent reports uname -v).
+  Oracle Linux 7 is EOL (extended support has no public feed). Flatcar, SLOS
+  and other appliances have no data source.
+
 ### ⬆️ Uploads in pieces - works behind a proxy that limits request size (phase 166)
 - Reported on prod: "Upload file" showed **HTTP 413** and nothing happened.
   The answer came from a reverse proxy in front of the app (nginx's default

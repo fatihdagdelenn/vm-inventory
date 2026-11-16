@@ -672,4 +672,88 @@ assert len(rows) == 31 and rows[-1]["vm"].startswith("… 34 bulgu daha listelen
 assert "CVE-2024-1086 (KEV)" in alma_r._vuln_cves and alma_r._vuln_cves.endswith("… +21")
 print("13) scale paths ok")
 
+# ------------------------------------------------------------ 14) Oracle Linux (OVAL) + Photon (phase 167)
+# oracle-elsa-sample.xml = two REAL definitions from Oracle's 2018 OVAL file
+# (ELSA-2018-0151 RHCK OL7, ELSA-2018-4001 UEK OL6+OL7, via quay/claircore
+# testdata) + one OL8 definition written in the same format.
+res = vs.import_file(db, FX + "oracle-elsa-sample.xml")
+assert res["type"] == "oracle-oval" and res["records"] == 3, res
+pk = {(a.ecosystem, a.package): a.fixed for a in db.query(VulnAdvisory).filter(VulnAdvisory.ecosystem.like("Oracle Linux:%"))}
+assert pk[("Oracle Linux:7", "kernel-uek-4.1")] == "4.1.12-112.14.2.el7uek", pk        # own build per release
+assert pk[("Oracle Linux:6", "kernel-uek-4.1")] == "4.1.12-112.14.2.el6uek"
+assert pk[("Oracle Linux:7", "kernel")] == "3.10.0-693.17.1.el7"
+assert pk[("Oracle Linux:8", "kernel-uek-5.15")] == "5.15.0-300.163.18.el8uek"
+assert pk[("Oracle Linux:8", "kernel")] == "4.18.0-553.30.1.el8_10"
+assert not any(p.endswith("devel") for _, p in pk)
+c = db.get(VulnCve, "CVE-2026-5001")
+assert c.score == 9.8 and c.severity == "critical" and c.specific          # per-CVE CVSS from the OVAL
+o_uek_old = vm("Oracle Linux Server 8.10", "5.15.0-206.153.7.el8uek.x86_64", name="ol8-uek7-old")
+o_uek_new = vm("Oracle Linux Server 8.10", "5.15.0-314.193.5.5.el8uek.x86_64", name="ol8-uek7-new")
+o_uek6 = vm("Oracle Linux Server 8.10", "5.4.17-2136.350.3.2.el8uek.x86_64", name="ol8-uek6")
+o_rhck = vm("Oracle Linux Server 8.10", "4.18.0-553.16.1.el8_10.x86_64", name="ol8-rhck")
+ph = vm("VMware Photon OS/Linux", "6.1.126-5.ph5", name="photon5")
+ph_esx = vm("VMware Photon OS/Linux", "6.1.126-5.ph5-esx", name="photon5-esx")
+ciq = vm("Rocky Linux from CIQ - LTS 9.6 (Blue Onyx)", "5.14.0-570.60.1+27.2.el9_6_ciq.x86_64", name="ciq")
+res = vs.import_file(db, FX + "cve_data_photon5.0.json")
+assert res["type"] == "photon" and res["version"] == "5.0" and res["records"] == 3, res   # Not Affected / curl out
+ls.recompute(db)
+db.expire_all()
+f = finding(o_uek_old, "CVE-2026-5001")
+assert f and f.severity == "critical" and f.reason == ("Oracle Linux 8 · kernel-uek-5.15 5.15.0-206.153.7.el8uek · "
+                                                       "düzeltme 5.15.0-300.163.18.el8uek -> etkileniyor"), f and f.reason
+assert db.get(VirtualMachine, o_uek_new.id).vuln_total == 0
+u6 = db.get(VirtualMachine, o_uek6.id)
+assert u6.vuln_status == "unknown" and "UEK 5.4" in u6.vuln_reason, u6.vuln_reason
+assert finding(o_rhck, "CVE-2026-5001").package == "kernel"
+assert finding(ph, "CVE-2026-6001").fixed == "6.1.130-1.ph5" and finding(ph, "CVE-2026-6002") is None
+f3 = finding(ph, "CVE-2026-6003")
+assert f3 and not f3.fix_available and f3.severity == "critical"
+assert finding(ph_esx, "CVE-2026-6001").package == "linux-esx"
+cq = db.get(VirtualMachine, ciq.id)
+assert cq.support_status == "supported" and cq.vuln_status == "unknown" and "CIQ" in cq.vuln_reason
+assert {"Oracle Linux", "Photon OS"} <= set(vs.auto_sources(db))
+assert vs._vendor_versions(db, "Oracle Linux") == ["8"] and vs._vendor_versions(db, "Photon OS") == ["5.0"]
+# vendor download: per-release Oracle file missing -> the all-in-one file
+with open(FX + "oracle-elsa-sample.xml", "rb") as fh:
+    ora_bytes = fh.read()
+_urls.clear()
+
+
+def _vendor_get(url, **k):
+    _urls.append(url)
+    if url.endswith("elsa-ol8.xml.bz2"):
+        class R404(_File):
+            def __init__(self):
+                self.status_code = 404
+
+            def raise_for_status(self):
+                raise requests.HTTPError("404 Client Error: Not Found")
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                pass
+        return R404()
+    if url.endswith("elsa-all.xml.bz2"):
+        import bz2
+        pth = os.path.join(tmp, "all.xml.bz2")
+        with open(pth, "wb") as fh:
+            fh.write(bz2.compress(ora_bytes))
+        return _File(pth)
+    if "photon_cve_metadata" in url:
+        return _File(FX + "cve_data_photon5.0.json")
+    raise requests.ConnectionError("blocked")
+
+
+vs._get = _vendor_get
+try:
+    out = vs.sync_vendor(db, "Oracle Linux")
+    assert out["versions"] == {"8": "all"} and out["source"] == "linux.oracle.com" and out["errors"] == ["8: HTTP 404"], out
+    out = vs.sync_vendor(db, "Photon OS")
+    assert out["versions"] == {"5.0": 3} and out["source"] == "packages.broadcom.com", out
+finally:
+    vs._get = _orig_get
+print("14) Oracle Linux + Photon ok")
+
 print("ALL VULN TESTS PASSED")

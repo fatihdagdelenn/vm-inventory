@@ -193,7 +193,8 @@ _LINUX_RULES = [
     # (product, regex, version builder) - first match wins; order matters
     ("centos-stream", r"centos\s+stream\s*(\d+)", lambda m: m.group(1)),
     ("centos", r"centos(?:\s+linux)?\s*(\d+)(?!\s*/)\b", lambda m: m.group(1)),
-    ("rocky-linux", r"rocky(?:\s+linux)?\s*(\d+)", lambda m: m.group(1)),
+    # "Rocky Linux from CIQ - LTS 9.6 (Blue Onyx)" = CIQ's long-term Rocky build
+    ("rocky-linux", r"rocky(?:\s+linux)?(?:\s+from\s+ciq)?(?:\s*-\s*lts)?\s*(\d+)", lambda m: m.group(1)),
     ("almalinux", r"alma\s*linux\s*(\d+)", lambda m: m.group(1)),
     ("oracle-linux", r"oracle\s+linux(?:\s+server)?\s*(?:release\s*)?(\d+)", lambda m: m.group(1)),
     ("rhel", r"(?:red\s*hat\s+enterprise\s+linux|\brhel)(?:\s+(?:server|workstation|for\s+\w+))?"
@@ -280,7 +281,7 @@ def identify(guest_os: Optional[str], kernel: Optional[str] = None) -> OsIdentit
 
     # The kernel string pins the release where the name does not
     k = kernel.lower()
-    km = re.search(r"\.el(\d+)(?:_\d+)?\b", k)
+    km = re.search(r"\.el(\d+)(?:_\d+)?(?:_ciq)?\b", k)
     if km and distro in RHEL_FAMILY:
         kver = km.group(1)
         if ver != kver:

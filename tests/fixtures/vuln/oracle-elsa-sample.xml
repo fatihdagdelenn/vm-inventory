@@ -1,0 +1,287 @@
+<oval_definitions xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5" xmlns:oval="http://oval.mitre.org/XMLSchema/oval-common-5" xmlns:oval-def="http://oval.mitre.org/XMLSchema/oval-definitions-5" xmlns:unix-def="http://oval.mitre.org/XMLSchema/oval-definitions-5#unix" xmlns:red-def="http://oval.mitre.org/XMLSchema/oval-definitions-5#linux" xmlns:ind-def="http://oval.mitre.org/XMLSchema/oval-definitions-5#independent" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://oval.mitre.org/XMLSchema/oval-common-5 oval-common-schema.xsd http://oval.mitre.org/XMLSchema/oval-definitions-5 oval-definitions-schema.xsd http://oval.mitre.org/XMLSchema/oval-definitions-5#unix unix-definitions-schema.xsd http://oval.mitre.org/XMLSchema/oval-definitions-5#linux linux-definitions-schema.xsd">
+<generator>
+<oval:product_name>Oracle Errata System</oval:product_name>
+<oval:product_version>Oracle Linux</oval:product_version>
+<oval:schema_version>5.11</oval:schema_version>
+<oval:timestamp>2024-09-21T18:59:50</oval:timestamp>
+</generator>
+<definitions>
+<definition id="oval:com.oracle.elsa:def:20180151" version="501" class="patch">
+<metadata>
+<title>
+ELSA-2018-0151:  kernel security and bug fix update (IMPORTANT)
+</title>
+<affected family="unix">
+<platform>Oracle Linux 7</platform>
+
+</affected>
+<reference source="elsa" ref_id="ELSA-2018-0151" ref_url="https://linux.oracle.com/errata/ELSA-2018-0151.html"/>
+<reference source="CVE" ref_id="CVE-2017-12193" ref_url="https://linux.oracle.com/cve/CVE-2017-12193.html"/>
+<reference source="CVE" ref_id="CVE-2017-12192" ref_url="https://linux.oracle.com/cve/CVE-2017-12192.html"/>
+<reference source="CVE" ref_id="CVE-2015-8539" ref_url="https://linux.oracle.com/cve/CVE-2015-8539.html"/>
+<reference source="CVE" ref_id="CVE-2017-7472" ref_url="https://linux.oracle.com/cve/CVE-2017-7472.html"/>
+<reference source="CVE" ref_id="CVE-2017-15649" ref_url="https://linux.oracle.com/cve/CVE-2017-15649.html"/>
+
+<description>
+- [3.10.0-693.17.1.OL7]
+- Oracle Linux certificates (Alexey Petrenko)
+- Oracle Linux RHCK Module Signing Key was compiled into kernel (olkmod_signing_key.x509)(alexey.petrenko@oracle.com)
+- Update x509.genkey [bug 24817676]
+
+[3.10.0-693.17.1]
+- [s390] locking/barriers: remove old gmb() macro definition (Denys Vlasenko) [1519788 1519786]
+
+[3.10.0-693.16.1]
+- [x86] smpboot: Do not use smp_num_siblings in __max_logical_packages calculation (Prarit Bhargava) [1533022 1519503]
+- [x86] topology: Add topology_max_smt_threads() (Prarit Bhargava) [1533022 1519503]
+- [powerpc] spinlock: add gmb memory barrier (Jon Masters) [1519788 1519786] {CVE-2017-5753}
+- [powerpc] Prevent Meltdown attack with L1-D$ flush (Jon Masters) [1519800 1519801] {CVE-2017-5754}
+- [s390] add ppa to system call and program check path (Jon Masters) [1519795 1519798] {CVE-2017-5715}
+- [s390] spinlock: add gmb memory barrier (Jon Masters) [1519788 1519786] {CVE-2017-5753}
+- [s390] introduce CPU alternatives (Jon Masters) [1519795 1519798] {CVE-2017-5715}
+- [x86] spec_ctrl: move vmexit rmb in the last branch before IBRS (Andrea Arcangeli) [1533373 1533250]
+- [x86] spec_ctrl: satisfy the barrier like semantics of IBRS (Andrea Arcangeli) [1533373 1533250]
+- [fs] userfaultfd: clear the vma-&gt;vm_userfaultfd_ctx if UFFD_EVENT_FORK fails (Andrea Arcangeli) [1533372 1531287]
+- [x86] kaiser/efi: unbreak tboot (Andrea Arcangeli) [1519795 1532989 1519798 1531559] {CVE-2017-5715}
+- [x86] spec_ctrl: don't call ptrace_has_cap in the IBPB ctx switch optimization (Andrea Arcangeli) [1519795 1519798] {CVE-2017-5715}
+- [x86] kaiser/efi: unbreak EFI old_memmap (Andrea Arcangeli) [1519795 1519798] {CVE-2017-5715}
+- [x86] cpuidle_idle_call: fix double local_irq_enable() (Andrea Arcangeli) [1519795 1519798] {CVE-2017-5715}
+- [x86] entry: Invoke TRACE_IRQS_IRETQ in paranoid_userspace_restore_all (Andrea Arcangeli) [1519795 1519798] {CVE-2017-5715}
+- [x86] cpu: fix get_scattered_cpu_leaf sorting part #2 (Andrea Arcangeli) [1519795 1519798] {CVE-2017-5715}
+- [x86] spec_ctrl: show added cpuid flags in /proc/cpuinfo after late microcode update (Andrea Arcangeli) [1519795 1519798] {CVE-2017-5715}
+- [x86] cpu: fix get_scattered_cpu_leaf for IBPB feature (Paolo Bonzini) [1519795 1519798]
+</description>
+<!--
+ ~~~~~~~~~~~~~~~~~~~~   advisory details   ~~~~~~~~~~~~~~~~~~~
+-->
+<advisory>
+<severity>IMPORTANT</severity>
+<rights>Copyright 2018 Oracle, Inc.</rights>
+<issued date="2018-01-25"/>
+<cve cvss2="4.9/AV:L/AC:L/Au:N/C:N/I:N/A:C" href="https://linux.oracle.com/cve/CVE-2017-12193.html" public="20171102">CVE-2017-12193</cve>
+<cve cvss3="5.5/CVSS:3.0/AV:L/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:H" href="https://linux.oracle.com/cve/CVE-2017-12192.html" public="20171011">CVE-2017-12192</cve>
+<cve cvss2="7.2/AV:L/AC:L/Au:N/C:C/I:C/A:C" href="https://linux.oracle.com/cve/CVE-2015-8539.html" public="20151209">CVE-2015-8539</cve>
+<cve cvss3="5.5/CVSS:3.0/AV:L/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:H" href="https://linux.oracle.com/cve/CVE-2017-7472.html" public="20170511">CVE-2017-7472</cve>
+<cve cvss2="4.6/AV:L/AC:L/Au:N/C:P/I:P/A:P" href="https://linux.oracle.com/cve/CVE-2017-15649.html" public="20170920">CVE-2017-15649</cve>
+
+<affected_cpe_list>
+<cpe>cpe:/a:oracle:linux:7:4:patch</cpe>
+<cpe>cpe:/a:oracle:linux:7::optional_archive</cpe>
+<cpe>cpe:/a:oracle:linux:7::latest_archive</cpe>
+</affected_cpe_list>
+</advisory>
+</metadata>
+<criteria operator="AND">
+<criterion test_ref="oval:com.oracle.elsa:tst:20180151001" comment="Oracle Linux 7 is installed"/>
+<criteria operator="AND">
+<criterion test_ref="oval:com.oracle.elsa:tst:20180151002" comment="Oracle Linux arch is x86_64"/>
+<criteria operator="OR">
+<criteria operator="AND">
+<criterion test_ref="oval:com.oracle.elsa:tst:20180151003" comment="kernel is earlier than 0:3.10.0-693.17.1.el7"/>
+<criterion test_ref="oval:com.oracle.elsa:tst:20180151004" comment="kernel is signed with the Oracle Linux 7 key"/>
+</criteria>
+<criteria operator="AND">
+<criterion test_ref="oval:com.oracle.elsa:tst:20180151005" comment="kernel-abi-whitelists is earlier than 0:3.10.0-693.17.1.el7"/>
+<criterion test_ref="oval:com.oracle.elsa:tst:20180151006" comment="kernel-abi-whitelists is signed with the Oracle Linux 7 key"/>
+</criteria>
+<criteria operator="AND">
+<criterion test_ref="oval:com.oracle.elsa:tst:20180151007" comment="kernel-debug is earlier than 0:3.10.0-693.17.1.el7"/>
+<criterion test_ref="oval:com.oracle.elsa:tst:20180151008" comment="kernel-debug is signed with the Oracle Linux 7 key"/>
+</criteria>
+<criteria operator="AND">
+<criterion test_ref="oval:com.oracle.elsa:tst:20180151009" comment="kernel-debug-devel is earlier than 0:3.10.0-693.17.1.el7"/>
+<criterion test_ref="oval:com.oracle.elsa:tst:20180151010" comment="kernel-debug-devel is signed with the Oracle Linux 7 key"/>
+</criteria>
+<criteria operator="AND">
+<criterion test_ref="oval:com.oracle.elsa:tst:20180151011" comment="kernel-devel is earlier than 0:3.10.0-693.17.1.el7"/>
+<criterion test_ref="oval:com.oracle.elsa:tst:20180151012" comment="kernel-devel is signed with the Oracle Linux 7 key"/>
+</criteria>
+<criteria operator="AND">
+<criterion test_ref="oval:com.oracle.elsa:tst:20180151013" comment="kernel-doc is earlier than 0:3.10.0-693.17.1.el7"/>
+<criterion test_ref="oval:com.oracle.elsa:tst:20180151014" comment="kernel-doc is signed with the Oracle Linux 7 key"/>
+</criteria>
+<criteria operator="AND">
+<criterion test_ref="oval:com.oracle.elsa:tst:20180151015" comment="kernel-headers is earlier than 0:3.10.0-693.17.1.el7"/>
+<criterion test_ref="oval:com.oracle.elsa:tst:20180151016" comment="kernel-headers is signed with the Oracle Linux 7 key"/>
+</criteria>
+<criteria operator="AND">
+<criterion test_ref="oval:com.oracle.elsa:tst:20180151017" comment="kernel-tools is earlier than 0:3.10.0-693.17.1.el7"/>
+<criterion test_ref="oval:com.oracle.elsa:tst:20180151018" comment="kernel-tools is signed with the Oracle Linux 7 key"/>
+</criteria>
+<criteria operator="AND">
+<criterion test_ref="oval:com.oracle.elsa:tst:20180151019" comment="kernel-tools-libs is earlier than 0:3.10.0-693.17.1.el7"/>
+<criterion test_ref="oval:com.oracle.elsa:tst:20180151020" comment="kernel-tools-libs is signed with the Oracle Linux 7 key"/>
+</criteria>
+<criteria operator="AND">
+<criterion test_ref="oval:com.oracle.elsa:tst:20180151021" comment="kernel-tools-libs-devel is earlier than 0:3.10.0-693.17.1.el7"/>
+<criterion test_ref="oval:com.oracle.elsa:tst:20180151022" comment="kernel-tools-libs-devel is signed with the Oracle Linux 7 key"/>
+</criteria>
+<criteria operator="AND">
+<criterion test_ref="oval:com.oracle.elsa:tst:20180151023" comment="perf is earlier than 0:3.10.0-693.17.1.el7"/>
+<criterion test_ref="oval:com.oracle.elsa:tst:20180151024" comment="perf is signed with the Oracle Linux 7 key"/>
+</criteria>
+<criteria operator="AND">
+<criterion test_ref="oval:com.oracle.elsa:tst:20180151025" comment="python-perf is earlier than 0:3.10.0-693.17.1.el7"/>
+<criterion test_ref="oval:com.oracle.elsa:tst:20180151026" comment="python-perf is signed with the Oracle Linux 7 key"/>
+</criteria>
+</criteria>
+</criteria>
+</criteria>
+
+</definition>
+<definition id="oval:com.oracle.elsa:def:20184001" version="501" class="patch">
+<metadata>
+<title>
+ELSA-2018-4001:  Unbreakable Enterprise kernel security update (IMPORTANT)
+</title>
+<affected family="unix">
+<platform>Oracle Linux 6</platform>
+<platform>Oracle Linux 7</platform>
+
+</affected>
+<reference source="elsa" ref_id="ELSA-2018-4001" ref_url="https://linux.oracle.com/errata/ELSA-2018-4001.html"/>
+<reference source="CVE" ref_id="CVE-2017-16530" ref_url="https://linux.oracle.com/cve/CVE-2017-16530.html"/>
+<reference source="CVE" ref_id="CVE-2017-16525" ref_url="https://linux.oracle.com/cve/CVE-2017-16525.html"/>
+<reference source="CVE" ref_id="CVE-2017-16536" ref_url="https://linux.oracle.com/cve/CVE-2017-16536.html"/>
+<reference source="CVE" ref_id="CVE-2017-16533" ref_url="https://linux.oracle.com/cve/CVE-2017-16533.html"/>
+<reference source="CVE" ref_id="CVE-2017-16529" ref_url="https://linux.oracle.com/cve/CVE-2017-16529.html"/>
+<reference source="CVE" ref_id="CVE-2017-16531" ref_url="https://linux.oracle.com/cve/CVE-2017-16531.html"/>
+<reference source="CVE" ref_id="CVE-2017-16535" ref_url="https://linux.oracle.com/cve/CVE-2017-16535.html"/>
+<reference source="CVE" ref_id="CVE-2017-16526" ref_url="https://linux.oracle.com/cve/CVE-2017-16526.html"/>
+
+<description>
+[4.1.12-112.14.2]
+- fuse: Call end_queued_requests() after releasing fc-&gt;lock in fuse_dev_release() (Ashish Samant)  [Orabug: 26431550]
+- rds: Fix inaccurate accounting of unsignaled wrs in rds_ib_xmit_rdma (Hakon Bugge)  [Orabug: 27097105]
+- rds: Fix inaccurate accounting of unsignaled wrs (Hakon Bugge)  [Orabug: 27097105]
+- rds: ib: Fix NULL pointer dereference in debug code (Hakon Bugge)  [Orabug: 27116566]
+- bnx2x: fix slowpath null crash (Zhu Yanjun)  [Orabug: 27133587]
+- rds: System panic if RDS netfilter is enabled and RDS/TCP is used (Ka-Cheong Poon)  [Orabug: 27150029]
+- USB: serial: console: fix use-after-free after failed setup (Johan Hovold)  [Orabug: 27206830]  {CVE-2017-16525}
+- mlx4: Subscribe to PXM notifier (Konrad Rzeszutek Wilk)
+- xen/pci: Add PXM node notifier for PXM (NUMA) changes. (Konrad Rzeszutek Wilk)
+- xen/pcifront: Walk the PCI bus after XenStore notification (Konrad Rzeszutek Wilk)
+- uwb: properly check kthread_run return value (Andrey Konovalov)  [Orabug: 27206880]  {CVE-2017-16526}
+- ALSA: usb-audio: Check out-of-bounds access by corrupted buffer descriptor (Takashi Iwai)  [Orabug: 27206923]  {CVE-2017-16529}
+- USB: uas: fix bug in handling of alternate settings (Alan Stern)  [Orabug: 27206999]  {CVE-2017-16530}
+- USB: fix out-of-bounds in usb_set_configuration (Greg Kroah-Hartman)  [Orabug: 27207224]  {CVE-2017-16531}
+- HID: usbhid: fix out-of-bounds bug (Jaejoong Kim)  [Orabug: 27207918]  {CVE-2017-16533}
+- USB: core: fix out-of-bounds access bug in usb_get_bos_descriptor() (Alan Stern)  [Orabug: 27207970]  {CVE-2017-16535}
+- [media] cx231xx-cards: fix NULL-deref on missing association descriptor (Johan Hovold)  [Orabug: 27208047]  {CVE-2017-16536}
+- Replace max_t() with sub_positive() in dequeue_entity_load_avg() (Gayatri Vasudevan)  [Orabug: 27222316]
+- sched/fair: Fix cfs_rq avg tracking underflow (Gayatri Vasudevan)  [Orabug: 27222316]
+- KVM: nVMX: Fix vmx_check_nested_events() return value in case an event was reinjected to L2 (Liran Alon)  [Orabug: 27250111]
+- KVM: VMX: use kvm_event_needs_reinjection (Wanpeng Li)  [Orabug: 27250111]
+- KVM: nVMX: Fix pending events injection (Wanpeng Li)  [Orabug: 27250111]
+</description>
+<!--
+ ~~~~~~~~~~~~~~~~~~~~   advisory details   ~~~~~~~~~~~~~~~~~~~
+-->
+<advisory>
+<severity>IMPORTANT</severity>
+<rights>Copyright 2018 Oracle, Inc.</rights>
+<issued date="2018-01-03"/>
+<cve cvss2="7.2/AV:L/AC:L/Au:N/C:C/I:C/A:C" href="https://linux.oracle.com/cve/CVE-2017-16530.html" public="20170922">CVE-2017-16530</cve>
+<cve cvss2="7.2/AV:L/AC:L/Au:N/C:C/I:C/A:C" href="https://linux.oracle.com/cve/CVE-2017-16525.html" public="20180226">CVE-2017-16525</cve>
+<cve cvss2="7.2/AV:L/AC:L/Au:N/C:C/I:C/A:C" href="https://linux.oracle.com/cve/CVE-2017-16536.html" public="20170921">CVE-2017-16536</cve>
+<cve cvss2="7.2/AV:L/AC:L/Au:N/C:C/I:C/A:C" href="https://linux.oracle.com/cve/CVE-2017-16533.html" public="20170928">CVE-2017-16533</cve>
+<cve cvss2="7.2/AV:L/AC:L/Au:N/C:C/I:C/A:C" href="https://linux.oracle.com/cve/CVE-2017-16529.html" public="20180226">CVE-2017-16529</cve>
+<cve cvss2="7.2/AV:L/AC:L/Au:N/C:C/I:C/A:C" href="https://linux.oracle.com/cve/CVE-2017-16531.html" public="20180226">CVE-2017-16531</cve>
+<cve cvss2="7.2/AV:L/AC:L/Au:N/C:C/I:C/A:C" href="https://linux.oracle.com/cve/CVE-2017-16535.html" public="20180226">CVE-2017-16535</cve>
+<cve cvss2="7.2/AV:L/AC:L/Au:N/C:C/I:C/A:C" href="https://linux.oracle.com/cve/CVE-2017-16526.html" public="20180226">CVE-2017-16526</cve>
+
+<affected_cpe_list>
+<cpe>cpe:/a:oracle:linux:7::UEKR4_archive</cpe>
+<cpe>cpe:/a:oracle:linux:6::UEKR4_archive</cpe>
+</affected_cpe_list>
+</advisory>
+</metadata>
+<criteria operator="OR">
+<criteria operator="AND">
+<criterion test_ref="oval:com.oracle.elsa:tst:20184001001" comment="Oracle Linux 6 is installed"/>
+<criteria operator="AND">
+<criterion test_ref="oval:com.oracle.elsa:tst:20184001002" comment="Oracle Linux arch is x86_64"/>
+<criteria operator="OR">
+<criteria operator="AND">
+<criterion test_ref="oval:com.oracle.elsa:tst:20184001003" comment="kernel-uek is earlier than 0:4.1.12-112.14.2.el6uek"/>
+<criterion test_ref="oval:com.oracle.elsa:tst:20184001004" comment="kernel-uek is signed with the Oracle Linux 6 key"/>
+</criteria>
+<criteria operator="AND">
+<criterion test_ref="oval:com.oracle.elsa:tst:20184001005" comment="kernel-uek-debug is earlier than 0:4.1.12-112.14.2.el6uek"/>
+<criterion test_ref="oval:com.oracle.elsa:tst:20184001006" comment="kernel-uek-debug is signed with the Oracle Linux 6 key"/>
+</criteria>
+<criteria operator="AND">
+<criterion test_ref="oval:com.oracle.elsa:tst:20184001007" comment="kernel-uek-debug-devel is earlier than 0:4.1.12-112.14.2.el6uek"/>
+<criterion test_ref="oval:com.oracle.elsa:tst:20184001008" comment="kernel-uek-debug-devel is signed with the Oracle Linux 6 key"/>
+</criteria>
+<criteria operator="AND">
+<criterion test_ref="oval:com.oracle.elsa:tst:20184001009" comment="kernel-uek-devel is earlier than 0:4.1.12-112.14.2.el6uek"/>
+<criterion test_ref="oval:com.oracle.elsa:tst:20184001010" comment="kernel-uek-devel is signed with the Oracle Linux 6 key"/>
+</criteria>
+<criteria operator="AND">
+<criterion test_ref="oval:com.oracle.elsa:tst:20184001011" comment="kernel-uek-doc is earlier than 0:4.1.12-112.14.2.el6uek"/>
+<criterion test_ref="oval:com.oracle.elsa:tst:20184001012" comment="kernel-uek-doc is signed with the Oracle Linux 6 key"/>
+</criteria>
+<criteria operator="AND">
+<criterion test_ref="oval:com.oracle.elsa:tst:20184001013" comment="kernel-uek-firmware is earlier than 0:4.1.12-112.14.2.el6uek"/>
+<criterion test_ref="oval:com.oracle.elsa:tst:20184001014" comment="kernel-uek-firmware is signed with the Oracle Linux 6 key"/>
+</criteria>
+</criteria>
+</criteria>
+</criteria>
+<criteria operator="AND">
+<criterion test_ref="oval:com.oracle.elsa:tst:20184001015" comment="Oracle Linux 7 is installed"/>
+<criteria operator="AND">
+<criterion test_ref="oval:com.oracle.elsa:tst:20184001016" comment="Oracle Linux arch is x86_64"/>
+<criteria operator="OR">
+<criteria operator="AND">
+<criterion test_ref="oval:com.oracle.elsa:tst:20184001017" comment="kernel-uek is earlier than 0:4.1.12-112.14.2.el7uek"/>
+<criterion test_ref="oval:com.oracle.elsa:tst:20184001018" comment="kernel-uek is signed with the Oracle Linux 7 key"/>
+</criteria>
+<criteria operator="AND">
+<criterion test_ref="oval:com.oracle.elsa:tst:20184001019" comment="kernel-uek-debug is earlier than 0:4.1.12-112.14.2.el7uek"/>
+<criterion test_ref="oval:com.oracle.elsa:tst:20184001020" comment="kernel-uek-debug is signed with the Oracle Linux 7 key"/>
+</criteria>
+<criteria operator="AND">
+<criterion test_ref="oval:com.oracle.elsa:tst:20184001021" comment="kernel-uek-debug-devel is earlier than 0:4.1.12-112.14.2.el7uek"/>
+<criterion test_ref="oval:com.oracle.elsa:tst:20184001022" comment="kernel-uek-debug-devel is signed with the Oracle Linux 7 key"/>
+</criteria>
+<criteria operator="AND">
+<criterion test_ref="oval:com.oracle.elsa:tst:20184001023" comment="kernel-uek-devel is earlier than 0:4.1.12-112.14.2.el7uek"/>
+<criterion test_ref="oval:com.oracle.elsa:tst:20184001024" comment="kernel-uek-devel is signed with the Oracle Linux 7 key"/>
+</criteria>
+<criteria operator="AND">
+<criterion test_ref="oval:com.oracle.elsa:tst:20184001025" comment="kernel-uek-doc is earlier than 0:4.1.12-112.14.2.el7uek"/>
+<criterion test_ref="oval:com.oracle.elsa:tst:20184001026" comment="kernel-uek-doc is signed with the Oracle Linux 7 key"/>
+</criteria>
+<criteria operator="AND">
+<criterion test_ref="oval:com.oracle.elsa:tst:20184001027" comment="kernel-uek-firmware is earlier than 0:4.1.12-112.14.2.el7uek"/>
+<criterion test_ref="oval:com.oracle.elsa:tst:20184001028" comment="kernel-uek-firmware is signed with the Oracle Linux 7 key"/>
+</criteria>
+</criteria>
+</criteria>
+</criteria>
+</criteria>
+</definition>
+<definition id="oval:com.oracle.elsa:def:20265001" version="3" class="patch">
+<metadata>
+<title>ELSA-2026-5001:  Unbreakable Enterprise kernel security update (IMPORTANT)</title>
+<affected family="unix"><platform>Oracle Linux 8</platform></affected>
+<reference source="elsa" ref_id="ELSA-2026-5001" ref_url="https://linux.oracle.com/errata/ELSA-2026-5001.html"/>
+<reference source="CVE" ref_id="CVE-2026-5001" ref_url="https://linux.oracle.com/cve/CVE-2026-5001.html"/>
+<description>Test advisory built in the format of the real file above (not a real ELSA).</description>
+<advisory><severity>IMPORTANT</severity><rights>Copyright 2026 Oracle, Inc.</rights><issued date="2026-10-01"/>
+<cve cvss3="9.8/CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H" href="https://linux.oracle.com/cve/CVE-2026-5001.html" public="20261001">CVE-2026-5001</cve></advisory>
+</metadata>
+<criteria operator="AND">
+<criterion test_ref="oval:com.oracle.elsa:tst:20265001001" comment="Oracle Linux 8 is installed"/>
+<criteria operator="OR">
+<criteria operator="AND"><criterion test_ref="oval:com.oracle.elsa:tst:20265001002" comment="Oracle Linux arch is x86_64"/>
+<criteria operator="OR">
+<criteria operator="AND"><criterion test_ref="oval:com.oracle.elsa:tst:20265001003" comment="kernel-uek is earlier than 0:5.15.0-300.163.18.el8uek"/><criterion test_ref="oval:com.oracle.elsa:tst:20265001004" comment="kernel-uek is signed with the Oracle Linux 8 key"/></criteria>
+<criteria operator="AND"><criterion test_ref="oval:com.oracle.elsa:tst:20265001005" comment="kernel-uek-devel is earlier than 0:5.15.0-300.163.18.el8uek"/><criterion test_ref="oval:com.oracle.elsa:tst:20265001006" comment="kernel-uek-devel is signed with the Oracle Linux 8 key"/></criteria>
+<criteria operator="AND"><criterion test_ref="oval:com.oracle.elsa:tst:20265001007" comment="kernel is earlier than 0:4.18.0-553.30.1.el8_10"/><criterion test_ref="oval:com.oracle.elsa:tst:20265001008" comment="kernel is signed with the Oracle Linux 8 key"/></criteria>
+</criteria></criteria></criteria></criteria>
+</definition>
+</definitions>
+</oval_definitions>

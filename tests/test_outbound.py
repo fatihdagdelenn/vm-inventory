@@ -185,6 +185,8 @@ try:
     except RuntimeError as exc:
         assert "Sertifika doğrulanamadı" in str(exc), exc
     vs.OSV_URL, vs.OSV_GITHUB = URL + "?{}", {}
+    for _v in vs.VENDOR.values():                      # vendor feeds -> the same local server
+        _v["urls"] = (URL + "?{v}",)
     pr = vs.probe()
     assert all(not r["ok"] for r in pr) and pr[0]["issuer"] == "Example Corp SSL Inspection CA", pr
     outbound.save_upload(ca_pem)

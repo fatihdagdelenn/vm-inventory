@@ -76,7 +76,27 @@ SOURCES = {
     "Red Hat": {"distros": ("rhel", "rocky-linux"), "prefix": "Red Hat:", "size": "large"},
     "SUSE": {"distros": ("sles",), "prefix": "SUSE:", "size": "large"},
     "openSUSE": {"distros": ("opensuse",), "prefix": "openSUSE:", "size": "large"},
+    "Oracle Linux": {"distros": ("oracle-linux",), "prefix": "Oracle Linux:", "size": "medium"},
+    "Photon OS": {"distros": ("photon",), "prefix": "Photon OS:", "size": "small"},
 }
+# Not in OSV: the vendors' own feeds, one file per release.
+#  - Oracle: OVAL (ELSA advisories) - UEK ("kernel-uek") and RHCK ("kernel").
+#    Format checked against a real file (quay/claircore testdata
+#    com.oracle.elsa-2018.xml): <definition> with <affected><platform>Oracle
+#    Linux 8</platform>, <reference source="elsa">, <advisory><severity> and
+#    <cve cvss3="7.8/CVSS:3.1/...">, criteria comments "kernel-uek is earlier
+#    than 0:5.15.0-205.149.5.1.el8uek".
+#  - Photon (Broadcom): JSON list {cve_id, pkg, cve_score, aff_ver, res_ver,
+#    status} (checked against aquasecurity/vuln-list-update testdata).
+VENDOR = {
+    "Oracle Linux": {"kind": "oval", "versions": ("7", "8", "9", "10"),
+                     "urls": ("https://linux.oracle.com/security/oval/com.oracle.elsa-ol{v}.xml.bz2",),
+                     "all": "https://linux.oracle.com/security/oval/com.oracle.elsa-all.xml.bz2"},
+    "Photon OS": {"kind": "photon", "versions": ("3.0", "4.0", "5.0"),
+                  "urls": ("https://packages.broadcom.com/photon/photon_cve_metadata/cve_data_photon{v}.json",
+                           "https://packages.vmware.com/photon/photon_cve_metadata/cve_data_photon{v}.json")},
+}
+CATALOGUE = OSV_ECOSYSTEMS + tuple(VENDOR)
 SELECTION_KEY = "vuln_sources"
 # CISA KEV, tried in order. cisa.gov is often blocked on corporate networks while
 # GitHub is open, so CISA's own GitHub repository (cisagov/kev-data, same file,
@@ -311,6 +331,7 @@ def _store(db, records, source: str) -> dict:
                                 package=r["package"], introduced=r.get("introduced") or "0",
                                 fixed=r.get("fixed"), severity=sev, score=score,
                                 modified=modified, source=source))
+        per_cve = rec.get("cve_scores") or {}            # Oracle / Photon: CVSS per CVE
         for cve in {r["cve"] for r in rows}:
             c = cves.get(cve)
             if c is None:
@@ -319,14 +340,18 @@ def _store(db, records, source: str) -> dict:
             text = (rec["summaries"] or {}).get(cve)
             if text and len(text) > len(c.summary or ""):
                 c.summary = text
+            c_sev, c_score, c_spec = sev, score, specific
+            if per_cve.get(cve) is not None:
+                c_score = per_cve[cve]
+                c_sev, c_spec = severity_of_score(c_score), True
             # a CVE-specific level (Ubuntu priority / CVSS) beats an
             # advisory-wide one; among equals the worse one is kept
-            if specific and (not c.specific or SEV_RANK.get(sev, 0) > SEV_RANK.get(c.severity, 0)):
-                c.severity, c.specific = sev, True
-            elif not c.specific and SEV_RANK.get(sev, 0) > SEV_RANK.get(c.severity, 0):
-                c.severity = sev
-            if score is not None and (c.score is None or score > c.score):
-                c.score = score
+            if c_spec and (not c.specific or SEV_RANK.get(c_sev, 0) > SEV_RANK.get(c.severity, 0)):
+                c.severity, c.specific = c_sev, True
+            elif not c.specific and SEV_RANK.get(c_sev, 0) > SEV_RANK.get(c.severity, 0):
+                c.severity = c_sev
+            if c_score is not None and (c.score is None or c_score > c.score):
+                c.score = c_score
             if modified and (c.modified is None or modified > c.modified):
                 c.modified = modified
         out["rows"] += len(rows)
@@ -393,6 +418,150 @@ def import_osv_tar(db, path: str, source: str = "github") -> dict:
                     yield rec
     stats = Counter()
     return _with_stats(_store(db, _osv_records(gen(), stats), source), stats)
+
+
+# ------------------------------------------------------------ vendor feeds
+_OVAL = "{http://oval.mitre.org/XMLSchema/oval-definitions-5}"
+_ORA_SEV = {"CRITICAL": "critical", "IMPORTANT": "high", "MODERATE": "medium", "LOW": "low"}
+_ORA_CRIT = re.compile(r"^(kernel(?:-uek)?) is earlier than (?:\d+:)?(\S+)$")
+
+
+def _oracle_package(name: str, fixed: str) -> str:
+    """UEK streams (5.4 / 5.15 / 6.12) share the name kernel-uek; each has its
+    own advisories, so the stream is part of the stored package name."""
+    if name == "kernel-uek":
+        m = re.match(r"(\d+\.\d+)\.", fixed)
+        return f"kernel-uek-{m.group(1)}" if m else name
+    return name
+
+
+def parse_oracle_oval(fileobj, versions=None):
+    """Kernel records from an Oracle OVAL file (streamed). `versions`
+    limits to Oracle Linux majors ("8", "9"...)."""
+    import xml.etree.ElementTree as ET
+    for _, el in ET.iterparse(fileobj, events=("end",)):
+        if el.tag != _OVAL + "definition":
+            if el.tag in (_OVAL + "tests", _OVAL + "objects", _OVAL + "states"):
+                el.clear()
+            continue
+        try:
+            md = el.find(_OVAL + "metadata")
+            if md is None:
+                continue
+            plats = [p.text or "" for p in md.findall(_OVAL + "affected/" + _OVAL + "platform")]
+            majors = [m.group(1) for p in plats for m in [re.match(r"Oracle Linux (\d+)", p)] if m]
+            if not majors or (versions and not set(majors) & set(versions)):
+                continue
+            fixes = set()
+            for c in el.iter(_OVAL + "criterion"):
+                m = _ORA_CRIT.match((c.get("comment") or "").strip())
+                if m:
+                    fixes.add((m.group(1), m.group(2)))
+            if not fixes:
+                continue
+            ref = next((r.get("ref_id") for r in md.findall(_OVAL + "reference")
+                        if r.get("source") == "elsa"), None) or el.get("id")
+            adv = md.find(_OVAL + "advisory")
+            sev_txt = (adv.findtext(_OVAL + "severity") if adv is not None else "") or ""
+            issued = adv.find(_OVAL + "issued") if adv is not None else None
+            scores, cves = {}, set()
+            for c in (adv.findall(_OVAL + "cve") if adv is not None else []):
+                cve = (c.text or "").strip()
+                if cve.startswith("CVE-"):
+                    cves.add(cve)
+                    m = re.match(r"([\d.]+)/CVSS:3", c.get("cvss3") or "")
+                    if m:
+                        scores[cve] = float(m.group(1))
+            cves |= {r.get("ref_id") for r in md.findall(_OVAL + "reference")
+                     if r.get("source") == "CVE" and (r.get("ref_id") or "").startswith("CVE-")}
+            if not cves:
+                continue
+            modified = _ts((issued.get("date") if issued is not None else None) or "") or datetime(2000, 1, 1)
+            try:                             # a re-issued advisory has a higher version
+                from datetime import timedelta
+                modified += timedelta(seconds=int(el.get("version") or 0))
+            except ValueError:
+                pass
+            # one UEK advisory often covers OL6 + OL7 with a build per release
+            # ("…el6uek" / "…el7uek"): give each release only its own build
+            def _for(mj, fx):
+                t = re.search(r"\.el(\d+)", fx)
+                return not t or t.group(1) == mj
+            rows = [{"cve": cve, "ecosystem": f"Oracle Linux:{mj}",
+                     "package": _oracle_package(pkg, fx), "introduced": "0", "fixed": fx}
+                    for mj in majors if not versions or mj in versions
+                    for pkg, fx in sorted(fixes) if _for(mj, fx) for cve in sorted(cves)]
+            if not rows:
+                continue
+            yield {"id": ref, "modified": modified, "severity": _ORA_SEV.get(sev_txt.upper(), "unknown"),
+                   "score": None, "specific": False, "summaries": {}, "rows": rows,
+                   "cve_scores": scores}
+        finally:
+            el.clear()
+
+
+def _open_maybe_bz2(path):
+    import bz2
+    with open(path, "rb") as f:
+        head = f.read(3)
+    return bz2.open(path, "rb") if head == b"BZh" else open(path, "rb")
+
+
+def import_oracle_oval(db, path: str, source: str = "oracle", versions=None) -> dict:
+    with _open_maybe_bz2(path) as f:
+        return _store(db, parse_oracle_oval(f, versions), source)
+
+
+_PHOTON_PKG = re.compile(r"^linux(?:-(?:esx|secure|rt|aws))?$")
+
+
+def parse_photon(doc: list, version: str) -> list:
+    """Photon CVE list -> one record per CVE (kernel packages only)."""
+    per = defaultdict(list)
+    scores = {}
+    for x in doc:
+        cve, pkg = str(x.get("cve_id") or ""), str(x.get("pkg") or "")
+        if not cve.startswith("CVE-") or not _PHOTON_PKG.match(pkg):
+            continue
+        if str(x.get("status") or "").lower().startswith("not affected"):
+            continue
+        res = str(x.get("res_ver") or "")
+        aff = str(x.get("aff_ver") or "").lower()
+        if re.match(r"\d", res):
+            fixed = res
+        elif aff.startswith("all versions"):
+            fixed = None                    # vulnerable, no fixed build yet
+        else:
+            continue
+        per[cve].append({"cve": cve, "ecosystem": f"Photon OS:{version}", "package": pkg,
+                         "introduced": "0", "fixed": fixed})
+        try:
+            scores[cve] = max(scores.get(cve, 0), float(x.get("cve_score")))
+        except (TypeError, ValueError):
+            pass
+    now = datetime.utcnow()
+    return [{"id": f"PHOTON-{version}-{cve}", "modified": now,
+             "severity": severity_of_score(scores.get(cve)), "score": scores.get(cve),
+             "specific": cve in scores, "summaries": {}, "rows": rows,
+             "cve_scores": {cve: scores[cve]} if cve in scores else {}}
+            for cve, rows in per.items()]
+
+
+def _photon_version(doc: list, hint: str = "") -> Optional[str]:
+    m = re.search(r"photon(\d+\.\d+)", hint or "")
+    if m:
+        return m.group(1)
+    c = Counter(m.group(1) for x in doc for m in [re.search(r"\.ph(\d+)", str(x.get("res_ver") or ""))] if m)
+    return f"{c.most_common(1)[0][0]}.0" if c else None
+
+
+def import_photon(db, doc: list, version: str, source: str = "photon") -> dict:
+    """The file is the whole truth for its release: rows of that release are
+    replaced (a CVE that disappears from the feed disappears here too)."""
+    eco = f"Photon OS:{version}"
+    db.query(VulnAdvisory).filter(VulnAdvisory.ecosystem == eco).delete(synchronize_session=False)
+    db.commit()
+    return {**_store(db, parse_photon(doc, version), source), "version": version}
 
 
 def import_kev(db, doc: dict) -> dict:
@@ -509,6 +678,8 @@ def import_file(db, path: str) -> dict:
         head = f.read(4)
     if head[:4] == b"PK\x03\x04":
         return {"type": "osv-zip", **import_osv_zip(db, path, "upload")}
+    if head[:3] == b"BZh" or head[:4] in (b"<?xm", b"<ova"):
+        return {"type": "oracle-oval", **import_oracle_oval(db, path, "upload")}
     if head[:2] == b"\x1f\x8b" and tarfile.is_tarfile(path):
         kev = _kev_from_tar(path)
         if kev is not None:                 # cisagov/kev-data archive
@@ -524,6 +695,12 @@ def import_file(db, path: str) -> dict:
         return {"type": "bundle", **import_bundle(db, doc)}
     if isinstance(doc, dict) and "vulnerabilities" in doc and "catalogVersion" in doc:
         return {"type": "kev", **import_kev(db, doc)}
+    if isinstance(doc, list) and doc and all(isinstance(r, dict) and "cve_id" in r and "pkg" in r
+                                            for r in doc[:50]):
+        ver = _photon_version(doc, os.path.basename(path))
+        if not ver:
+            raise ValueError("Photon sürümü anlaşılamadı (dosya adı cve_data_photon5.0.json gibi olmalı)")
+        return {"type": "photon", **import_photon(db, doc, ver, "upload")}
     recs = doc if isinstance(doc, list) else [doc]
     if recs and all(isinstance(r, dict) and "affected" in r and "id" in r for r in recs):
         return {"type": "osv-json", **_store(db, _osv_records(recs), "upload")}
@@ -660,7 +837,7 @@ def _vm_distros(db) -> dict:
 # large and only added by hand.
 _AUTO_SOURCE = {"ubuntu": "Ubuntu", "debian": "Debian", "almalinux": "AlmaLinux",
                 "rocky-linux": "AlmaLinux", "rhel": "AlmaLinux", "sles": "SUSE",
-                "opensuse": "openSUSE"}
+                "opensuse": "openSUSE", "oracle-linux": "Oracle Linux", "photon": "Photon OS"}
 
 
 def get_selection(db) -> dict:
@@ -686,13 +863,13 @@ def set_selection(db, mode: str, manual) -> dict:
 
 def auto_sources(db) -> list:
     need = {_AUTO_SOURCE[d] for d, (elig, _) in _vm_distros(db).items() if elig and d in _AUTO_SOURCE}
-    return [e for e in OSV_ECOSYSTEMS if e in need]
+    return [e for e in CATALOGUE if e in need]
 
 
 def selected_sources(db) -> list:
     sel = get_selection(db)
     if sel["mode"] == "manual":
-        return [e for e in OSV_ECOSYSTEMS if e in sel["manual"]]
+        return [e for e in CATALOGUE if e in sel["manual"]]
     return auto_sources(db)
 
 
@@ -708,7 +885,7 @@ def sources_overview(db) -> dict:
                   .group_by(VulnAdvisory.ecosystem).all())
     used = json.loads(_setting(db, "vuln_osv_sources") or "{}")
     rows = []
-    for name in OSV_ECOSYSTEMS:
+    for name in CATALOGUE:
         meta_ = SOURCES[name]
         elig = sum(vm[d][0] for d in meta_["distros"] if d in vm)
         total = sum(vm[d][1] for d in meta_["distros"] if d in vm)
@@ -732,6 +909,14 @@ def sync_osv(db, ecosystems=None) -> dict:
         raise RuntimeError("seçili OSV kaynağı yok (envanterde eşleşecek Linux VM yok "
                            "veya elle seçim boş)")
     done, sources = {}, {}
+    for name in [e for e in ecosystems if e in VENDOR]:
+        try:
+            done[name] = sync_vendor(db, name)
+            sources[name] = done[name]["source"]
+        except Exception as exc:
+            done[name] = {"error": _err(exc) if not isinstance(exc, RuntimeError) else str(exc)}
+            logger.warning("%s download failed (%s)", name, done[name]["error"])
+    ecosystems = [e for e in ecosystems if e in OSV_ECOSYSTEMS]
     storage_down = None
     for eco in ecosystems:
         if storage_down:
@@ -755,7 +940,7 @@ def sync_osv(db, ecosystems=None) -> dict:
                 except OSError:
                     pass
     for eco, url in OSV_GITHUB.items():
-        if eco not in done or "error" not in done[eco]:
+        if eco not in done or "error" not in done[eco] or eco not in ecosystems:
             continue
         path = None
         try:
@@ -781,6 +966,82 @@ def sync_osv(db, ecosystems=None) -> dict:
     return done
 
 
+def _vendor_versions(db, name: str) -> list:
+    """Releases to fetch: in auto mode those of eligible VMs, else all known."""
+    conf = VENDOR[name]
+    if get_selection(db)["mode"] == "manual":
+        return list(conf["versions"])
+    distro = SOURCES[name]["distros"][0]
+    have = set()
+    for g, k, st, tpl in db.query(VirtualMachine.guest_os, VirtualMachine.kernel,
+                                  VirtualMachine.support_status, VirtualMachine.is_template):
+        if tpl or (st or "unknown") not in ELIGIBLE:
+            continue
+        i = identify(g, k)
+        if i.distro == distro and i.version:
+            have.add(i.version)
+    return [v for v in conf["versions"] if v in have] or list(conf["versions"])
+
+
+def sync_vendor(db, name: str) -> dict:
+    """Download one vendor feed (per release); first reachable URL wins."""
+    conf = VENDOR[name]
+    out = {"versions": {}, "records": 0, "rows": 0, "source": None}
+    errors, missing = [], []
+    for v in _vendor_versions(db, name):
+        got = False
+        for tpl in conf["urls"]:
+            url = tpl.format(v=v)
+            path = None
+            try:
+                path = _download(url, ".bz2" if conf["kind"] == "oval" else ".json")
+                if conf["kind"] == "oval":
+                    res = import_oracle_oval(db, path, "oracle", versions=[v])
+                else:
+                    with open(path, "rb") as f:
+                        res = import_photon(db, json.loads(f.read()), v, "photon")
+                out["versions"][v] = res.get("records", 0)
+                out["records"] += res.get("records", 0)
+                out["rows"] += res.get("rows", 0)
+                out["source"] = re.sub(r"^https?://([^/]+).*", r"\1", url)
+                got = True
+                break
+            except Exception as exc:
+                errors.append(f"{v}: {_err(exc)}")
+            finally:
+                if path:
+                    try:
+                        os.unlink(path)
+                    except OSError:
+                        pass
+        if not got:
+            missing.append(v)
+    if missing and conf.get("all"):          # Oracle: one big file covers every release
+        path = None
+        try:
+            path = _download(conf["all"], ".bz2", timeout=(8, 900))
+            res = import_oracle_oval(db, path, "oracle", versions=missing)
+            for v in missing:
+                out["versions"][v] = "all"
+            out["records"] += res.get("records", 0)
+            out["rows"] += res.get("rows", 0)
+            out["source"] = re.sub(r"^https?://([^/]+).*", r"\1", conf["all"])
+            missing = []
+        except Exception as exc:
+            errors.append(f"all: {_err(exc)}")
+        finally:
+            if path:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+    if not out["versions"]:
+        raise RuntimeError("; ".join(errors)[:300] or "indirilemedi")
+    if errors:
+        out["errors"] = errors[:6]
+    return out
+
+
 def probe() -> list:
     """Reachability of every download source (Administration -> 'Test
     sources'): status / time / short reason, checked in parallel, only the
@@ -789,6 +1050,8 @@ def probe() -> list:
     targets = [("CISA KEV", n, u) for n, u, _ in _kev_sources()]
     targets += [("OSV", "osv.dev (" + e + ")", OSV_URL.format(quote(e))) for e in ("Ubuntu", "AlmaLinux")]
     targets += [("OSV", "github.com (" + e + ")", u) for e, u in OSV_GITHUB.items()]
+    targets += [("Oracle Linux", "linux.oracle.com (OL9)", VENDOR["Oracle Linux"]["urls"][0].format(v="9")),
+                ("Photon OS", "packages.broadcom.com (5.0)", VENDOR["Photon OS"]["urls"][0].format(v="5.0"))]
 
     def one(t):
         group, name, url = t
@@ -973,6 +1236,40 @@ def _rh_source(vm, ident, data):
     return (eco, "kernel", running), None
 
 
+def _oracle_source(vm, ident, data):
+    """Oracle Linux: UEK ("…el8uek") -> kernel-uek-<series>, RHCK -> kernel.
+    RHCK falls back to AlmaLinux data (same RHEL NVRs) when Oracle's is missing."""
+    eco = f"Oracle Linux:{ident.version}"
+    running = _ARCH.sub("", (vm.kernel or "").strip())
+    m = re.match(r"^(\d+)\.(\d+)\.\d+-\S+\.el\d+", running)
+    if not m:
+        return None, f"Çekirdek dizesi tanınmadı: {vm.kernel}"
+    uek = "uek" in running
+    pkg = f"kernel-uek-{m.group(1)}.{m.group(2)}" if uek else "kernel"
+    if (eco, pkg) in data.pairs:
+        return (eco, pkg, running), None
+    if not uek and (f"AlmaLinux:{ident.version}", "kernel") in data.pairs:
+        return (f"AlmaLinux:{ident.version}", "kernel", running), None
+    if eco not in data.ecos:
+        return None, f"{ident.label} çekirdek zafiyet verisi yüklenmemiş"
+    return None, (f"Çekirdek paketi eşleşmedi ({'UEK ' + m.group(1) + '.' + m.group(2) if uek else 'RHCK'}"
+                  " için bu sürümde ELSA kaydı yok)")
+
+
+def _photon_source(vm, ident, data):
+    """Photon: "6.1.126-5.ph5" -> linux, "6.1.126-5.ph5-esx" -> linux-esx."""
+    eco = f"Photon OS:{ident.version}"
+    m = re.match(r"^(\d+\.\d+\.\d+-[\d.]+\.ph\d+)(?:-([a-z]+))?$", (vm.kernel or "").strip())
+    if not m:
+        return None, f"Çekirdek dizesi tanınmadı: {vm.kernel}"
+    pkg = f"linux-{m.group(2)}" if m.group(2) else "linux"
+    if (eco, pkg) not in data.pairs:
+        if eco not in data.ecos:
+            return None, f"{ident.label} çekirdek zafiyet verisi yüklenmemiş"
+        return None, f"Çekirdek paketi eşleşmedi ({pkg})"
+    return (eco, pkg, m.group(1)), None
+
+
 def _suse_source(vm, ident, data):
     """SLES / openSUSE: uname -r "5.14.21-150500.55.73-default" -> package
     kernel-default, version-release "5.14.21-150500.55.73"."""
@@ -1026,10 +1323,13 @@ def evaluate(vm, data):
         cmp_running = None
     elif extended and ident.distro not in ("debian", "sles"):   # Debian LTS / SUSE LTSS share the eco
         return "unknown", f"Uzatılmış destek: {ident.label} için ELS/ESU çekirdek verisi yok", {}
-    elif ident.distro in ("debian", "rhel", "almalinux", "rocky-linux", "sles", "opensuse") \
-            and ident.version:
-        fn = {"debian": _debian_source, "sles": _suse_source, "opensuse": _suse_source}.get(
-            ident.distro, _rh_source)
+    elif ident.distro in ("debian", "rhel", "almalinux", "rocky-linux", "sles", "opensuse",
+                          "oracle-linux", "photon") and ident.version:
+        if "_ciq" in (vm.kernel or ""):
+            return "unknown", ("CIQ LTS çekirdeği: CIQ düzeltmeleri kendi sürüm numarasıyla geri "
+                               "taşıyor; Rocky / RHEL verisiyle karşılaştırmak yanlış sonuç verir"), {}
+        fn = {"debian": _debian_source, "sles": _suse_source, "opensuse": _suse_source,
+              "oracle-linux": _oracle_source, "photon": _photon_source}.get(ident.distro, _rh_source)
         tgt, why = fn(vm, ident, data)
         if tgt is None:
             return "unknown", why, {}
@@ -1038,7 +1338,8 @@ def evaluate(vm, data):
         cmp_ = {"debian": dpkg_cmp, "sles": _suse_cmp, "opensuse": _suse_cmp}.get(ident.distro, rpm_cmp)
         other = eco.split(":")[0]
         head = f"{ident.label} · {pkg} {shown}"
-        if ident.distro in _RH_NAME and other != _RH_NAME[ident.distro]:
+        if (ident.distro in _RH_NAME and other != _RH_NAME[ident.distro]) or \
+                (ident.distro == "oracle-linux" and other != "Oracle Linux"):
             head += f" ({other} verisiyle - aynı çekirdek sürümleri)"
 
         def check(eco, fixed):
@@ -1101,7 +1402,7 @@ def _vm_summary(data, status, found) -> dict:
 
 
 # Bump when the matching rules change, so every VM is evaluated again once.
-MATCH_VERSION = 3
+MATCH_VERSION = 4
 
 
 def _data_signature(db) -> str:

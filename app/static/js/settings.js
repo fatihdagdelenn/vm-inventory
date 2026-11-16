@@ -438,6 +438,8 @@ const Settings = {
       if (r.name === 'AlmaLinux') notes.push(t('vd2.noteAlma', 'RHEL ve Rocky VM\'leri de bununla eşleşir; osv.dev kapalıysa GitHub\'dan'));
       if (r.name === 'Red Hat' || r.name === 'Rocky Linux') notes.push(t('vd2.noteRh', 'isteğe bağlı - AlmaLinux verisi yeterli'));
       if (r.name === 'SUSE' || r.name === 'openSUSE') notes.push(t('vd2.noteSuse', 'yeni - biçim gerçek kayıtla doğrulanmadı'));
+      if (r.name === 'Oracle Linux') notes.push(t('vd2.noteOracle', 'Oracle\'ın kendi OVAL verisi (linux.oracle.com) - UEK ve RHCK çekirdekleri'));
+      if (r.name === 'Photon OS') notes.push(t('vd2.notePhoton', 'Broadcom\'un Photon CVE verisi (packages.broadcom.com)'));
       if (r.size === 'large') notes.push(size.large);
       const vmTxt = r.vms ? '<b>' + r.vms + '</b>' + (r.vms_total > r.vms ? ' <span class="text-muted">/ ' + r.vms_total + '</span>' : '')
         : '<span class="text-muted">' + (r.vms_total ? '0 / ' + r.vms_total : '—') + '</span>';
