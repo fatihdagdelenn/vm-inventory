@@ -6,7 +6,9 @@ Data
   Debian, AlmaLinux, Rocky Linux, Red Hat. Only KERNEL source packages are
   kept (KERNEL_FILTERS) - an Ubuntu kernel record alone is ~0.7-1 MB because of
   its per-package binary/version lists, the stored rows are a few hundred bytes.
-- CISA KEV catalogue (known_exploited_vulnerabilities.json).
+- CISA KEV catalogue (known_exploited_vulnerabilities.json) from cisa.gov or
+  CISA's GitHub repository (KEV_SOURCES); AlmaLinux OSV also from GitHub
+  (OSV_GITHUB) when osv.dev storage is blocked.
 - Prod has no internet: a server that has it (the test machine) downloads the
   dumps and exports a compact BUNDLE (Administration -> Vulnerabilities ->
   Download bundle, kernel rows only, a few MB gzip) which is uploaded on prod.
@@ -41,8 +43,10 @@ import json
 import logging
 import os
 import re
+import tarfile
 import tempfile
 import threading
+import time
 import zipfile
 from collections import Counter, defaultdict
 from datetime import date, datetime
@@ -60,8 +64,35 @@ logger = logging.getLogger("vuln")
 
 OSV_URL = "https://osv-vulnerabilities.storage.googleapis.com/{}/all.zip"
 OSV_ECOSYSTEMS = ("Ubuntu", "Debian", "AlmaLinux", "Rocky Linux", "Red Hat")
-KEV_URLS = ("https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json",
-            "https://raw.githubusercontent.com/cisagov/kev-data/develop/known_exploited_vulnerabilities.json")
+# CISA KEV, tried in order. cisa.gov is often blocked on corporate networks while
+# GitHub is open, so CISA's own GitHub repository (cisagov/kev-data, same file,
+# updated with the feed) is reached three ways - each through a different host,
+# because firewalls allow them separately:
+#   raw.githubusercontent.com  plain file
+#   api.github.com             contents API with the raw media type (the API host
+#                              answers itself, no redirect; 60 calls/h unauthenticated)
+#   github.com -> codeload     branch archive (.tar.gz, ~0.5 MB), file taken out
+# VULN_KEV_URLS (comma separated) replaces the list, e.g. with an internal mirror.
+KEV_FILE = "known_exploited_vulnerabilities.json"
+KEV_SOURCES = (
+    ("cisa.gov", "https://www.cisa.gov/sites/default/files/feeds/" + KEV_FILE, "json"),
+    ("raw.githubusercontent.com",
+     "https://raw.githubusercontent.com/cisagov/kev-data/develop/" + KEV_FILE, "json"),
+    ("api.github.com",
+     "https://api.github.com/repos/cisagov/kev-data/contents/" + KEV_FILE + "?ref=develop", "json"),
+    ("github.com (arşiv)",
+     "https://github.com/cisagov/kev-data/archive/refs/heads/develop.tar.gz", "tar"),
+)
+# OSV fallbacks on GitHub, used for an ecosystem whose osv.dev dump could not be
+# downloaded. Only AlmaLinux publishes its OSV data there in a usable size
+# (AlmaLinux/osv-database, ~6 MB archive, ~300 kernel advisories); RHEL and
+# Rocky VMs are matched with it too. Ubuntu's GitHub copy
+# (canonical/ubuntu-security-notices) holds ~66,000 files / many GB and Debian
+# has none, so those need osv.dev or an uploaded bundle.
+OSV_GITHUB = {
+    "AlmaLinux": "https://github.com/AlmaLinux/osv-database/archive/refs/heads/master.tar.gz",
+}
+_UA = {"User-Agent": "vm-inventory (kernel vulnerability matching)"}
 ELIGIBLE = ("supported", "soon", "extended")
 SEV_RANK = {"critical": 5, "high": 4, "medium": 3, "low": 2, "negligible": 1, "unknown": 0, "none": 0}
 BUNDLE_KIND = "vm-inventory-vuln-bundle"
@@ -284,6 +315,31 @@ def import_osv_zip(db, path: str, source: str = "osv") -> dict:
     return _store(db, _osv_records(gen()), source)
 
 
+def _kernel_json(raw: bytes):
+    """json.loads only for records that can contain a kernel package."""
+    if b'"linux' not in raw and b'"kernel"' not in raw:
+        return None
+    try:
+        return json.loads(raw)
+    except ValueError:
+        return None
+
+
+def import_osv_tar(db, path: str, source: str = "github") -> dict:
+    """OSV records inside a .tar.gz (a GitHub branch archive such as
+    AlmaLinux/osv-database), streamed member by member."""
+    def gen():
+        with tarfile.open(path, "r:*") as tf:
+            for m in tf:
+                if not (m.isfile() and m.name.endswith(".json")):
+                    continue
+                f = tf.extractfile(m)
+                rec = _kernel_json(f.read()) if f else None
+                if isinstance(rec, dict) and "affected" in rec and "id" in rec:
+                    yield rec
+    return _store(db, _osv_records(gen()), source)
+
+
 def import_kev(db, doc: dict) -> dict:
     """CISA KEV JSON; replaced only by a newer catalogVersion."""
     from ..core.app_settings import set_setting
@@ -376,6 +432,11 @@ def import_file(db, path: str) -> dict:
         head = f.read(4)
     if head[:4] == b"PK\x03\x04":
         return {"type": "osv-zip", **import_osv_zip(db, path, "upload")}
+    if head[:2] == b"\x1f\x8b" and tarfile.is_tarfile(path):
+        kev = _kev_from_tar(path)
+        if kev is not None:                 # cisagov/kev-data archive
+            return {"type": "kev", **import_kev(db, kev)}
+        return {"type": "osv-tar", **import_osv_tar(db, path, "upload")}
     opener = gzip.open if head[:2] == b"\x1f\x8b" else open
     with opener(path, "rb") as f:
         try:
@@ -404,47 +465,182 @@ def _meta_set(db, key, value):
 
 
 # ================================================================ online sync
-def sync_kev(db, timeout: int = 20) -> dict:
+def _proxies():
+    """VULN_PROXY: proxy for these downloads only (vCenter / Proxmox calls must
+    not go through it). Without it requests honours HTTPS_PROXY / NO_PROXY."""
+    from ..config import get_settings
+    settings = get_settings()
+    p = (getattr(settings, "vuln_proxy", "") or "").strip()
+    return {"http": p, "https": p} if p else None
+
+
+def _get(url, stream=False, timeout=(8, 60), headers=None):
+    """Single place for outbound HTTP (tests replace it)."""
     import requests
-    last = None
-    for url in KEV_URLS:
-        try:
-            r = requests.get(url, timeout=timeout, headers={"User-Agent": "vm-inventory"})
+    h = dict(_UA)
+    if "api.github.com" in url:
+        h["Accept"] = "application/vnd.github.raw"
+    h.update(headers or {})
+    return requests.get(url, stream=stream, timeout=timeout, headers=h, proxies=_proxies())
+
+
+def _download(url, suffix, timeout=(8, 300)) -> str:
+    """Stream url into a temp file; returns its path (caller deletes it)."""
+    tmp = tempfile.NamedTemporaryFile(prefix="vuln-", suffix=suffix, delete=False)
+    try:
+        with _get(url, stream=True, timeout=timeout) as r:
             r.raise_for_status()
-            return import_kev(db, r.json())
+            for chunk in r.iter_content(1 << 20):
+                tmp.write(chunk)
+        tmp.close()
+        return tmp.name
+    except BaseException:
+        tmp.close()
+        os.unlink(tmp.name)
+        raise
+
+
+def _kev_from_tar(path):
+    """The KEV JSON out of a cisagov/kev-data archive, or None."""
+    with tarfile.open(path, "r:*") as tf:
+        for m in tf:
+            if m.isfile() and m.name.endswith("/" + KEV_FILE):
+                f = tf.extractfile(m)
+                return json.loads(f.read()) if f else None
+    return None
+
+
+def _kev_sources():
+    from ..config import get_settings
+    settings = get_settings()
+    custom = [u.strip() for u in (getattr(settings, "vuln_kev_urls", "") or "").split(",") if u.strip()]
+    if custom:
+        return [(re.sub(r"^https?://([^/]+).*", r"\1", u),
+                 u, "tar" if u.endswith((".tar.gz", ".tgz")) else "json") for u in custom]
+    return list(KEV_SOURCES)
+
+
+_ERR_TEXT = (  # requests' messages are very long; the Administration table shows these
+    (r"Tunnel connection failed: (\d{3})", "Proxy engelledi ({})"),
+    (r"(?:Name or service not known|nodename nor servname|getaddrinfo failed|"
+     r"Temporary failure in name resolution)", "DNS çözülemedi"),
+    (r"(?:timed out|Timeout)", "Zaman aşımı"),
+    (r"Connection refused", "Bağlantı reddedildi"),
+    (r"No route to host|Network is unreachable", "Ağ erişimi yok"),
+    (r"certificate verify failed", "Sertifika doğrulanamadı (araya giren SSL denetimi?)"),
+    (r"(\d{3}) (?:Client|Server) Error", "HTTP {}"),
+)
+
+
+def _err(exc) -> str:
+    """Short Turkish reason for a failed download."""
+    txt = str(exc)
+    for pat, out in _ERR_TEXT:
+        m = re.search(pat, txt, re.I)
+        if m:
+            return out.format(*m.groups())
+    return f"{type(exc).__name__}: {txt[:160]}"
+
+
+def sync_kev(db) -> dict:
+    """First reachable KEV source wins; every failure is listed."""
+    errors = []
+    for name, url, kind in _kev_sources():
+        try:
+            if kind == "tar":
+                path = _download(url, ".tar.gz", timeout=(8, 120))
+                try:
+                    doc = _kev_from_tar(path)
+                finally:
+                    os.unlink(path)
+                if doc is None:
+                    raise ValueError("arşivde KEV dosyası yok")
+            else:
+                r = _get(url)
+                r.raise_for_status()
+                doc = r.json()
+            if not isinstance(doc, dict) or "vulnerabilities" not in doc:
+                raise ValueError("KEV biçimi değil")
+            res = import_kev(db, doc)
+            _meta_set(db, "vuln_kev_source", name)
+            return {**res, "source": name, "failed": errors}
         except Exception as exc:
-            last = f"{type(exc).__name__}: {exc}"
-    raise RuntimeError(last or "KEV download failed")
+            errors.append(f"{name}: {_err(exc)}")
+    raise RuntimeError("; ".join(errors) or "KEV kaynağı yok")
 
 
 def sync_osv(db) -> dict:
-    """Download every ecosystem dump. The first connection error ends the
-    round (offline server: one short failure, not five)."""
-    import requests
-    done = {}
-    for i, eco in enumerate(OSV_ECOSYSTEMS):
-        tmp = tempfile.NamedTemporaryFile(prefix="osv-", suffix=".zip", delete=False)
+    """osv.dev dumps per ecosystem; when the storage host is unreachable the
+    rest are skipped at once (one short failure, not five) and the GitHub
+    fallbacks (OSV_GITHUB) are tried for the ecosystems that got nothing."""
+    done, sources = {}, {}
+    storage_down = None
+    for eco in OSV_ECOSYSTEMS:
+        if storage_down:
+            done[eco] = {"error": f"osv.dev erişilemedi ({storage_down})"}
+            continue
+        path = None
         try:
-            with requests.get(OSV_URL.format(quote(eco)), stream=True, timeout=(10, 300),
-                              headers={"User-Agent": "vm-inventory"}) as r:
-                r.raise_for_status()
-                for chunk in r.iter_content(1 << 20):
-                    tmp.write(chunk)
-            tmp.close()
-            done[eco] = import_osv_zip(db, tmp.name, "osv")
+            path = _download(OSV_URL.format(quote(eco)), ".zip")
+            done[eco] = import_osv_zip(db, path, "osv")
+            sources[eco] = "osv.dev"
         except Exception as exc:
-            msg = f"{eco}: {type(exc).__name__}: {exc}"
-            if not done:
-                raise RuntimeError(msg)
-            logger.warning("OSV download failed (%s) - other ecosystems kept", msg)
+            msg = _err(exc)
             done[eco] = {"error": msg}
+            if not sources:                   # nothing came from the storage yet
+                storage_down = msg
+            logger.warning("OSV download failed for %s (%s)", eco, msg)
         finally:
-            try:
-                tmp.close()
-                os.unlink(tmp.name)
-            except OSError:
-                pass
+            if path:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+    for eco, url in OSV_GITHUB.items():
+        if "error" not in done.get(eco, {}):
+            continue
+        path = None
+        try:
+            path = _download(url, ".tar.gz")
+            done[eco] = {**import_osv_tar(db, path, "github"), "source": "github.com"}
+            sources[eco] = "github.com"
+        except Exception as exc:
+            done[eco]["error"] += f"; GitHub: {_err(exc)}"
+        finally:
+            if path:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+    _meta_set(db, "vuln_osv_sources", json.dumps(sources))
+    if not sources:
+        raise RuntimeError("; ".join(f"{e}: {d['error']}" for e, d in done.items())[:600])
     return done
+
+
+def probe() -> list:
+    """Reachability of every download source (Administration -> 'Test
+    sources'): status / time / short reason, checked in parallel, only the
+    first bytes are read."""
+    from concurrent.futures import ThreadPoolExecutor
+    targets = [("CISA KEV", n, u) for n, u, _ in _kev_sources()]
+    targets += [("OSV", "osv.dev (" + e + ")", OSV_URL.format(quote(e))) for e in ("Ubuntu", "AlmaLinux")]
+    targets += [("OSV", "github.com (" + e + ")", u) for e, u in OSV_GITHUB.items()]
+
+    def one(t):
+        group, name, url = t
+        t0 = time.monotonic()
+        try:
+            with _get(url, stream=True, timeout=(6, 10)) as r:
+                next(r.iter_content(1024), b"")
+                ok = r.status_code < 400
+                why = f"HTTP {r.status_code}"
+        except Exception as exc:
+            ok, why = False, _err(exc)
+        return {"group": group, "name": name, "url": url, "ok": ok, "detail": why,
+                "ms": int((time.monotonic() - t0) * 1000)}
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        return list(ex.map(one, targets))
 
 
 # ================================================================== matching
@@ -868,7 +1064,9 @@ def meta(db) -> dict:
             "kev": db.query(func.count(VulnKev.cve)).scalar() or 0,
             "kev_version": _setting(db, "vuln_kev_version"),
             "last_sync": _setting(db, "vuln_last_sync"), "last_attempt": _setting(db, "vuln_last_attempt"),
-            "last_error": _setting(db, "vuln_last_error"), "job": dict(JOB)}
+            "last_error": _setting(db, "vuln_last_error"), "job": dict(JOB),
+            "kev_source": _setting(db, "vuln_kev_source"),
+            "osv_sources": json.loads(_setting(db, "vuln_osv_sources") or "{}")}
 
 
 # ==================================================================== views

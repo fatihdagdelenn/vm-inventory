@@ -149,14 +149,17 @@
       <div class="card panel h-100">
         <div class="card-header"><i class="bi bi-shield-check"></i> <span data-i18n="vd2.data">Çekirdek zafiyet verisi</span></div>
         <div class="card-body">
-          <p class="text-muted small" data-i18n="vd2.desc">Kaynaklar: OSV.dev (Ubuntu, Debian, Red Hat, AlmaLinux, Rocky Linux; yalnızca çekirdek paketleri saklanır) ve CISA KEV. İnterneti olan sunucu KEV'i her gün, OSV'yi haftada bir indirir. Her kayıt için en yeni sürüm geçerlidir.</p>
+          <p class="text-muted small" data-i18n="vd2.desc">Kaynaklar: OSV.dev (Ubuntu, Debian, Red Hat, AlmaLinux, Rocky Linux; yalnızca çekirdek paketleri saklanır) ve CISA KEV. İnterneti olan sunucu KEV'i her gün, OSV'yi haftada bir indirir. cisa.gov kapalıysa KEV, CISA'nın GitHub deposundan; osv.dev kapalıysa AlmaLinux verisi (RHEL / Rocky için de kullanılır) GitHub'dan alınır. Her kayıt için en yeni sürüm geçerlidir.</p>
           <dl class="row small mb-3" id="vdMeta"></dl>
           <div class="d-flex flex-wrap gap-2 mb-2">
             <button class="btn btn-sm btn-outline-primary" id="vdSyncBtn" onclick="Settings.vdSync(false)">
               <i class="bi bi-cloud-arrow-down"></i> <span data-i18n="vd2.syncNow">Şimdi indir (OSV + KEV)</span></button>
             <button class="btn btn-sm btn-outline-secondary" id="vdKevBtn" onclick="Settings.vdSync(true)">
               <i class="bi bi-lightning"></i> <span data-i18n="vd2.syncKev">Yalnız KEV</span></button>
+            <button class="btn btn-sm btn-outline-secondary" id="vdProbeBtn" onclick="Settings.vdProbe()">
+              <i class="bi bi-broadcast"></i> <span data-i18n="vd2.probe">Kaynakları test et</span></button>
           </div>
+          <div id="vdProbe" class="d-none mt-2"></div>
           <div class="small mt-2" id="vdMsg"></div>
         </div>
       </div>

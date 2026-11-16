@@ -1562,3 +1562,4 @@ html.theme-dark .vu-kev  { background: #c9443c; border-color: #c9443c; color: #f
 .vu-table .vu-vms { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .vd-ecos th:first-child, .vd-ecos td:first-child { padding-left: 1rem; }
 .vd-ecos th:last-child, .vd-ecos td:last-child { padding-right: 1rem; }
+.vd-probe td { padding: .3rem .5rem; vertical-align: middle; }

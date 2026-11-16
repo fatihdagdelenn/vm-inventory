@@ -299,7 +299,10 @@ const Settings = {
     document.getElementById('vdMeta').innerHTML =
       row(t('vd2.rows', 'Çekirdek kaydı'), d.rows.toLocaleString() + ' · ' + d.cves.toLocaleString() + ' CVE') +
       row(t('vd2.dataDate', 'En yeni kayıt'), dt(d.data_date)) +
-      row('CISA KEV', d.kev + (d.kev_version ? ' · ' + App.esc(d.kev_version) : '')) +
+      row('CISA KEV', d.kev + (d.kev_version ? ' · ' + App.esc(d.kev_version) : '') +
+        (d.kev_source ? ' <span class="text-muted">· ' + App.esc(d.kev_source) + '</span>' : '')) +
+      (Object.keys(d.osv_sources || {}).length ? row(t('vd2.osvSrc', 'OSV kaynağı'),
+        Object.entries(d.osv_sources).map(([e, s]) => App.esc(e) + ': ' + App.esc(s)).join(' · ')) : '') +
       row(t('lc.lastSync', 'Son başarılı güncelleme'), d.last_sync ? dt(d.last_sync) : t('lc.never', 'hiç (internet yok)')) +
       (d.last_error ? row(t('lc.lastAttempt', 'Son deneme'), dt(d.last_attempt) +
         ' <span class="badge text-bg-light border" title="' + App.esc(d.last_error) + '">' +
@@ -323,10 +326,30 @@ const Settings = {
     const parts = [];
     if (m.records != null) parts.push('+' + m.records + ' ' + t('vd2.records', 'kayıt') +
       (m.kept ? ' · =' + m.kept : ''));
-    if (m.kev && m.kev.kev != null) parts.push('KEV ' + (m.kev.kept ? '=' : m.kev.kev));
+    if (m.kev && m.kev.kev != null) parts.push('KEV ' + (m.kev.kept ? '=' : m.kev.kev) +
+      (m.kev.source ? ' (' + m.kev.source + ')' : ''));
     if (m.osv) parts.push('OSV ' + Object.keys(m.osv).filter(k => !m.osv[k].error).length + '/' + Object.keys(m.osv).length);
     if (m.match) parts.push(t('vd2.new', 'yeni bulgu') + ' ' + m.match.new + ' · ' + t('vd2.closed', 'kapanan') + ' ' + m.match.closed);
     return parts.join(' · ');
+  },
+
+  /** Which download hosts this server reaches (cisa.gov / GitHub / osv.dev). */
+  async vdProbe() {
+    const btn = document.getElementById('vdProbeBtn'), box = document.getElementById('vdProbe');
+    btn.disabled = true;
+    box.classList.remove('d-none');
+    box.innerHTML = '<span class="spinner-border spinner-border-sm"></span> <span class="small text-muted">' +
+      t('vd2.probing', 'Deneniyor…') + '</span>';
+    let d;
+    try { d = await App.api('/api/vulns/probe', {method: 'POST', body: {}}); }
+    catch (e) { box.classList.add('d-none'); btn.disabled = false; return; }
+    btn.disabled = false;
+    box.innerHTML = '<table class="table table-sm small mb-0 vd-probe"><tbody>' + d.items.map(r =>
+      '<tr><td class="text-muted text-nowrap">' + App.esc(r.group) + '</td>' +
+      '<td class="text-nowrap" title="' + App.esc(r.url) + '">' + App.esc(r.name) + '</td>' +
+      '<td class="text-nowrap">' + (r.ok ? '<span class="badge sp-badge sp-ok">' + t('vd2.reach', 'erişiliyor') + '</span>'
+        : '<span class="badge sp-badge sp-eol">' + t('vd2.noReach', 'erişilemiyor') + '</span>') + '</td>' +
+      '<td class="text-muted text-nowrap">' + App.esc(r.ok ? r.ms + ' ms' : r.detail) + '</td></tr>').join('') + '</tbody></table>';
   },
 
   vdMsg(ok, text) {

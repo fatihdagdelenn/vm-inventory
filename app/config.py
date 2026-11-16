@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     # Folder scheduled reports are written to (a volume in Docker)
     report_dir: str = "data/reports"
 
+    # Kernel vulnerability data downloads (services/vuln_service.py)
+    vuln_kev_urls: str = ""     # comma list replacing the built-in KEV sources (internal mirror)
+    vuln_proxy: str = ""        # proxy for these downloads only, e.g. http://proxy:3128
+
     # LDAP
     ldap_enabled: bool = False
     ldap_server: str = ""

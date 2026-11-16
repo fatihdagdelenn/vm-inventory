@@ -43,6 +43,14 @@ def vuln_status(db: Session = Depends(get_db), user: User = Depends(get_current_
     return {**vs.meta(db), **vs.summary(db)}
 
 
+@router.post("/probe")
+def vuln_probe(request: Request, user: User = Depends(require_role("admin"))):
+    """Which download sources this server can reach (cisa.gov, GitHub hosts,
+    osv.dev storage) - reads only the first bytes of each."""
+    validate_csrf(request, None)
+    return {"items": vs.probe()}
+
+
 @router.post("/sync")
 def vuln_sync(request: Request, kev_only: bool = False, db: Session = Depends(get_db),
               user: User = Depends(require_role("admin"))):

@@ -30,6 +30,35 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 Phases not yet in a release (phase 152 →; internal v1.8.1 →).
 
+### 🌐 Vulnerability data from GitHub when cisa.gov / osv.dev are blocked (phase 161)
+- **CISA KEV** is tried from four sources, each on a different host because
+  firewalls allow them separately: cisa.gov → `raw.githubusercontent.com` →
+  `api.github.com` (contents API, raw media type - the API host answers
+  itself) → the `cisagov/kev-data` branch archive from `github.com` (~0.4 MB
+  `.tar.gz`). It is CISA's own repository, updated with the feed. The first
+  one that answers wins; the source used is shown in Administration and the
+  job result. `VULN_KEV_URLS` replaces the list (e.g. an internal mirror).
+- **AlmaLinux OSV** falls back to the `AlmaLinux/osv-database` GitHub archive
+  (~3 MB, ~300 kernel advisories for AlmaLinux 8 / 9 / 10) when the osv.dev
+  storage is unreachable. RHEL and Rocky VMs are matched with it as before.
+  Checked with the real archive: 3,091 kernel rows, KEV-listed CVEs found on
+  AlmaLinux / Rocky / RHEL 9 test kernels, import well under a second.
+- When the osv.dev storage is unreachable the remaining ecosystems are skipped
+  at once (one short failure) and the GitHub fallback still runs.
+- **Administration → Vulnerability Data → Test sources** checks every source
+  in parallel (first bytes only) and shows reachable / unreachable with a short
+  reason: "Proxy blocked (403)", "DNS could not be resolved", "Timeout",
+  "Certificate could not be verified"… so the firewall request can name the
+  exact host.
+- `VULN_PROXY`: a proxy for these downloads only (vCenter / Proxmox calls do
+  not go through it). Both settings are documented in `.env.example`.
+- Uploads also accept `.tar.gz` archives (the two GitHub archives above).
+- Honest limits: Ubuntu and Debian have no usable GitHub copy (Ubuntu's
+  `canonical/ubuntu-security-notices` holds ~66,000 OSV files, many GB; Debian
+  publishes on salsa.debian.org), so they still need osv.dev or a bundle
+  exported from a machine that reaches it. `api.github.com` allows 60
+  unauthenticated calls per hour per IP - enough for one call a day.
+
 ### 🛡️ Kernel vulnerability matching (phase 160)
 - **What it answers:** "which of my supported Linux VMs run a kernel with a
   known, fixed CVE - and which of those are actively exploited?" Only VMs whose

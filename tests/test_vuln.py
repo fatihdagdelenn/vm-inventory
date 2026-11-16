@@ -319,11 +319,11 @@ try:
     vs.job_sync(db, osv=True)
     raise AssertionError("offline sync must raise")
 except RuntimeError as exc:
-    assert "ConnectionError" in str(exc)
+    assert "Ağ erişimi yok" in str(exc), str(exc)
 finally:
     requests.get = _orig
 m = vs.meta(db)
-assert "no route" in m["last_error"] and m["rows"] > 0 and m["kev"] == 2
+assert "Ağ erişimi yok" in m["last_error"] and m["rows"] > 0 and m["kev"] == 2
 
 
 class _Resp:
@@ -363,6 +363,113 @@ vs.recompute(db)
 db.expire_all()
 assert a124.vuln_kev == 0
 print("8) offline / partial sync ok")
+
+# ------------------------------------------------------------ 8b) GitHub sources
+# cisa.gov and osv.dev storage blocked, only github.com reachable: KEV comes
+# from the cisagov/kev-data branch archive, AlmaLinux OSV from the
+# AlmaLinux/osv-database archive (both .tar.gz, as codeload serves them).
+import tarfile  # noqa: E402
+
+
+def _targz(path, members):
+    with tarfile.open(path, "w:gz") as tf:
+        for name, obj in members.items():
+            raw = json.dumps(obj).encode()
+            ti = tarfile.TarInfo(name); ti.size = len(raw)
+            tf.addfile(ti, io.BytesIO(raw))
+    return path
+
+
+kev_tar = _targz(os.path.join(tmp, "kev.tar.gz"), {"kev-data-develop/" + vs.KEV_FILE: kev,
+                                                   "kev-data-develop/schema.json": {"x": 1}})
+alma_tar = _targz(os.path.join(tmp, "alma.tar.gz"), {
+    "osv-database-master/advisories/almalinux9/ALSA-2024:2394.json": ALSA,
+    "osv-database-master/advisories/almalinux9/ALBA-2024:0001.json": {"id": "ALBA-2024:0001", "affected": [
+        {"package": {"ecosystem": "AlmaLinux:9", "name": "bash"}}]}})
+
+
+class _File:
+    def __init__(self, path):
+        self.f, self.status_code = open(path, "rb"), 200
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        self.f.close()
+
+    def raise_for_status(self):
+        pass
+
+    def iter_content(self, n):
+        while True:
+            b = self.f.read(n)
+            if not b:
+                return
+            yield b
+
+
+_seen = []
+
+
+def _github_only(url, stream=False, timeout=None, headers=None):
+    _seen.append(url)
+    if url.startswith("https://github.com/cisagov/kev-data/archive/"):
+        return _File(kev_tar)
+    if url.startswith("https://github.com/AlmaLinux/osv-database/archive/"):
+        return _File(alma_tar)
+    raise requests.ConnectionError("Tunnel connection failed: 403 Forbidden")
+
+
+_main_session = ss.SessionLocal
+db3, _ = make_env("_vuln3")
+ss.SessionLocal = _main_session
+_orig_get = vs._get
+vs._get = _github_only
+try:
+    res = vs.job_sync(db3, osv=True)
+finally:
+    vs._get = _orig_get
+assert res["kev"]["source"] == "github.com (arşiv)" and res["kev"]["kev"] == 2, res["kev"]
+assert [f.split(":")[0] for f in res["kev"]["failed"]] == ["cisa.gov", "raw.githubusercontent.com",
+                                                           "api.github.com"], res["kev"]["failed"]
+assert res["osv"]["AlmaLinux"]["source"] == "github.com" and res["osv"]["AlmaLinux"]["records"] == 1
+assert "osv.dev erişilemedi" in res["osv"]["Debian"]["error"]
+# storage unreachable -> only ONE osv.dev attempt, then the GitHub fallback
+assert sum("storage.googleapis.com" in u for u in _seen) == 1, _seen
+m3 = vs.meta(db3)
+assert m3["kev_source"] == "github.com (arşiv)" and m3["osv_sources"] == {"AlmaLinux": "github.com"}
+assert m3["by_ecosystem"] == {"AlmaLinux:9": 61}
+# api.github.com answers -> the archive is not needed
+vs._get = lambda url, **k: (_Resp(dict(kev, catalogVersion="2026.12.01")) if "api.github.com" in url
+                            else (_ for _ in ()).throw(requests.ConnectionError("blocked")))
+try:
+    assert vs.sync_kev(db3)["source"] == "api.github.com"
+finally:
+    vs._get = _orig_get
+# own mirror replaces the list (VULN_KEV_URLS)
+from app.config import get_settings  # noqa: E402
+get_settings().vuln_kev_urls = "https://mirror.example.lan/kev.json"
+try:
+    assert [n for n, *_ in vs._kev_sources()] == ["mirror.example.lan"]
+finally:
+    get_settings().vuln_kev_urls = ""
+# uploads: the same archives work through "Upload file"
+db3.query(VulnAdvisory).delete(); db3.commit()
+assert vs.import_file(db3, alma_tar)["type"] == "osv-tar" and db3.query(VulnAdvisory).count() == 61
+assert vs.import_file(db3, kev_tar)["type"] == "kev"
+# source probe: every source listed, blocked ones with a short reason
+vs._get = _github_only
+try:
+    pr = vs.probe()
+finally:
+    vs._get = _orig_get
+ok = {r["name"]: r["ok"] for r in pr}
+assert ok["github.com (arşiv)"] and ok["github.com (AlmaLinux)"] and not ok["cisa.gov"], ok
+assert next(r for r in pr if r["name"] == "cisa.gov")["detail"] == \
+    "Proxy engelledi (403)"
+db3.close()
+print("8b) GitHub sources ok")
 
 # ------------------------------------------------------------ 9) eligibility guard
 assert all(v.vuln_status in ("evaluated", "skipped", "unknown")
