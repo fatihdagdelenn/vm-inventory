@@ -63,7 +63,21 @@ from ..models import (ChangeHistory, VirtualMachine, VmVuln, VulnAdvisory, VulnC
 logger = logging.getLogger("vuln")
 
 OSV_URL = "https://osv-vulnerabilities.storage.googleapis.com/{}/all.zip"
-OSV_ECOSYSTEMS = ("Ubuntu", "Debian", "AlmaLinux", "Rocky Linux", "Red Hat")
+OSV_ECOSYSTEMS = ("Ubuntu", "Debian", "AlmaLinux", "Rocky Linux", "Red Hat", "SUSE", "openSUSE")
+# Selectable data sources (Administration -> Vulnerability Data). `distros` are
+# os_identity ids whose VMs are matched with the source - "auto" mode downloads
+# only the sources the inventory needs; `prefix` is the stored ecosystem prefix.
+SOURCES = {
+    "Ubuntu": {"distros": ("ubuntu",), "prefix": "Ubuntu:", "size": "large"},
+    "Debian": {"distros": ("debian",), "prefix": "Debian:", "size": "large"},
+    "AlmaLinux": {"distros": ("almalinux", "rocky-linux", "rhel"), "prefix": "AlmaLinux:",
+                  "size": "medium"},
+    "Rocky Linux": {"distros": ("rocky-linux",), "prefix": "Rocky Linux:", "size": "medium"},
+    "Red Hat": {"distros": ("rhel", "rocky-linux"), "prefix": "Red Hat:", "size": "large"},
+    "SUSE": {"distros": ("sles",), "prefix": "SUSE:", "size": "large"},
+    "openSUSE": {"distros": ("opensuse",), "prefix": "openSUSE:", "size": "large"},
+}
+SELECTION_KEY = "vuln_sources"
 # CISA KEV, tried in order. cisa.gov is often blocked on corporate networks while
 # GitHub is open, so CISA's own GitHub repository (cisagov/kev-data, same file,
 # updated with the feed) is reached three ways - each through a different host,
@@ -110,6 +124,15 @@ _ARCH = re.compile(r"\.(x86_64|aarch64|ppc64le|s390x|i686|noarch)$")
 
 
 # =================================================================== parsing
+# SUSE publishes one ecosystem per product / module; the kernel of SLES 15 SP5
+# can come as "Linux Enterprise Server 15 SP5", "... Module for Basesystem 15
+# SP5", "... Server for SAP Applications 15 SP5", "... 15 SP5-LTSS" - all
+# stored as "SUSE:15.5". openSUSE Leap 15.5 -> "openSUSE:15.5".
+_SUSE_ECO = re.compile(r"^SUSE:Linux Enterprise (?:Server|Module for Basesystem|Server for SAP Applications|"
+                       r"High Performance Computing|Desktop)(?: LTSS)? (\d+)(?: SP(\d+))?(?:[- ]LTSS.*)?$")
+_SUSE_PKG = re.compile(r"^kernel-(?:default|azure|rt|64kb|preempt)$")
+
+
 def norm_ecosystem(eco: str) -> Optional[str]:
     eco = (eco or "").strip()
     if _UBUNTU_ECO.match(eco):
@@ -117,7 +140,13 @@ def norm_ecosystem(eco: str) -> Optional[str]:
     if re.fullmatch(r"(Debian|AlmaLinux|Rocky Linux):\d+", eco):
         return eco
     m = re.fullmatch(r"Red Hat:enterprise_linux:(\d+)::(?:baseos|appstream)", eco)
-    return f"Red Hat:{m.group(1)}" if m else None
+    if m:
+        return f"Red Hat:{m.group(1)}"
+    m = _SUSE_ECO.match(eco)
+    if m:
+        return f"SUSE:{m.group(1)}.{m.group(2) or 0}"
+    m = re.fullmatch(r"openSUSE:Leap (\d+\.\d+)", eco)
+    return f"openSUSE:{m.group(1)}" if m else None
 
 
 def is_kernel_package(eco: str, name: str) -> bool:
@@ -125,6 +154,8 @@ def is_kernel_package(eco: str, name: str) -> bool:
         return bool(_UBUNTU_PKG.match(name))
     if eco.startswith("Debian:"):
         return bool(_DEBIAN_PKG.match(name))
+    if eco.startswith(("SUSE:", "openSUSE:")):
+        return bool(_SUSE_PKG.match(name))
     return name == "kernel"
 
 
@@ -177,8 +208,11 @@ def summaries_of(rec: dict, cves) -> dict:
     return {cves[0]: s[:400]} if s else {}
 
 
-def parse_osv(rec: dict) -> list:
-    """OSV record -> kernel rows [{cve, ecosystem, package, introduced, fixed}]."""
+def parse_osv(rec: dict, stats: Optional[Counter] = None) -> list:
+    """OSV record -> kernel rows [{cve, ecosystem, package, introduced, fixed}].
+    `stats` counts kernel-looking entries that were NOT recognised (unknown
+    ecosystem / package name) - shown after an import so a format change of a
+    source is visible instead of silently giving no data."""
     ids = [rec.get("id")] + list(rec.get("aliases") or []) + list(rec.get("upstream") or [])
     cves = sorted({x for x in ids if isinstance(x, str) and x.startswith("CVE-")})
     if not cves:
@@ -189,6 +223,12 @@ def parse_osv(rec: dict) -> list:
         eco = norm_ecosystem(pkg.get("ecosystem", ""))
         name = pkg.get("name", "")
         if not eco or not is_kernel_package(eco, name):
+            # the MAIN kernel package under an ecosystem name we do not know =
+            # the likely sign of a source's naming change
+            if stats is not None and not eco and name in ("kernel", "kernel-default", "linux") and \
+                    re.match(r"(Debian|AlmaLinux|Rocky Linux|Red Hat|SUSE|openSUSE)",
+                             pkg.get("ecosystem", "")) and not _known_skip(pkg.get("ecosystem", "")):
+                stats[f"{pkg.get('ecosystem', '')} / {name}"] += 1
             continue
         for r in a.get("ranges") or []:
             if r.get("type") not in (None, "ECOSYSTEM"):
@@ -218,6 +258,16 @@ def parse_osv(rec: dict) -> list:
             seen.add(k)
             uniq.append(r)
     return uniq
+
+
+def _known_skip(eco: str) -> bool:
+    """Ecosystems left out ON PURPOSE (not worth reporting): Red Hat EUS / AUS /
+    E4S and add-on streams, SUSE products other than the server / base system
+    (Micro, Real Time, Live Patching...)."""
+    return bool(re.search(r"Red Hat:(?!enterprise_linux:\d+::)|Micro|Real Time|Live Patching|"
+                          r"Development Tools|Legacy|Workstation|Public Cloud|Confidential|"
+                          r"Manager|Desktop|Leap Micro|Tumbleweed|Package Hub|Containers|"
+                          r"Web and Scripting|Server Applications|HPC|Availability|SAP Business", eco))
 
 
 # =================================================================== storing
@@ -287,9 +337,9 @@ def _store(db, records, source: str) -> dict:
     return out
 
 
-def _osv_records(recs):
+def _osv_records(recs, stats=None):
     for rec in recs:
-        rows = parse_osv(rec)
+        rows = parse_osv(rec, stats)
         sev, score, specific = severity_of(rec)
         cves = sorted({r["cve"] for r in rows})
         yield {"id": rec.get("id"), "modified": _ts(rec.get("modified")), "severity": sev,
@@ -305,19 +355,23 @@ def import_osv_zip(db, path: str, source: str = "osv") -> dict:
             for name in zf.namelist():
                 if not name.endswith(".json"):
                     continue
-                raw = zf.read(name)
-                if b'"linux' not in raw and b'"kernel"' not in raw:
-                    continue
-                try:
-                    yield json.loads(raw)
-                except ValueError:
-                    continue
-    return _store(db, _osv_records(gen()), source)
+                rec = _kernel_json(zf.read(name))
+                if isinstance(rec, dict):
+                    yield rec
+    stats = Counter()
+    return _with_stats(_store(db, _osv_records(gen(), stats), source), stats)
+
+
+def _with_stats(res: dict, stats: Counter) -> dict:
+    if stats:
+        res["unrecognized"] = [f"{k} ({n})" for k, n in stats.most_common(8)]
+        logger.info("Kernel entries not recognised (format change?): %s", res["unrecognized"])
+    return res
 
 
 def _kernel_json(raw: bytes):
     """json.loads only for records that can contain a kernel package."""
-    if b'"linux' not in raw and b'"kernel"' not in raw:
+    if b'"linux' not in raw and b'"kernel' not in raw:     # "kernel", "kernel-default"
         return None
     try:
         return json.loads(raw)
@@ -337,7 +391,8 @@ def import_osv_tar(db, path: str, source: str = "github") -> dict:
                 rec = _kernel_json(f.read()) if f else None
                 if isinstance(rec, dict) and "affected" in rec and "id" in rec:
                     yield rec
-    return _store(db, _osv_records(gen()), source)
+    stats = Counter()
+    return _with_stats(_store(db, _osv_records(gen(), stats), source), stats)
 
 
 def import_kev(db, doc: dict) -> dict:
@@ -561,13 +616,102 @@ def sync_kev(db) -> dict:
     raise RuntimeError("; ".join(errors) or "KEV kaynağı yok")
 
 
-def sync_osv(db) -> dict:
-    """osv.dev dumps per ecosystem; when the storage host is unreachable the
-    rest are skipped at once (one short failure, not five) and the GitHub
-    fallbacks (OSV_GITHUB) are tried for the ecosystems that got nothing."""
+# ------------------------------------------------------------ source choice
+def _vm_distros(db) -> dict:
+    """{distro: [eligible VMs, all Linux VMs]} from the inventory."""
+    out = defaultdict(lambda: [0, 0])
+    for g, k, st, tpl in db.query(VirtualMachine.guest_os, VirtualMachine.kernel,
+                                  VirtualMachine.support_status, VirtualMachine.is_template):
+        if tpl:
+            continue
+        d = identify(g, k).distro
+        if not d:
+            continue
+        out[d][1] += 1
+        if (st or "unknown") in ELIGIBLE:
+            out[d][0] += 1
+    return out
+
+
+# "auto" picks ONE source per distro: the small AlmaLinux data covers RHEL and
+# Rocky too (same kernel NVRs, GitHub fallback); Red Hat / Rocky dumps are
+# large and only added by hand.
+_AUTO_SOURCE = {"ubuntu": "Ubuntu", "debian": "Debian", "almalinux": "AlmaLinux",
+                "rocky-linux": "AlmaLinux", "rhel": "AlmaLinux", "sles": "SUSE",
+                "opensuse": "openSUSE"}
+
+
+def get_selection(db) -> dict:
+    try:
+        sel = json.loads(_setting(db, SELECTION_KEY) or "{}")
+    except ValueError:
+        sel = {}
+    mode = sel.get("mode") if sel.get("mode") in ("auto", "manual") else "auto"
+    manual = [e for e in sel.get("manual") or [] if e in SOURCES]
+    return {"mode": mode, "manual": manual}
+
+
+def set_selection(db, mode: str, manual) -> dict:
+    if mode not in ("auto", "manual"):
+        raise ValueError("mode auto veya manual olmalı")
+    bad = [e for e in manual or [] if e not in SOURCES]
+    if bad:
+        raise ValueError(f"bilinmeyen kaynak: {', '.join(bad)}")
+    _meta_set(db, SELECTION_KEY, json.dumps({"mode": mode, "manual": list(dict.fromkeys(manual or []))}))
+    db.commit()
+    return get_selection(db)
+
+
+def auto_sources(db) -> list:
+    need = {_AUTO_SOURCE[d] for d, (elig, _) in _vm_distros(db).items() if elig and d in _AUTO_SOURCE}
+    return [e for e in OSV_ECOSYSTEMS if e in need]
+
+
+def selected_sources(db) -> list:
+    sel = get_selection(db)
+    if sel["mode"] == "manual":
+        return [e for e in OSV_ECOSYSTEMS if e in sel["manual"]]
+    return auto_sources(db)
+
+
+def sources_overview(db) -> dict:
+    """Administration table: per source the VMs that need it, whether it is
+    selected, and how much data is stored (a source with VMs but no data is
+    the gap to fix - e.g. on an offline server after a bundle import)."""
+    vm = _vm_distros(db)
+    sel = get_selection(db)
+    auto = set(auto_sources(db))
+    chosen = set(selected_sources(db))
+    stored = dict(db.query(VulnAdvisory.ecosystem, func.count(func.distinct(VulnAdvisory.cve)))
+                  .group_by(VulnAdvisory.ecosystem).all())
+    used = json.loads(_setting(db, "vuln_osv_sources") or "{}")
+    rows = []
+    for name in OSV_ECOSYSTEMS:
+        meta_ = SOURCES[name]
+        elig = sum(vm[d][0] for d in meta_["distros"] if d in vm)
+        total = sum(vm[d][1] for d in meta_["distros"] if d in vm)
+        own = sum(vm[d][0] for d, src in _AUTO_SOURCE.items() if src == name and d in vm)
+        cves = sum(n for e, n in stored.items() if e.startswith(meta_["prefix"]))
+        rows.append({"name": name, "vms": elig, "vms_total": total, "auto_vms": own,
+                     "auto": name in auto, "selected": name in chosen, "size": meta_["size"],
+                     "cves": cves, "ecosystems": sorted(e for e in stored if e.startswith(meta_["prefix"])),
+                     "source": used.get(name), "github": name in OSV_GITHUB})
+    missing = [r["name"] for r in rows if r["auto"] and not r["cves"]]
+    return {"mode": sel["mode"], "manual": sel["manual"], "rows": rows, "missing": missing}
+
+
+def sync_osv(db, ecosystems=None) -> dict:
+    """osv.dev dumps per SELECTED ecosystem; when the storage host is
+    unreachable the rest are skipped at once (one short failure, not five) and
+    the GitHub fallbacks (OSV_GITHUB) are tried for the ecosystems that got
+    nothing."""
+    ecosystems = list(selected_sources(db) if ecosystems is None else ecosystems)
+    if not ecosystems:
+        raise RuntimeError("seçili OSV kaynağı yok (envanterde eşleşecek Linux VM yok "
+                           "veya elle seçim boş)")
     done, sources = {}, {}
     storage_down = None
-    for eco in OSV_ECOSYSTEMS:
+    for eco in ecosystems:
         if storage_down:
             done[eco] = {"error": f"osv.dev erişilemedi ({storage_down})"}
             continue
@@ -589,7 +733,7 @@ def sync_osv(db) -> dict:
                 except OSError:
                     pass
     for eco, url in OSV_GITHUB.items():
-        if "error" not in done.get(eco, {}):
+        if eco not in done or "error" not in done[eco]:
             continue
         path = None
         try:
@@ -604,7 +748,12 @@ def sync_osv(db) -> dict:
                     os.unlink(path)
                 except OSError:
                     pass
-    _meta_set(db, "vuln_osv_sources", json.dumps(sources))
+    try:                                     # keep what other runs brought
+        merged = json.loads(_setting(db, "vuln_osv_sources") or "{}")
+    except ValueError:
+        merged = {}
+    merged.update(sources)
+    _meta_set(db, "vuln_osv_sources", json.dumps(merged))
     if not sources:
         raise RuntimeError("; ".join(f"{e}: {d['error']}" for e, d in done.items())[:600])
     return done
@@ -800,6 +949,31 @@ def _rh_source(vm, ident, data):
     return (eco, "kernel", running), None
 
 
+def _suse_source(vm, ident, data):
+    """SLES / openSUSE: uname -r "5.14.21-150500.55.73-default" -> package
+    kernel-default, version-release "5.14.21-150500.55.73"."""
+    prefix = "SUSE" if ident.distro == "sles" else "openSUSE"
+    eco = f"{prefix}:{ident.version}"
+    m = re.match(r"^(\d+\.\d+\.\d+-[\d.]+)-([a-z0-9]+)$", (vm.kernel or "").strip())
+    if not m:
+        return None, f"Çekirdek dizesi tanınmadı: {vm.kernel}"
+    pkg = f"kernel-{m.group(2)}"
+    if (eco, pkg) not in data.pairs:
+        if eco not in data.ecos:
+            return None, f"{ident.label} çekirdek zafiyet verisi yüklenmemiş"
+        return None, f"Çekirdek paketi eşleşmedi ({pkg})"
+    return (eco, pkg, m.group(1)), None
+
+
+def _suse_cmp(running: str, fixed: str) -> int:
+    """rpm compare, but uname -r has no rebuild counter: running
+    "…-150500.55.73" equals fixed "…-150500.55.73.1" (same kernel build)."""
+    c = rpm_cmp(running, fixed)
+    if c < 0 and fixed.startswith(running + ".") and re.fullmatch(r"\d+", fixed[len(running) + 1:]):
+        return 0
+    return c
+
+
 def evaluate(vm, data):
     """-> (vm_status, vm_reason, findings{cve: dict}).
     vm_status: evaluated | skipped (not supported) | unknown (cannot tell)."""
@@ -826,18 +1000,21 @@ def evaluate(vm, data):
         def check(eco, fixed):
             return _ubuntu_check(m, vm.kernel_build, fixed)
         cmp_running = None
-    elif extended and ident.distro != "debian":       # Debian LTS fixes are in Debian:N
+    elif extended and ident.distro not in ("debian", "sles"):   # Debian LTS / SUSE LTSS share the eco
         return "unknown", f"Uzatılmış destek: {ident.label} için ELS/ESU çekirdek verisi yok", {}
-    elif ident.distro in ("debian", "rhel", "almalinux", "rocky-linux") and ident.version:
-        tgt, why = (_debian_source if ident.distro == "debian" else _rh_source)(vm, ident, data)
+    elif ident.distro in ("debian", "rhel", "almalinux", "rocky-linux", "sles", "opensuse") \
+            and ident.version:
+        fn = {"debian": _debian_source, "sles": _suse_source, "opensuse": _suse_source}.get(
+            ident.distro, _rh_source)
+        tgt, why = fn(vm, ident, data)
         if tgt is None:
             return "unknown", why, {}
         eco, pkg, running = tgt
         src, shown = [(eco, pkg)], running
-        cmp_ = dpkg_cmp if ident.distro == "debian" else rpm_cmp
+        cmp_ = {"debian": dpkg_cmp, "sles": _suse_cmp, "opensuse": _suse_cmp}.get(ident.distro, rpm_cmp)
         other = eco.split(":")[0]
         head = f"{ident.label} · {pkg} {shown}"
-        if ident.distro != "debian" and other != _RH_NAME[ident.distro]:
+        if ident.distro in _RH_NAME and other != _RH_NAME[ident.distro]:
             head += f" ({other} verisiyle - aynı çekirdek sürümleri)"
 
         def check(eco, fixed):

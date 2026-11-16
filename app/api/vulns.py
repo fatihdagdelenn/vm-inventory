@@ -6,7 +6,7 @@ import tempfile
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -41,6 +41,26 @@ def vuln_summary(db: Session = Depends(get_db), user: User = Depends(get_current
 def vuln_status(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Data status (Administration -> Vulnerabilities) + the running job."""
     return {**vs.meta(db), **vs.summary(db)}
+
+
+@router.get("/sources")
+def vuln_sources(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Selectable OSV sources with the VMs that need each and the stored data."""
+    return vs.sources_overview(db)
+
+
+@router.put("/sources")
+def vuln_sources_save(request: Request, payload: dict = Body(...), db: Session = Depends(get_db),
+                      user: User = Depends(require_role("admin"))):
+    validate_csrf(request, payload.pop("csrf_token", None))
+    try:
+        sel = vs.set_selection(db, payload.get("mode"), payload.get("manual") or [])
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    log_audit(db, user, "vuln_sources", target=sel["mode"], detail=",".join(sel["manual"])[:255],
+              request=request)
+    db.commit()
+    return vs.sources_overview(db)
 
 
 @router.post("/probe")

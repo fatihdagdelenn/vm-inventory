@@ -311,6 +311,12 @@ const Settings = {
       row(t('vd2.vms', 'VM'), '<a href="/vms?q=zafiyet:var,yok">' + d.vms_evaluated + ' ' + t('vd2.evaluated', 'değerlendirildi') +
         '</a> · <a href="/vms?q=zafiyet:bilinmiyor">' + d.vms_unknown + ' ' + t('vd2.unknown', 'değerlendirilemedi') +
         '</a> · <a href="/vms?q=zafiyet:kapsamdisi">' + d.vms_skipped + ' ' + t('vd2.skipped', 'kapsam dışı') + '</a>');
+    const ecoNames = [...new Set(Object.keys(d.by_ecosystem || {}).map(e => e.split(':')[0]))].sort();
+    document.getElementById('vdBundleInfo').innerHTML = (ecoNames.length || d.kev)
+      ? '<i class="bi bi-box-seam"></i> ' + t('vd2.bundleHas', 'Paket bu sunucudaki verinin tamamını içerir:') + ' <b>' +
+        App.esc(ecoNames.concat(d.kev ? ['CISA KEV'] : []).join(', ')) + '</b>. ' +
+        t('vd2.bundleHas2', 'Yükleyen sunucuda kendi VM\'leriyle eşleştirilir; sonuçlar orada görünür.')
+      : '<span class="text-muted">' + t('vd2.bundleEmpty', 'Henüz paketlenecek veri yok.') + '</span>';
     document.getElementById('vdEcos').innerHTML = Object.keys(d.by_ecosystem || {}).length
       ? Object.entries(d.by_ecosystem).sort((a, b) => a[0].localeCompare(b[0])).map(([e, n]) =>
           '<tr><td>' + App.esc(e) + '</td><td class="text-end">' + n.toLocaleString() + '</td></tr>').join('')
@@ -318,6 +324,8 @@ const Settings = {
     ['vdSyncBtn', 'vdKevBtn'].forEach(id => { document.getElementById(id).disabled = !!job.running; });
     clearTimeout(Settings._vdTimer);
     if (job.running) Settings._vdTimer = setTimeout(() => Settings.loadVuln(), 3000);
+    else if (Settings._vdWasRunning) Settings.loadSources();
+    Settings._vdWasRunning = !!job.running;
   },
 
   /** Short text of a finished job result (import / sync dicts). */
@@ -330,6 +338,8 @@ const Settings = {
       (m.kev.source ? ' (' + m.kev.source + ')' : ''));
     if (m.osv) parts.push('OSV ' + Object.keys(m.osv).filter(k => !m.osv[k].error).length + '/' + Object.keys(m.osv).length);
     if (m.match) parts.push(t('vd2.new', 'yeni bulgu') + ' ' + m.match.new + ' · ' + t('vd2.closed', 'kapanan') + ' ' + m.match.closed);
+    const unk = (m.unrecognized || []).concat(...Object.values(m.osv || {}).map(x => x.unrecognized || []));
+    if (unk.length) parts.push('⚠ ' + t('vd2.unrecognized', 'tanınmayan çekirdek kayıtları') + ': ' + unk.slice(0, 4).join(', '));
     return parts.join(' · ');
   },
 
@@ -356,6 +366,64 @@ const Settings = {
         t('vd2.caHint', 'Bu sunucuya gösterilen sertifikaları imzalayan:') + ' <b>' + iss.map(App.esc).join(', ') + '</b>. ' +
         t('vd2.caHint2', 'Bu, ağınızın SSL denetim sertifikası. Kök sertifikasını aşağıdaki "Kurum sertifikası" bölümünden yükleyin.') + '</div>';
     }
+  },
+
+  /* ---------- selectable OSV sources (phase 163) ---------- */
+  _vdSrc: null,
+
+  async loadSources() {
+    let d;
+    try { d = await App.api('/api/vulns/sources'); } catch (e) { return; }
+    Settings._vdSrc = d;
+    document.getElementById(d.mode === 'manual' ? 'vdModeManual' : 'vdModeAuto').checked = true;
+    Settings.renderSources();
+  },
+
+  renderSources() {
+    const d = Settings._vdSrc;
+    const manual = document.getElementById('vdModeManual').checked;
+    const admin = App.role() === 'admin';
+    const size = {large: t('vd2.sizeLarge', 'büyük indirme (yüzlerce MB olabilir)'),
+                  medium: t('vd2.sizeMedium', 'orta')};
+    document.getElementById('vdSrcBody').innerHTML = d.rows.map(r => {
+      // switching to "Choose" for the first time starts from the automatic picks
+      const base = (d.mode === 'auto' && !d.manual.length) ? d.rows.filter(x => x.auto).map(x => x.name) : d.manual;
+      const checked = manual ? base.includes(r.name) : r.auto;
+      const notes = [];
+      if (r.name === 'AlmaLinux') notes.push(t('vd2.noteAlma', 'RHEL ve Rocky VM\'leri de bununla eşleşir; osv.dev kapalıysa GitHub\'dan'));
+      if (r.name === 'Red Hat' || r.name === 'Rocky Linux') notes.push(t('vd2.noteRh', 'isteğe bağlı - AlmaLinux verisi yeterli'));
+      if (r.name === 'SUSE' || r.name === 'openSUSE') notes.push(t('vd2.noteSuse', 'yeni - biçim gerçek kayıtla doğrulanmadı'));
+      if (r.size === 'large') notes.push(size.large);
+      const vmTxt = r.vms ? '<b>' + r.vms + '</b>' + (r.vms_total > r.vms ? ' <span class="text-muted">/ ' + r.vms_total + '</span>' : '')
+        : '<span class="text-muted">' + (r.vms_total ? '0 / ' + r.vms_total : '—') + '</span>';
+      const dataTxt = r.cves ? r.cves.toLocaleString() + ' CVE'
+        : (r.auto ? '<span class="badge sp-badge sp-eol">' + t('vd2.noDataShort', 'veri yok') + '</span>' : '<span class="text-muted">—</span>');
+      return '<tr' + (checked ? '' : ' class="text-muted"') + '><td><input class="form-check-input vd-src" type="checkbox" value="' + App.esc(r.name) + '"' +
+        (checked ? ' checked' : '') + (manual && admin ? '' : ' disabled') + '></td>' +
+        '<td>' + App.esc(r.name) + (r.ecosystems.length ? ' <span class="text-muted small" title="' + App.esc(r.ecosystems.join(', ')) + '">(' + r.ecosystems.length + ' ' + t('vd2.releases', 'sürüm') + ')</span>' : '') + '</td>' +
+        '<td class="text-end">' + vmTxt + '</td><td class="text-end">' + dataTxt + '</td>' +
+        '<td class="small text-muted ps-4">' + App.esc(r.source || '—') + '</td>' +
+        '<td class="small text-muted">' + App.esc(notes.join(' · ')) + '</td></tr>';
+    }).join('');
+    const warn = document.getElementById('vdSrcWarn');
+    warn.classList.toggle('d-none', !d.missing.length);
+    warn.innerHTML = d.missing.length ? '<i class="bi bi-exclamation-triangle"></i> ' +
+      t('vd2.missing', 'Envanterde VM\'i olan ama verisi olmayan dağıtımlar:') + ' <b>' + d.missing.map(App.esc).join(', ') + '</b>. ' +
+      t('vd2.missing2', '"Şimdi indir" ile indirin ya da internetli sunucudan bunları içeren bir paket yükleyin.') : '';
+    document.getElementById('vdSrcSave').disabled = !admin;
+  },
+
+  vdModeChanged() { Settings.renderSources(); },
+
+  async vdSrcSave() {
+    const mode = document.getElementById('vdModeManual').checked ? 'manual' : 'auto';
+    const manual = mode === 'manual'
+      ? [...document.querySelectorAll('.vd-src:checked')].map(x => x.value) : (Settings._vdSrc.manual || []);
+    try {
+      Settings._vdSrc = await App.api('/api/vulns/sources', {method: 'PUT', body: {mode, manual}});
+    } catch (e) { return; }
+    App.toast(t('vd2.srcSaved', 'Kaydedildi.'));
+    Settings.renderSources();
   },
 
   /* ---------- company CA for data downloads (phase 162) ---------- */
@@ -439,6 +507,7 @@ Settings.loadAudit();
 Settings.loadSync();
 Settings.loadLifecycle();
 Settings.loadVuln();
+Settings.loadSources();
 Settings.loadCa();
 document.getElementById('auditSearch').addEventListener('input', App.debounce(() => Settings.loadAudit(), 300));
 document.getElementById('auditAction').addEventListener('change', () => Settings.loadAudit());

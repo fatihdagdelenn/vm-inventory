@@ -30,6 +30,42 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 Phases not yet in a release (phase 152 →; internal v1.8.1 →).
 
+### 🧩 Choose which distributions to download; SUSE / openSUSE (phase 163)
+- **Administration → Vulnerability Data → Distributions to download.**
+  *Automatic* (default) downloads only what the inventory needs: a source is
+  picked when at least one VM of that distribution is supported / ending soon /
+  extended (Ubuntu, Debian, AlmaLinux - which also covers RHEL and Rocky -,
+  SUSE, openSUSE). *Choose* lets you tick sources by hand - e.g. on the test
+  machine, to prepare a package for an offline server whose distributions
+  differ; the first switch to *Choose* starts from the automatic picks.
+- The table shows, per source, the VMs it matches (supported / all), the CVEs
+  already stored, the source it last came from (osv.dev / github.com) and a
+  note (size, AlmaLinux covers RHEL/Rocky, Red Hat/Rocky optional). A source
+  whose VMs have no data is flagged ("distributions with VMs but no data") -
+  on an offline server this shows whether the uploaded package covers its
+  distributions.
+- Downloads and the weekly job fetch only the selected dumps (one large
+  Ubuntu dump is no longer downloaded on a server without Ubuntu VMs).
+- **SUSE Linux Enterprise Server / openSUSE Leap** are matched: OSV's `SUSE`
+  and `openSUSE` dumps, ecosystems per product / module normalised to
+  `SUSE:15.7` / `openSUSE:16.0` (server, Basesystem module, SAP, HPC, LTSS),
+  package from the kernel flavour (`…-default` → `kernel-default`), rpm
+  comparison where uname -r's missing rebuild counter is not counted as older
+  (`…-150700.53.19` = fixed `…-150700.53.19.1`). SUSE LTSS (extended) is
+  matched too.
+- After every import, kernel entries under an ecosystem name the parser does
+  not know are listed in the job result and the log ("not recognised:
+  SUSE:… / kernel-default (12)") - a source renaming its products shows up
+  instead of silently producing no data.
+- The bundle note says what the package contains (every distribution stored
+  on this server + CISA KEV) and that the importing server matches it against
+  its own VMs.
+- Honest limits: the SUSE / openSUSE record format could not be checked
+  against a real kernel advisory (no reachable copy here); it follows OSV's
+  SUSE feed conventions, and the "not recognised" list is there to catch a
+  mismatch. Photon OS, Oracle Linux and Amazon Linux are not in OSV, so they
+  are still not matched. Download sizes are estimates.
+
 ### 🔐 Company certificate for networks with TLS inspection (phase 162)
 - **Problem seen on the user's network:** every source - cisa.gov, GitHub,
   osv.dev - failed with "certificate verify failed". The firewall re-signs

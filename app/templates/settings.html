@@ -149,7 +149,7 @@
       <div class="card panel h-100">
         <div class="card-header"><i class="bi bi-shield-check"></i> <span data-i18n="vd2.data">Çekirdek zafiyet verisi</span></div>
         <div class="card-body">
-          <p class="text-muted small" data-i18n="vd2.desc">Kaynaklar: OSV.dev (Ubuntu, Debian, Red Hat, AlmaLinux, Rocky Linux; yalnızca çekirdek paketleri saklanır) ve CISA KEV. İnterneti olan sunucu KEV'i her gün, OSV'yi haftada bir indirir. cisa.gov kapalıysa KEV, CISA'nın GitHub deposundan; osv.dev kapalıysa AlmaLinux verisi (RHEL / Rocky için de kullanılır) GitHub'dan alınır. Her kayıt için en yeni sürüm geçerlidir.</p>
+          <p class="text-muted small" data-i18n="vd2.desc">Kaynaklar: OSV.dev (Ubuntu, Debian, Red Hat, AlmaLinux, Rocky Linux, SUSE, openSUSE; yalnızca çekirdek paketleri saklanır) ve CISA KEV. İnterneti olan sunucu KEV'i her gün, OSV'yi haftada bir indirir. cisa.gov kapalıysa KEV, CISA'nın GitHub deposundan; osv.dev kapalıysa AlmaLinux verisi (RHEL / Rocky için de kullanılır) GitHub'dan alınır. Her kayıt için en yeni sürüm geçerlidir.</p>
           <dl class="row small mb-3" id="vdMeta"></dl>
           <div class="d-flex flex-wrap gap-2 mb-2">
             <button class="btn btn-sm btn-outline-primary" id="vdSyncBtn" onclick="Settings.vdSync(false)">
@@ -181,7 +181,34 @@
               <input type="file" accept=".gz,.zip,.json,application/json,application/zip,application/gzip" id="vdFile"
                      class="d-none" onchange="Settings.vdImport(this)"></label>
           </div>
+          <div class="small mt-2" id="vdBundleInfo"></div>
           <div class="small text-muted mt-2" data-i18n="vd2.uploadHint">Yükleme ve eşleştirme arka planda çalışır; büyük bir all.zip birkaç dakika sürebilir.</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12">
+      <div class="card panel">
+        <div class="card-header d-flex align-items-center gap-2"><i class="bi bi-ui-checks"></i>
+          <span data-i18n="vd2.srcTitle">İndirilecek dağıtımlar</span>
+          <div class="ms-auto btn-group btn-group-sm" role="group">
+            <input type="radio" class="btn-check" name="vdMode" id="vdModeAuto" value="auto" onchange="Settings.vdModeChanged()">
+            <label class="btn btn-outline-secondary" for="vdModeAuto" data-i18n="vd2.modeAuto">Otomatik (envanterdekiler)</label>
+            <input type="radio" class="btn-check" name="vdMode" id="vdModeManual" value="manual" onchange="Settings.vdModeChanged()">
+            <label class="btn btn-outline-secondary" for="vdModeManual" data-i18n="vd2.modeManual">Elle seç</label>
+          </div>
+        </div>
+        <div class="card-body pb-2">
+          <p class="text-muted small mb-2" data-i18n="vd2.srcDesc">Otomatik modda yalnızca envanterinizde desteklenen VM'i olan dağıtımların verisi indirilir (RHEL ve Rocky için küçük AlmaLinux verisi yeterli). Başka bir sunucuya (ör. internetsiz prod) paket hazırlıyorsanız "Elle seç" ile oranın dağıtımlarını da işaretleyin.</p>
+          <div id="vdSrcWarn" class="alert alert-warning small py-2 d-none"></div>
+        </div>
+        <div class="table-responsive"><table class="table table-sm align-middle mb-0 vd-ecos" id="vdSrcTable"><thead><tr>
+          <th style="width:2rem"></th><th data-i18n="vd2.srcDistro">Dağıtım</th>
+          <th class="text-end" data-i18n="vd2.srcVms">Eşleşecek VM</th>
+          <th class="text-end" data-i18n="vd2.srcData">Kayıtlı veri</th><th class="ps-4" data-i18n="vd2.srcFrom">Son kaynak</th>
+          <th data-i18n="vd2.srcNote">Not</th></tr></thead><tbody id="vdSrcBody"></tbody></table></div>
+        <div class="card-body pt-2 d-flex gap-2 align-items-center">
+          <button class="btn btn-sm btn-primary" id="vdSrcSave" onclick="Settings.vdSrcSave()"><i class="bi bi-check-lg"></i> <span data-i18n="pl.save">Kaydet</span></button>
+          <span class="small text-muted" data-i18n="vd2.srcAfter">Kaydettikten sonra "Şimdi indir" ile seçilenler indirilir.</span>
         </div>
       </div>
     </div>

@@ -425,6 +425,7 @@ _main_session = ss.SessionLocal
 db3, _ = make_env("_vuln3")
 ss.SessionLocal = _main_session
 _orig_get = vs._get
+vs.set_selection(db3, "manual", list(vs.OSV_ECOSYSTEMS))   # empty inventory: pick by hand
 vs._get = _github_only
 try:
     res = vs.job_sync(db3, osv=True)
@@ -540,5 +541,98 @@ psync(dict(S, kernel="6.8.0-140-lowlatency", kernel_build=""))   # new kernel, n
 r = db.query(VirtualMachine).filter_by(platform_id=px2.id).one()
 assert r.kernel == "6.8.0-140-lowlatency" and r.kernel_build is None, r.kernel_build
 print("11) sync hook ok")
+
+# ------------------------------------------------------------ 12) source choice + SUSE
+assert vs.get_selection(db) == {"mode": "auto", "manual": []}
+assert vs.auto_sources(db) == ["Ubuntu", "Debian", "AlmaLinux"], vs.auto_sources(db)
+ov = {r["name"]: r for r in vs.sources_overview(db)["rows"]}
+assert ov["AlmaLinux"]["auto"] and ov["AlmaLinux"]["vms"] >= 3 and ov["AlmaLinux"]["cves"] == 61
+assert not ov["Red Hat"]["auto"] and ov["Red Hat"]["cves"] == 1          # stored from the zip test
+assert ov["SUSE"]["vms"] == 0 and not ov["SUSE"]["selected"]
+# sync downloads only the selected dumps
+_urls = []
+
+
+def _record(url, **k):
+    _urls.append(url)
+    raise requests.ConnectionError("blocked")
+
+
+vs._get = _record
+try:
+    try:
+        vs.sync_osv(db)
+    except RuntimeError:
+        pass
+    assert [u for u in _urls if "storage.googleapis" in u] == [vs.OSV_URL.format("Ubuntu")], _urls
+    _urls.clear()
+    vs.set_selection(db, "manual", ["SUSE", "Red Hat"])
+    assert vs.selected_sources(db) == ["Red Hat", "SUSE"]       # catalogue order
+    try:
+        vs.sync_osv(db)
+    except RuntimeError:
+        pass
+    assert _urls[0] == vs.OSV_URL.format("Red%20Hat") and not any("AlmaLinux" in u for u in _urls), _urls
+    vs.set_selection(db, "manual", [])
+    try:
+        vs.sync_osv(db)
+        raise AssertionError("empty selection must say so")
+    except RuntimeError as exc:
+        assert "seçili OSV kaynağı yok" in str(exc)
+finally:
+    vs._get = _orig_get
+try:
+    vs.set_selection(db, "manual", ["Gentoo"])
+    raise AssertionError("unknown source accepted")
+except ValueError:
+    pass
+vs.set_selection(db, "auto", [])
+
+# SUSE / openSUSE (format per OSV's SUSE feed: one ecosystem per product /
+# module, binary package names, rpm versions with a rebuild counter)
+SUSE = {"id": "SUSE-SU-2026:3001-1", "modified": "2026-10-01T00:00:00Z", "upstream": ["CVE-2026-3001"],
+        "summary": "Security update for the Linux Kernel",
+        "affected": [
+            {"package": {"ecosystem": "SUSE:Linux Enterprise Module for Basesystem 15 SP7", "name": "kernel-default"},
+             "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "6.4.0-150700.53.19.1"}]}]},
+            {"package": {"ecosystem": "SUSE:Linux Enterprise Server 15 SP7", "name": "kernel-default"},
+             "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "6.4.0-150700.53.19.1"}]}]},
+            {"package": {"ecosystem": "SUSE:Linux Enterprise Server 15 SP7", "name": "kernel-source"},
+             "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "6.4.0-150700.53.19.1"}]}]},
+            {"package": {"ecosystem": "SUSE:Linux Enterprise Micro 6.1", "name": "kernel-default"},
+             "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "6.4.0-150700.53.19.1"}]}]},
+            {"package": {"ecosystem": "SUSE:Linux Enterprise Fancy Server 15 SP7", "name": "kernel-default"},
+             "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "6.4.0-150700.53.19.1"}]}]},
+            {"package": {"ecosystem": "openSUSE:Leap 16.0", "name": "kernel-default"},
+             "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "6.4.0-150700.53.19.1"}]}]}]}
+rows = vs.parse_osv(SUSE)
+assert {(r["ecosystem"], r["package"]) for r in rows} == {("SUSE:15.7", "kernel-default"),
+                                                          ("openSUSE:16.0", "kernel-default")}, rows
+st = vs.Counter()
+vs.parse_osv(SUSE, st)
+assert list(st) == ["SUSE:Linux Enterprise Fancy Server 15 SP7 / kernel-default"], st   # Micro = known skip
+zp2 = os.path.join(tmp, "suse.zip")
+with zipfile.ZipFile(zp2, "w") as z:
+    z.writestr("SUSE-SU-2026_3001-1.json", json.dumps(SUSE))
+res = vs.import_file(db, zp2)
+assert res["records"] == 1 and res["unrecognized"] == ["SUSE:Linux Enterprise Fancy Server 15 SP7 / kernel-default (1)"]
+assert vs._suse_cmp("6.4.0-150700.53.19", "6.4.0-150700.53.19.1") == 0
+assert vs._suse_cmp("6.4.0-150700.53.11", "6.4.0-150700.53.19.1") < 0
+assert vs._suse_cmp("6.4.0-150700.53.22", "6.4.0-150700.53.19.1") > 0
+s_old = vm("SUSE Linux Enterprise Server 15 SP7", "6.4.0-150700.53.11-default", name="sles-old")
+s_fix = vm("SUSE Linux Enterprise Server 15 SP7", "6.4.0-150700.53.19-default", name="sles-fix")
+s_rt = vm("SUSE Linux Enterprise Server 15 SP7", "6.4.0-150700.53.11-rt", name="sles-rt")
+o_old = vm("openSUSE Leap 16.0", "6.4.0-150700.53.11-default", name="leap-old")
+ls.recompute(db)
+db.expire_all()
+f = finding(s_old, "CVE-2026-3001")
+assert f and f.reason == ("SLES 15 SP7 · kernel-default 6.4.0-150700.53.11 · "
+                          "düzeltme 6.4.0-150700.53.19.1 -> etkileniyor"), (f and f.reason, s_old.vuln_reason)
+assert s_fix.vuln_status == "evaluated" and s_fix.vuln_total == 0, (s_fix.vuln_status, s_fix.vuln_reason)
+assert s_rt.vuln_status == "unknown" and "kernel-rt" in s_rt.vuln_reason
+assert finding(o_old, "CVE-2026-3001") is not None
+assert "SUSE" in vs.auto_sources(db) and "openSUSE" in vs.auto_sources(db)
+assert vs.sources_overview(db)["missing"] == []             # every needed source has data
+print("12) source choice + SUSE ok")
 
 print("ALL VULN TESTS PASSED")
