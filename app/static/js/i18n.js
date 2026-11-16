@@ -257,6 +257,7 @@ const I18N = {
     'vd2.onlyKev': 'The file has no kernel data (KEV only) - that is why nothing changed for the VMs. On the server with internet choose the distributions, run "Download now", and take the package again.',
     'vd2.sameData': 'The data in the package was already loaded; nothing new.',
     'vd2.stillMissing': 'Distributions with VMs here that still have no data:',
+    'vd2.e413': 'The proxy in front of the server found the request too large (HTTP 413).',
     'vd2.srcSaved': 'Saved.', 'vd2.unrecognized': 'kernel records not recognised',
     'vd2.bundleHas': 'The package contains all data on this server:',
     'vd2.bundleHas2': 'The server that imports it matches it against its own VMs; the results show up there.',

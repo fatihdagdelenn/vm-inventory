@@ -30,6 +30,23 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 Phases not yet in a release (phase 152 →; internal v1.8.1 →).
 
+### ⬆️ Uploads in pieces - works behind a proxy that limits request size (phase 166)
+- Reported on prod: "Upload file" showed **HTTP 413** and nothing happened.
+  The answer came from a reverse proxy in front of the app (nginx's default
+  `client_max_body_size` is 1 MB; the app's own limit is 2 GB and it answers
+  with a message, not a bare 413). The `.json.gz` format was not the problem.
+- The browser now sends the file in 900 KB pieces (`POST /api/vulns/upload` →
+  `PUT /api/vulns/upload/{id}?offset=…` → `POST …/finish`), with a progress
+  percentage and up to three retries per piece; a repeated piece is accepted
+  at its offset, a gap or a short file is refused, and the import starts only
+  when the size matches. Unfinished uploads are removed after a day. The
+  one-request endpoint stays for scripts.
+- Checked through a small proxy imitating nginx's 1 MB limit: the old single
+  request got 413, the 3.2 MB AlmaLinux archive went through in pieces and was
+  imported (301 advisories, 38 VMs evaluated).
+- A bare 413 from a proxy is now explained in the message instead of showing
+  only "HTTP 413".
+
 ### 📦 Upload result says what the file contained (phase 165)
 - Reported: a package downloaded on the test machine and uploaded on prod
   "changed nothing", with no explanation. The import itself works (re-checked

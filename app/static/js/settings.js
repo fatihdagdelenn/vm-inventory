@@ -342,7 +342,7 @@ const Settings = {
         box.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + App.esc(String(job.message || '')) + '</div>';
       return;
     }
-    const nf = n => Number(n || 0).toLocaleString();
+    const nf = n => Number(n || 0).toLocaleString(window.I18N && I18N.lang === 'en' ? 'en' : 'tr');
     const lines = [];
     const typeTxt = {bundle: t('vd2.tBundle', 'Veri paketi'), 'osv-zip': 'OSV all.zip', 'osv-tar': 'OSV .tar.gz',
                      'osv-json': 'OSV JSON', kev: 'CISA KEV'}[m.type] || m.type;
@@ -527,21 +527,43 @@ const Settings = {
     Settings.loadVuln();
   },
 
+  /** Upload in pieces (< 1 MB each): a reverse proxy in front of the app
+   *  often refuses larger request bodies with "413". */
   async vdImport(input) {
     const f = input.files && input.files[0];
     input.value = '';
     if (!f) return;
-    const fd = new FormData();
-    fd.append('file', f);
-    Settings.vdMsg(true, t('vd2.uploading', 'Yükleniyor…') + ' ' + f.name);
-    const res = await fetch('/api/vulns/import', {method: 'POST', body: fd,
-      headers: {'X-CSRF-Token': App.getCookie('csrf_token')}});
-    if (!res.ok) {
+    const hdr = {'X-CSRF-Token': App.getCookie('csrf_token')};
+    const fail = async (res, what) => {
       let msg = 'HTTP ' + res.status;
-      try { msg = (await res.json()).detail || msg; } catch (e) { /* no body */ }
-      Settings.vdMsg(false, msg);
-      return;
+      try { msg = (await res.json()).detail || msg; } catch (e) {
+        if (res.status === 413) msg = t('vd2.e413', 'Sunucunun önündeki proxy isteği çok büyük buldu (HTTP 413).');
+      }
+      Settings.vdMsg(false, (what ? what + ': ' : '') + msg);
+    };
+    let res = await fetch('/api/vulns/upload', {method: 'POST', body: JSON.stringify({size: f.size, name: f.name}),
+      headers: Object.assign({'Content-Type': 'application/json'}, hdr)});
+    if (!res.ok) return fail(res);
+    const up = await res.json();
+    const step = Math.min(up.chunk || 512 * 1024, 900 * 1024);
+    for (let off = 0; off < f.size; off += step) {
+      Settings.vdMsg(true, t('vd2.uploading', 'Yükleniyor…') + ' ' + f.name + ' · %' + Math.floor(off * 100 / f.size));
+      let tries = 0;
+      for (;;) {
+        try {
+          res = await fetch('/api/vulns/upload/' + up.upload_id + '?offset=' + off,
+            {method: 'PUT', body: f.slice(off, off + step), headers: Object.assign({'Content-Type': 'application/octet-stream'}, hdr)});
+          if (res.ok) break;
+          if (res.status < 500 || ++tries >= 3) return fail(res);
+        } catch (e) {
+          if (++tries >= 3) { Settings.vdMsg(false, String(e)); return; }
+        }
+        await new Promise(r => setTimeout(r, 1000 * tries));
+      }
     }
+    res = await fetch('/api/vulns/upload/' + up.upload_id + '/finish', {method: 'POST',
+      body: JSON.stringify({size: f.size, name: f.name}), headers: Object.assign({'Content-Type': 'application/json'}, hdr)});
+    if (!res.ok) return fail(res);
     Settings.vdMsg(true, t('vd2.started', 'Başladı; durum burada güncellenir.'));
     Settings.loadVuln();
   },

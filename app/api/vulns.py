@@ -125,30 +125,8 @@ def vuln_sync(request: Request, kev_only: bool = False, db: Session = Depends(ge
     return {"started": True}
 
 
-@router.post("/import")
-async def vuln_import(request: Request, file: UploadFile = File(...),
-                      db: Session = Depends(get_db),
-                      user: User = Depends(require_role("admin"))):
-    """Upload: offline bundle (.json.gz), OSV all.zip, OSV JSON or CISA KEV
-    JSON. Imported and matched in the background; poll /status."""
-    validate_csrf(request, None)
-    fd, path = tempfile.mkstemp(prefix="vuln-upload-")
-    size = 0
-    try:
-        with os.fdopen(fd, "wb") as out:
-            while True:
-                chunk = await file.read(1 << 20)
-                if not chunk:
-                    break
-                size += len(chunk)
-                if size > MAX_UPLOAD:
-                    raise HTTPException(413, "Dosya çok büyük (en fazla 2 GB)")
-                out.write(chunk)
-    except BaseException:
-        os.unlink(path)
-        raise
-    name = (file.filename or "dosya")[:120]
-
+def _start_import(db, request, user, path: str, name: str, size: int) -> dict:
+    """Import an uploaded file in the background (one job at a time)."""
     def job(d):
         try:
             res = vs.import_file(d, path)
@@ -172,6 +150,116 @@ async def vuln_import(request: Request, file: UploadFile = File(...),
     log_audit(db, user, "vuln_import", target=name, detail=f"{size} bytes", request=request)
     db.commit()
     return {"started": True, "size": size}
+
+
+@router.post("/import")
+async def vuln_import(request: Request, file: UploadFile = File(...),
+                      db: Session = Depends(get_db),
+                      user: User = Depends(require_role("admin"))):
+    """Upload in one request: offline bundle (.json.gz), OSV all.zip / .tar.gz,
+    OSV JSON or CISA KEV JSON. The UI uses the chunked upload below instead
+    (reverse proxies often limit a request body to 1 MB)."""
+    validate_csrf(request, None)
+    fd, path = tempfile.mkstemp(prefix="vuln-upload-")
+    size = 0
+    try:
+        with os.fdopen(fd, "wb") as out:
+            while True:
+                chunk = await file.read(1 << 20)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > MAX_UPLOAD:
+                    raise HTTPException(413, "Dosya çok büyük (en fazla 2 GB)")
+                out.write(chunk)
+    except BaseException:
+        os.unlink(path)
+        raise
+    return _start_import(db, request, user, path, (file.filename or "dosya")[:120], size)
+
+
+# ---------------------------------------------------------------- chunked upload
+# A reverse proxy in front of the app (nginx default client_max_body_size =
+# 1 MB) answers "413" to a bundle of a few MB before it reaches the app. The
+# browser therefore sends the file in pieces below that limit; each piece is
+# appended at its offset (a retried piece is accepted again), and "finish"
+# starts the import.
+CHUNK_MAX = 900 * 1024
+_UP_RE = r"^[0-9a-f]{32}$"
+
+
+def _upload_dir() -> str:
+    from ..core.outbound import cert_dir
+    d = os.path.join(os.path.dirname(cert_dir()), "uploads")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _upload_path(upload_id: str) -> str:
+    import re
+    if not re.match(_UP_RE, upload_id or ""):
+        raise HTTPException(400, "Geçersiz yükleme kimliği")
+    return os.path.join(_upload_dir(), upload_id + ".part")
+
+
+@router.post("/upload")
+def upload_start(request: Request, payload: dict = Body(...),
+                 user: User = Depends(require_role("admin"))):
+    import time
+    import uuid
+    validate_csrf(request, payload.pop("csrf_token", None))
+    size = int(payload.get("size") or 0)
+    if size <= 0:
+        raise HTTPException(400, "Boş dosya")
+    if size > MAX_UPLOAD:
+        raise HTTPException(413, "Dosya çok büyük (en fazla 2 GB)")
+    d = _upload_dir()
+    for f in os.listdir(d):                       # forgotten uploads older than a day
+        p = os.path.join(d, f)
+        try:
+            if time.time() - os.path.getmtime(p) > 86400:
+                os.unlink(p)
+        except OSError:
+            pass
+    upload_id = uuid.uuid4().hex
+    open(_upload_path(upload_id), "wb").close()
+    return {"upload_id": upload_id, "chunk": CHUNK_MAX}
+
+
+@router.put("/upload/{upload_id}")
+async def upload_chunk(upload_id: str, request: Request, offset: int = 0,
+                       user: User = Depends(require_role("admin"))):
+    validate_csrf(request, None)
+    path = _upload_path(upload_id)
+    if not os.path.exists(path):
+        raise HTTPException(404, "Yükleme bulunamadı (süresi dolmuş olabilir)")
+    data = await request.body()
+    if len(data) > CHUNK_MAX:
+        raise HTTPException(413, "Parça çok büyük")
+    have = os.path.getsize(path)
+    if offset > have:
+        raise HTTPException(409, f"Eksik parça: sunucuda {have} bayt var")
+    if have + len(data) - (have - offset) > MAX_UPLOAD:
+        raise HTTPException(413, "Dosya çok büyük (en fazla 2 GB)")
+    with open(path, "r+b") as f:                  # offset < have: a retried piece
+        f.seek(offset)
+        f.write(data)
+        f.truncate(offset + len(data))
+    return {"received": offset + len(data)}
+
+
+@router.post("/upload/{upload_id}/finish")
+def upload_finish(upload_id: str, request: Request, payload: dict = Body(default={}),
+                  db: Session = Depends(get_db), user: User = Depends(require_role("admin"))):
+    validate_csrf(request, payload.pop("csrf_token", None))
+    path = _upload_path(upload_id)
+    if not os.path.exists(path):
+        raise HTTPException(404, "Yükleme bulunamadı (süresi dolmuş olabilir)")
+    size = os.path.getsize(path)
+    expected = int(payload.get("size") or size)
+    if size != expected:
+        raise HTTPException(409, f"Dosya eksik geldi: {size} / {expected} bayt")
+    return _start_import(db, request, user, path, str(payload.get("name") or "dosya")[:120], size)
 
 
 @router.get("/bundle")
