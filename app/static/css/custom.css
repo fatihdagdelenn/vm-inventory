@@ -1549,6 +1549,13 @@ html.theme-dark .vu-kev  { background: #c9443c; border-color: #c9443c; color: #f
 .vu-count { font-variant-numeric: tabular-nums; min-width: 2.1rem; }
 .vu-count .vu-other { opacity: .62; font-weight: 500; margin-left: .25rem; font-size: .9em; }
 .vu-zero { font-variant-numeric: tabular-nums; opacity: .7; }
+/* Open CVEs cell states (phase 169): checked + clean / not verifiable / out of scope */
+.vu-clean { background: rgba(26,127,55,.08); color: #1a7f37; border-color: rgba(26,127,55,.28); font-weight: 500; }
+.vu-unverified { background: transparent; color: #8a6d1f; border: 1px dashed rgba(180,140,40,.55); font-weight: 500; }
+.vu-skip { font-size: .78rem; color: #8b98a9; }
+html.theme-dark .vu-clean { color: #56d364; background: rgba(86,211,100,.08); border-color: rgba(86,211,100,.3); }
+html.theme-dark .vu-unverified { color: #e3b341; border-color: rgba(227,179,65,.5); }
+html.theme-dark .vu-skip { color: #7d8b9c; }
 .vu-findings .vu-sum { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .vu-findings .vu-reason, .vu-table .vu-reason { font-size: .74rem; }
 .vu-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .75rem; }

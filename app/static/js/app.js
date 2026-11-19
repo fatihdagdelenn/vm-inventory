@@ -219,12 +219,18 @@ const App = {
     if (st !== 'evaluated') {
       const why = v.vuln_reason || (st === 'skipped'
         ? t('vu.skipped', 'Değerlendirilmedi') : t('vu.notYet', 'Henüz değerlendirilmedi'));
+      // three different looks, so an empty cell is never read as "safe"
+      if (st === 'unknown') return '<span class="badge sp-badge vu-unverified" title="' + App.esc(why) + '">' +
+        '<i class="bi bi-question-circle"></i> ' + t('vu.unverified', 'Doğrulanamadı') + '</span>';
+      if (st === 'skipped') return '<span class="vu-skip" title="' + App.esc(why) + '">' +
+        t('vu.skippedShort', 'kapsam dışı') + '</span>';
       return '<span class="text-muted" title="' + App.esc(why) + '">—</span>';
     }
     const total = v.vuln_total || 0, open = v.vuln_open || 0, kev = v.vuln_kev || 0;
     const nf = n => Number(n || 0).toLocaleString(window.I18N && I18N.lang === 'en' ? 'en' : 'tr');
-    if (!total) return '<span class="vu-zero" title="' + App.esc(v.vuln_reason || '') + '">' +
-      t('vu.noneShort', 'yok') + '</span>';
+    if (!total) return '<span class="badge sp-badge vu-clean" title="' + App.esc([v.vuln_reason,
+        t('vu.cleanTip', 'Yüklü zafiyet verisine göre bu sürümde bilinen açık yok.')].filter(Boolean).join('\n')) + '">' +
+      '<i class="bi bi-shield-check"></i> ' + t('vu.clean', 'Açık yok') + '</span>';
     const other = total - open;
     const sevs = [v.vuln_crit ? nf(v.vuln_crit) + ' ' + t('vu.sev.critical', 'Kritik').toLowerCase() : '',
                   v.vuln_high ? nf(v.vuln_high) + ' ' + t('vu.sev.high', 'Yüksek').toLowerCase() : ''].filter(Boolean);
@@ -253,11 +259,13 @@ const App = {
       (win ? t('vu.titleWin', 'Windows Zafiyetleri') : t('vu.title', 'Çekirdek Zafiyetleri'));
     if (st !== 'evaluated') {
       return head + '</h6><div class="small text-muted mb-3">' +
+        (st === 'unknown' ? '<span class="badge sp-badge vu-unverified me-1"><i class="bi bi-question-circle"></i> ' +
+          t('vu.unverified', 'Doğrulanamadı') + '</span> ' : '') +
         App.esc(v.vuln_reason || t('vu.notYet', 'Henüz değerlendirilmedi')) + '</div>';
     }
     const list = v.vulns || [];
     if (!list.length) {
-      return head + '</h6><div class="small mb-3"><span class="vu-zero">' +
+      return head + '</h6><div class="small mb-3"><span class="badge sp-badge vu-clean"><i class="bi bi-shield-check"></i> ' +
         (win ? t('vu.noneWin', 'Bilinen açık zafiyet yok') : t('vu.none', 'Bilinen açık çekirdek zafiyeti yok')) + '</span> <span class="text-muted">· ' +
         App.esc(v.vuln_reason || '') + '</span></div>';
     }

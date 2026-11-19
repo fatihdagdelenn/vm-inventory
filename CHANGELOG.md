@@ -30,6 +30,18 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 Phases not yet in a release (phase 152 →; internal v1.8.1 →).
 
+### 🛡️ Open CVEs cell: "checked, none" no longer looks like "could not check" (phase 169)
+- Asked on prod: Debian 12 VMs on VMware showed "—" next to Proxmox ones
+  with thousands of CVEs - was "—" safe? It was not: "—" meant **not
+  evaluable** (uname -r has no Debian package version; only the Proxmox agent
+  reports uname -v), and the same dash was used for "out of scope".
+- The cell now has three distinct looks: **Açık yok / No open CVE** (green,
+  shield icon) only when the VM WAS checked and nothing matched;
+  **Doğrulanamadı / Not verified** (dashed amber, question icon) when it could
+  not be checked, the reason in the tooltip; **kapsam dışı / out of scope**
+  (plain grey text) for EOL / unknown support. The VM detail uses the same
+  badges. "—" is left only for VMs not evaluated yet.
+
 ### 🪟 Windows vulnerabilities from Microsoft's update data (phase 168)
 - Windows VMs were "out of scope". Windows has no package versions: the OS is
   one cumulative update per month, and its identity is the NT build + update
