@@ -678,7 +678,7 @@ print("13) scale paths ok")
 # (ELSA-2018-0151 RHCK OL7, ELSA-2018-4001 UEK OL6+OL7, via quay/claircore
 # testdata) + one OL8 definition written in the same format.
 res = vs.import_file(db, FX + "oracle-elsa-sample.xml")
-assert res["type"] == "oracle-oval" and res["records"] == 3, res
+assert res["type"] == "oracle-oval" and res["records"] == 4, res        # ELSA-2018-4001 = OL6 + OL7 records
 pk = {(a.ecosystem, a.package): a.fixed for a in db.query(VulnAdvisory).filter(VulnAdvisory.ecosystem.like("Oracle Linux:%"))}
 assert pk[("Oracle Linux:7", "kernel-uek-4.1")] == "4.1.12-112.14.2.el7uek", pk        # own build per release
 assert pk[("Oracle Linux:6", "kernel-uek-4.1")] == "4.1.12-112.14.2.el6uek"
@@ -755,6 +755,19 @@ try:
     assert out["versions"] == {"5.0": 3} and out["source"] == "packages.broadcom.com", out
 finally:
     vs._get = _orig_get
+# phase 171 (found on prod): the per-release files repeat a shared advisory -
+# the second release must get its rows too (OL8 had no UEK 5.4 data at all)
+db.add(VulnAdvisory(osv_id="ELSA-2018-4001", cve="CVE-2017-5715", ecosystem="Oracle Linux:7",
+                    package="kernel-uek-4.1", introduced="0", fixed="4.1.12-112.14.2.el7uek",
+                    modified=datetime(2018, 1, 1), source="oracle"))           # pre-171 form
+db.commit()
+db.query(VulnAdvisory).filter(VulnAdvisory.osv_id.like("ELSA-2018-4001/%")).delete(synchronize_session=False)
+db.commit()
+r6 = vs.import_oracle_oval(db, FX + "oracle-elsa-sample.xml", "oracle", versions=["6"])
+r7 = vs.import_oracle_oval(db, FX + "oracle-elsa-sample.xml", "oracle", versions=["7"])
+assert r6["records"] == 1 and r7["records"] >= 1, (r6, r7)
+ids = {(a.osv_id, a.ecosystem) for a in db.query(VulnAdvisory).filter(VulnAdvisory.osv_id.like("ELSA-2018-4001%"))}
+assert ids == {("ELSA-2018-4001/OL6", "Oracle Linux:6"), ("ELSA-2018-4001/OL7", "Oracle Linux:7")}, ids
 print("14) Oracle Linux + Photon ok")
 
 # ------------------------------------------------------------ 15) Windows (MSRC CVRF, phase 168)

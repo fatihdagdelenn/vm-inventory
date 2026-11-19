@@ -30,6 +30,22 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 Phases not yet in a release (phase 152 →; internal v1.8.1 →).
 
+### 🐛 Oracle Linux 8 UEK 5.4 (and other shared advisories) were missing (phase 171)
+- Prod: every Oracle Linux 8.10 VM on UEK 5.4 stayed "Not verified - no
+  ELSA record for UEK 5.4", although the package had 9,224 Oracle CVEs. The
+  stored data showed why: `Oracle Linux:7 kernel-uek-5.4` 1,227 CVEs,
+  `Oracle Linux:8 kernel-uek-5.4` none; likewise OL9 had 4 UEK 5.15 CVEs (OL8:
+  3,124) and OL10 1 UEK 6.12 CVE (OL9: 5,640).
+- Cause: Oracle publishes one advisory for several releases (UEK 5.4 = OL7 +
+  OL8, UEK 7 = OL8 + OL9, UEK 8 = OL9 + OL10) and each per-release file
+  repeats it. The records were stored under the bare ELSA id, so the copy in
+  the next release's file was taken for "already stored, same date" and
+  skipped - only the first release (in download order) got the rows.
+- Fix: one record per release (`ELSA-2026-50005/OL8`). Rows stored in the old
+  form are removed on the next Oracle download or package upload.
+- After updating: run **Download now** on the internet-connected server (with
+  Oracle Linux selected) before taking a new package, then upload that package.
+
 ### 🔍 Fewer "Not verified" VMs, and a reason for every one left (phase 170)
 Prod screenshots showed whole groups as "Not verified". Each kind got its root cause:
 - **Debian 13 on VMware** (`6.12.107+deb13-amd64`): the kernel name carries

@@ -496,15 +496,21 @@ def parse_oracle_oval(fileobj, versions=None):
             def _for(mj, fx):
                 t = re.search(r"\.el(\d+)", fx)
                 return not t or t.group(1) == mj
-            rows = [{"cve": cve, "ecosystem": f"Oracle Linux:{mj}",
-                     "package": _oracle_package(pkg, fx), "introduced": "0", "fixed": fx}
-                    for mj in majors if not versions or mj in versions
-                    for pkg, fx in sorted(fixes) if _for(mj, fx) for cve in sorted(cves)]
-            if not rows:
-                continue
-            yield {"id": ref, "modified": modified, "severity": _ORA_SEV.get(sev_txt.upper(), "unknown"),
-                   "score": None, "specific": False, "summaries": {}, "rows": rows,
-                   "cve_scores": scores}
+            # ONE record per release ("ELSA-2026-50005/OL8"): the per-release
+            # files repeat a shared advisory, and with a single id the second
+            # file's copy was "already stored" - OL8 lost every UEK 5.4
+            # advisory it shares with OL7 (phase 171, found on prod)
+            for mj in majors:
+                if versions and mj not in versions:
+                    continue
+                rows = [{"cve": cve, "ecosystem": f"Oracle Linux:{mj}",
+                         "package": _oracle_package(pkg, fx), "introduced": "0", "fixed": fx}
+                        for pkg, fx in sorted(fixes) if _for(mj, fx) for cve in sorted(cves)]
+                if rows:
+                    yield {"id": f"{ref}/OL{mj}", "modified": modified,
+                           "severity": _ORA_SEV.get(sev_txt.upper(), "unknown"),
+                           "score": None, "specific": False, "summaries": {}, "rows": rows,
+                           "cve_scores": scores}
         finally:
             el.clear()
 
@@ -516,7 +522,20 @@ def _open_maybe_bz2(path):
     return bz2.open(path, "rb") if head == b"BZh" else open(path, "rb")
 
 
+def _drop_legacy_oracle(db) -> int:
+    """Rows stored before phase 171 under the bare ELSA id (one release won,
+    the others were skipped) - replaced by the per-release records."""
+    n = db.query(VulnAdvisory).filter(VulnAdvisory.ecosystem.like("Oracle Linux:%"),
+                                      ~VulnAdvisory.osv_id.like("%/OL%")) \
+        .delete(synchronize_session=False)
+    if n:
+        db.commit()
+        logger.info("Oracle rows in the old single-release form removed: %s", n)
+    return n
+
+
 def import_oracle_oval(db, path: str, source: str = "oracle", versions=None) -> dict:
+    _drop_legacy_oracle(db)
     with _open_maybe_bz2(path) as f:
         return _store(db, parse_oracle_oval(f, versions), source)
 
@@ -944,6 +963,8 @@ def import_bundle(db, doc: dict) -> dict:
     if doc.get("schema") != 1:
         raise ValueError(f"desteklenmeyen paket sürümü: {doc.get('schema')}")
     contents = bundle_contents(doc)
+    if any("/OL" in str(r.get("id") or "") for r in doc.get("records") or []):
+        _drop_legacy_oracle(db)              # the package brings per-release Oracle records
     keys = ("cve", "ecosystem", "package", "introduced", "fixed")
     res = _store(db, ({"id": r.get("id"), "modified": _ts(r.get("modified")),
                        "severity": r.get("severity") or "unknown", "score": r.get("score"),
