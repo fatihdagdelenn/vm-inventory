@@ -129,7 +129,8 @@ _DEBIAN_CODENAMES = {
 
 
 def _nt_build(kernel: str) -> Optional[int]:
-    m = re.match(r"^\s*NT\s+\d+\.\d+\.(\d+)", kernel or "")
+    # "NT Windows.17763.6775": what older VMware Tools data produced (distroVersion "Windows")
+    m = re.match(r"^\s*NT\s+(?:\d+\.\d+|[A-Za-z]+)\.(\d{4,5})", kernel or "")
     return int(m.group(1)) if m else None
 
 

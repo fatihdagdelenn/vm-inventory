@@ -187,7 +187,10 @@ try:
     vs.OSV_URL, vs.OSV_GITHUB = URL + "?{}", {}
     for _v in vs.VENDOR.values():                      # vendor feeds -> the same local server
         _v["urls"] = (URL + "?{v}",)
+        if "index" in _v:
+            _v["index"] = URL + "?updates"
     pr = vs.probe()
+    assert "Windows" in {r["group"] for r in pr}
     assert all(not r["ok"] for r in pr) and pr[0]["issuer"] == "Example Corp SSL Inspection CA", pr
     outbound.save_upload(ca_pem)
     res = vs.sync_kev(db)

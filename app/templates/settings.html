@@ -147,9 +147,9 @@
   <div class="row g-3">
     <div class="col-lg-6">
       <div class="card panel h-100">
-        <div class="card-header"><i class="bi bi-shield-check"></i> <span data-i18n="vd2.data">Çekirdek zafiyet verisi</span></div>
+        <div class="card-header"><i class="bi bi-shield-check"></i> <span data-i18n="vd2.data">Zafiyet verisi (Linux çekirdeği + Windows)</span></div>
         <div class="card-body">
-          <p class="text-muted small" data-i18n="vd2.desc">Kaynaklar: OSV.dev (Ubuntu, Debian, Red Hat, AlmaLinux, Rocky Linux, SUSE, openSUSE), Oracle OVAL (Oracle Linux), Broadcom Photon CVE verisi (yalnızca çekirdek paketleri saklanır) ve CISA KEV. İnterneti olan sunucu KEV'i her gün, OSV'yi haftada bir indirir. cisa.gov kapalıysa KEV, CISA'nın GitHub deposundan; osv.dev kapalıysa AlmaLinux verisi (RHEL / Rocky için de kullanılır) GitHub'dan alınır. Her kayıt için en yeni sürüm geçerlidir.</p>
+          <p class="text-muted small" data-i18n="vd2.desc">Kaynaklar: OSV.dev (Ubuntu, Debian, Red Hat, AlmaLinux, Rocky Linux, SUSE, openSUSE), Oracle OVAL (Oracle Linux), Broadcom Photon CVE verisi (yalnızca çekirdek paketleri saklanır), Windows için Microsoft MSRC güncelleme verisi (son 24 ay) ve CISA KEV. İnterneti olan sunucu KEV'i her gün, OSV'yi haftada bir indirir. cisa.gov kapalıysa KEV, CISA'nın GitHub deposundan; osv.dev kapalıysa AlmaLinux verisi (RHEL / Rocky için de kullanılır) GitHub'dan alınır. Her kayıt için en yeni sürüm geçerlidir.</p>
           <dl class="row small mb-3" id="vdMeta"></dl>
           <div class="d-flex flex-wrap gap-2 mb-2">
             <button class="btn btn-sm btn-outline-primary" id="vdSyncBtn" onclick="Settings.vdSync(false)">
@@ -170,7 +170,7 @@
         <div class="card-body">
           <ol class="small text-muted ps-3 mb-3">
             <li data-i18n="vd2.step1">İnterneti olan kurulumda (ör. test sunucusu) verinin indirildiğini görün.</li>
-            <li data-i18n="vd2.step2">Oradan "Veri paketini indir" ile sıkıştırılmış paketi alın (yalnızca çekirdek kayıtları, birkaç MB).</li>
+            <li data-i18n="vd2.step2">Oradan "Veri paketini indir" ile sıkıştırılmış paketi alın (yalnızca çekirdek ve Windows kayıtları, birkaç MB).</li>
             <li data-i18n="vd2.step3">Bu sunucuda "Dosya yükle" ile paketi verin. OSV all.zip, tek OSV JSON ve CISA KEV JSON da kabul edilir.</li>
           </ol>
           <div class="d-flex flex-wrap gap-2">

@@ -57,6 +57,8 @@ def _windows_nt_version(d: dict) -> str:
     build = m.group(1) if m else (kv if kv[:1].isdigit() else (d.get("buildNumber") or "").strip())
     if not build:
         return ""
+    if ver and not re.fullmatch(r"\d+\.\d+", ver):   # some Tools send distroVersion='Windows'
+        ver = "10.0" if build.split(".")[0].isdigit() and int(build.split(".")[0]) >= 10240 else ""
     if ver and build.startswith(ver + "."):          # already a full version
         return "NT " + build
     return "NT " + (f"{ver}.{build}" if ver else build)

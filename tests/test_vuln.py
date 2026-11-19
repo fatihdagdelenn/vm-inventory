@@ -209,7 +209,7 @@ assert alma.vuln_open == 61 and alma.vuln_kev == 1, (alma.vuln_open, alma.vuln_k
 assert alma_ok.vuln_total == 0
 assert finding(rhel, "CVE-2024-1086") and rhel.vuln_total == 1      # Red Hat's own data
 assert "Red Hat verisiyle" in rocky.vuln_reason and rocky.vuln_total == 1   # Rocky -> RH fallback
-assert win.vuln_status == "skipped" and "Linux" in win.vuln_reason
+assert win.vuln_status == "unknown" and "yapı numarası" in win.vuln_reason, win.vuln_reason   # no kernel
 print("4) matching ok (acceptance CVE-2026-43040 passed)")
 
 # ------------------------------------------------------------ 5) Debian
@@ -547,7 +547,7 @@ print("11) sync hook ok")
 
 # ------------------------------------------------------------ 12) source choice + SUSE
 assert vs.get_selection(db) == {"mode": "auto", "manual": []}
-assert vs.auto_sources(db) == ["Ubuntu", "Debian", "AlmaLinux"], vs.auto_sources(db)
+assert vs.auto_sources(db) == ["Ubuntu", "Debian", "AlmaLinux", "Windows"], vs.auto_sources(db)
 ov = {r["name"]: r for r in vs.sources_overview(db)["rows"]}
 assert ov["AlmaLinux"]["auto"] and ov["AlmaLinux"]["vms"] >= 3 and ov["AlmaLinux"]["cves"] == 61
 assert not ov["Red Hat"]["auto"] and ov["Red Hat"]["cves"] == 1          # stored from the zip test
@@ -581,7 +581,7 @@ try:
         vs.sync_osv(db)
         raise AssertionError("empty selection must say so")
     except RuntimeError as exc:
-        assert "seçili OSV kaynağı yok" in str(exc)
+        assert "seçili zafiyet kaynağı yok" in str(exc)
 finally:
     vs._get = _orig_get
 try:
@@ -635,7 +635,7 @@ assert s_fix.vuln_status == "evaluated" and s_fix.vuln_total == 0, (s_fix.vuln_s
 assert s_rt.vuln_status == "unknown" and "kernel-rt" in s_rt.vuln_reason
 assert finding(o_old, "CVE-2026-3001") is not None
 assert "SUSE" in vs.auto_sources(db) and "openSUSE" in vs.auto_sources(db)
-assert vs.sources_overview(db)["missing"] == []             # every needed source has data
+assert vs.sources_overview(db)["missing"] == ["Windows"]    # every Linux source has data (Windows: section 15)
 print("12) source choice + SUSE ok")
 
 # ------------------------------------------------------------ 13) scale paths (phase 164)
@@ -755,5 +755,177 @@ try:
 finally:
     vs._get = _orig_get
 print("14) Oracle Linux + Photon ok")
+
+# ------------------------------------------------------------ 15) Windows (MSRC CVRF, phase 168)
+# msrc-cvrf-sample.xml = structure of a real MSRC CVRF v3.0 XML document with
+# the real products / KBs / fixed builds of five CVEs (+ one synthetic
+# "Customer Action Required: No" CVE), see the file's header.
+from app.core.os_identity import identify  # noqa: E402
+assert vs.msrc_product("Windows Server 2019") == ("Windows Server:2019", 17763)
+assert vs.msrc_product("Windows Server 2025 (Server Core installation)") == ("Windows Server:2025", 26100)
+assert vs.msrc_product("Windows Server 2022, 23H2 Edition (Server Core installation)") == \
+    ("Windows Server:23h2-ac", 25398)
+assert vs.msrc_product("Windows 11 Version 24H2 for ARM64-based Systems") == ("Windows:11-24h2", 26100)
+assert vs.msrc_product("Windows 10 Version 22H2 for 32-bit Systems") == ("Windows:10-22h2", 19045)
+assert vs.msrc_product("Windows Server 2012 R2") == ("Windows Server:2012-r2", 9600)
+assert vs.msrc_product(".NET 8.0") is None and vs.msrc_product("Windows Server 2008 R2 for x64-based "
+                                                               "Systems Service Pack 1") is None
+assert vs.nt_version("NT 10.0.17763.6893") == ("10.0", 17763, 6893)
+assert vs.nt_version("NT Windows.17763.6775") == ("10.0", 17763, 6775)          # broken Tools string
+assert vs.nt_version("NT 10.0.17763") == ("10.0", 17763, None) and vs.nt_version("6.8.0-1") is None
+assert identify("Microsoft Windows Server 2019 Standard", "NT Windows.17763.6775").version == "2019"
+assert vs.msrc_months(3, datetime(2026, 1, 20).date()) == ["2026-Jan", "2025-Dec", "2025-Nov"]
+
+res = vs.import_file(db, FX + "msrc-cvrf-sample.xml")
+assert res["type"] == "msrc" and res["records"] == 3 and "unrecognized" not in res, res
+rows = {(a.cve, a.ecosystem): (a.fixed, a.introduced) for a in db.query(VulnAdvisory)
+        .filter(VulnAdvisory.ecosystem.like("Windows%"))}
+assert rows == {
+    ("CVE-2026-42825", "Windows Server:2012"): ("6.2.9200.26079", "KB5087470"),
+    ("CVE-2026-42825", "Windows Server:2022"): ("10.0.20348.5139", "KB5087545"),    # not the hotpatch
+    ("CVE-2026-42825", "Windows Server:2025"): ("10.0.26100.32860", "KB5087539"),
+    ("CVE-2026-42825", "Windows:11-24h2"): ("10.0.26100.8457", "KB5089549"),
+    ("CVE-2022-21971", "Windows Server:2019"): ("10.0.17763.2565", "KB5010351"),
+    ("CVE-2022-21971", "Windows Server:2022"): ("10.0.20348.524", "KB5010354"),
+    ("CVE-2026-6726", "Windows Server:2022"): ("10.0.20348.5499", "KB5120242"),
+    ("CVE-2026-6726", "Windows Server:2025"): ("10.0.26100.33296", "KB5120233"),   # from Server Core
+    ("CVE-2026-6726", "Windows:11-24h2"): ("10.0.26100.9165", "KB5123273"),        # lowest of two
+}, rows
+assert not db.query(VulnAdvisory).filter(VulnAdvisory.cve.in_(["CVE-2023-24898", "CVE-2099-0001",
+                                                                "CVE-2024-21392"])).count()
+c = db.get(VulnCve, "CVE-2022-21971")
+assert c.score == 7.8 and c.severity == "high" and c.summary == "Windows Runtime Remote Code Execution Vulnerability"
+assert db.query(VulnAdvisory).filter_by(osv_id="MSRC-CVE-2026-42825").first().modified == datetime(2026, 6, 1, 7)
+again = vs.import_file(db, FX + "msrc-cvrf-sample.xml")
+assert again["records"] == 0 and again["kept"] == 3, again                       # same revisions
+# the JSON form (official MSRC PowerShell module field names, numeric enums)
+jdoc = {"DocumentTracking": {"Identification": {"ID": {"Value": "2025-Jan"}},
+                             "CurrentReleaseDate": "2025-01-14T08:00:00Z"},
+        "ProductTree": {"FullProductName": [{"ProductID": "11571", "Value": "Windows Server 2019"},
+                                            {"ProductID": "11572", "Value": "Windows Server 2019 (Server Core installation)"}]},
+        "Vulnerability": [{"CVE": "CVE-2025-21333", "Title": {"Value": "Windows Hyper-V NT Kernel Integration VSP EoP"},
+                           "Notes": [{"Title": "Customer Action Required", "Type": 7, "Value": "Yes"}],
+                           "ProductStatuses": [{"ProductID": ["11571", "11572"], "Type": 3}],
+                           "Threats": [{"Type": 3, "Description": {"Value": "Important"}, "ProductID": ["11571"]}],
+                           "CVSSScoreSets": [{"BaseScore": 7.8, "ProductID": ["11571", "11572"]}],
+                           "Remediations": [{"Type": 2, "Description": {"Value": "5050008"}, "SubType": "Security Update",
+                                             "FixedBuild": "10.0.17763.6775", "ProductID": ["11571", "11572"]}],
+                           "RevisionHistory": [{"Number": "1.0", "Date": "2025-01-14T08:00:00"}]}]}
+jp = os.path.join(tmp, "2025-Jan.json")
+with open(jp, "w") as fh:
+    json.dump(jdoc, fh)
+res = vs.import_file(db, jp)
+assert res["type"] == "msrc" and res["records"] == 1, res
+assert db.query(VulnAdvisory).filter_by(cve="CVE-2025-21333").one().fixed == "10.0.17763.6775"
+db.add(VulnKev(cve="CVE-2025-21333", name="Microsoft Windows Hyper-V Use-After-Free")); db.commit()
+
+W19, W22 = "Microsoft Windows Server 2019 Standard", "Microsoft Windows Server 2022 Datacenter"
+w19_old = vm(W19, "NT 10.0.17763.1000", name="w19-old")       # older than every fix in the data
+w19 = vm(W19, "NT 10.0.17763.6000", name="w19")
+w19_ok = vm(W19, "NT Windows.17763.6775", name="w19-ok")       # broken string, patched
+w19_noubr = vm(W19, "NT 10.0.17763", platform=pm, name="w19-noubr")
+w22 = vm(W22, "NT 10.0.20348.5200", name="w22")
+w25 = vm("Microsoft Windows Server 2025 Standard", "NT 10.0.26100.32900", name="w25")
+w11 = vm("Microsoft Windows 11 Enterprise", "NT 10.0.26100.9100", name="w11")
+w16 = vm("Microsoft Windows Server 2016 Standard", "NT 10.0.14393.7000", name="w16")
+w12 = vm("Microsoft Windows Server 2012 R2 Standard", "NT 6.3.9600.21000", name="w12r2")
+ls.recompute(db)
+db.expire_all()
+f = finding(w19, "CVE-2025-21333")
+assert f and f.kev and f.fixed == "10.0.17763.6775" and f.package == "KB5050008" and f.severity == "high", f
+assert f.reason == ("Windows Server 2019 · yapı 10.0.17763.6000 · düzeltme 10.0.17763.6775 (KB5050008) "
+                    "-> etkileniyor"), f.reason
+assert finding(w19, "CVE-2022-21971") is None                   # 6000 >= 2565
+w = db.get(VirtualMachine, w19.id)
+assert w.vuln_status == "evaluated" and w.vuln_open == 1 and w.vuln_kev == 1 and w.vuln_top == "CVE-2025-21333"
+assert "uyarı" not in w.vuln_reason
+wo = db.get(VirtualMachine, w19_old.id)
+assert wo.vuln_total == 2 and "veri penceresinden eski" in wo.vuln_reason, wo.vuln_reason
+assert db.get(VirtualMachine, w19_ok.id).vuln_total == 0 and db.get(VirtualMachine, w19_ok.id).vuln_status == "evaluated"
+wn = db.get(VirtualMachine, w19_noubr.id)
+assert wn.vuln_status == "unknown" and "UBR" in wn.vuln_reason, wn.vuln_reason
+assert {x.cve for x in db.query(VmVuln).filter_by(vm_id=w22.id, closed_at=None)} == {"CVE-2026-6726"}
+assert finding(w22, "CVE-2026-6726").package == "KB5120242"
+assert {x.cve for x in db.query(VmVuln).filter_by(vm_id=w25.id, closed_at=None)} == {"CVE-2026-6726"}
+assert {x.cve for x in db.query(VmVuln).filter_by(vm_id=w11.id, closed_at=None)} == {"CVE-2026-6726"}
+assert finding(w11, "CVE-2026-6726").fixed == "10.0.26100.9165"   # client row, not Server 2025's
+w6 = db.get(VirtualMachine, w16.id)
+assert w6.vuln_status == "unknown" and "Windows Server 2016" in w6.vuln_reason and "yüklenmemiş" in w6.vuln_reason
+w2 = db.get(VirtualMachine, w12.id)
+assert w2.support_status == "eol" and w2.vuln_status == "skipped"   # 2012 R2: ESU only, not tracked as extended
+assert "Windows" in vs.auto_sources(db)
+ov = {r["name"]: r for r in vs.sources_overview(db)["rows"]}
+assert ov["Windows"]["vms"] >= 6 and len(ov["Windows"]["ecosystems"]) == 5, ov["Windows"]
+assert vs.source_of("Windows Server:2019") == "Windows" and vs.source_of("Windows:11-24h2") == "Windows"
+# bundle round trip keeps the KB
+doc = json.loads(gzip.decompress(vs.export_bundle(db)))
+assert vs.bundle_contents(doc)["Windows"] == 4
+win_rec = next(r for r in doc["records"] if r["id"] == "MSRC-CVE-2025-21333")
+assert win_rec["rows"] == [["CVE-2025-21333", "Windows Server:2019", "windows", "KB5050008", "10.0.17763.6775"]]
+# download: index + monthly documents; unchanged months are not fetched again
+xml_bytes = open(FX + "msrc-cvrf-sample.xml", "rb").read()
+_urls.clear()
+INDEX = {"value": [{"ID": "2026-May", "CurrentReleaseDate": "2026-09-25T02:43:53Z"},
+                   {"ID": "2026-Apr", "CurrentReleaseDate": "2026-04-14T07:00:00Z"}]}
+
+
+class _Json:
+    status_code = 200
+
+    def __init__(self, d):
+        self.d = d
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return self.d
+
+
+def _msrc_get(url, **k):
+    _urls.append(url)
+    assert "api.msrc.microsoft.com" in url
+    if url.endswith("/updates"):
+        return _Json(INDEX)
+    if url.endswith("/cvrf/2026-May") or url.endswith("/cvrf/2026-Apr"):
+        pth = os.path.join(tmp, "m.xml")
+        with open(pth, "wb") as fh:
+            fh.write(xml_bytes)
+        return _File(pth)
+
+    class R404(_File):
+        def __init__(self):
+            self.status_code = 404
+
+        def raise_for_status(self):
+            raise requests.HTTPError("404 Client Error: Not Found for url")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            pass
+    return R404()
+
+
+_today = vs.msrc_months
+vs.msrc_months = lambda n=vs.MSRC_MONTHS, today=None: _today(n, datetime(2026, 5, 20).date())
+vs._get = _msrc_get
+try:
+    out = vs.sync_vendor(db, "Windows")
+    assert out["source"] == "api.msrc.microsoft.com" and set(out["versions"]) == {"2026-May", "2026-Apr"}, out
+    assert "errors" not in out and len(_urls) == 1 + vs.MSRC_MONTHS, (out, len(_urls))   # 404 = not published
+    _urls.clear()
+    out = vs.sync_vendor(db, "Windows")
+    assert out["unchanged"] == 2 and _urls[0].endswith("/updates") and \
+        not any(u.endswith(("2026-May", "2026-Apr")) for u in _urls), (out, _urls)
+    INDEX["value"][0]["CurrentReleaseDate"] = "2026-10-01T00:00:00Z"            # May revised
+    _urls.clear()
+    out = vs.sync_vendor(db, "Windows")
+    assert out["unchanged"] == 1 and any(u.endswith("/cvrf/2026-May") for u in _urls), out
+finally:
+    vs._get = _orig_get
+    vs.msrc_months = _today
+print("15) Windows (MSRC) ok")
 
 print("ALL VULN TESTS PASSED")

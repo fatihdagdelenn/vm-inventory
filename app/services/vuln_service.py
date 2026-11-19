@@ -36,8 +36,12 @@ Matching (only VMs whose OS is supported / ending soon / extended)
 - RHEL family: uname -r without the arch = package version-release, rpm
   compare. RHEL / Rocky fall back to AlmaLinux data (same kernel NVRs).
 - A record without a 'fixed' event = no fix published yet -> affected.
+- Windows (phase 168): MSRC monthly CVRF documents give each CVE's fixed
+  build per product; the VM's NT build + UBR ("NT 10.0.17763.6775") is
+  compared with it. Operating system only (no SQL Server / Exchange / Office).
 """
 import gzip
+import hashlib
 import io
 import json
 import logging
@@ -78,6 +82,7 @@ SOURCES = {
     "openSUSE": {"distros": ("opensuse",), "prefix": "openSUSE:", "size": "large"},
     "Oracle Linux": {"distros": ("oracle-linux",), "prefix": "Oracle Linux:", "size": "medium"},
     "Photon OS": {"distros": ("photon",), "prefix": "Photon OS:", "size": "small"},
+    "Windows": {"distros": ("windows-server", "windows"), "prefix": "Windows", "size": "medium"},
 }
 # Not in OSV: the vendors' own feeds, one file per release.
 #  - Oracle: OVAL (ELSA advisories) - UEK ("kernel-uek") and RHCK ("kernel").
@@ -95,6 +100,10 @@ VENDOR = {
     "Photon OS": {"kind": "photon", "versions": ("3.0", "4.0", "5.0"),
                   "urls": ("https://packages.broadcom.com/photon/photon_cve_metadata/cve_data_photon{v}.json",
                            "https://packages.vmware.com/photon/photon_cve_metadata/cve_data_photon{v}.json")},
+    # Microsoft: monthly CVRF documents (see "Microsoft (MSRC CVRF)" below)
+    "Windows": {"kind": "msrc", "versions": (),
+                "urls": ("https://api.msrc.microsoft.com/cvrf/v3.0/cvrf/{v}",),
+                "index": "https://api.msrc.microsoft.com/cvrf/v3.0/updates"},
 }
 CATALOGUE = OSV_ECOSYSTEMS + tuple(VENDOR)
 SELECTION_KEY = "vuln_sources"
@@ -564,6 +573,208 @@ def import_photon(db, doc: list, version: str, source: str = "photon") -> dict:
     return {**_store(db, parse_photon(doc, version), source), "version": version}
 
 
+# ------------------------------------------------------- Microsoft (MSRC CVRF)
+# Windows has no package versions: the OS is one cumulative update per month
+# and its identity is the NT build + update revision (UBR), "10.0.17763.6893".
+# MSRC's CVRF API (api.msrc.microsoft.com/cvrf/v3.0, no key) publishes one
+# document per month; every CVE lists, per product, the update that fixes it
+# (Remediation "Vendor Fix": KB number, SubType, FixedBuild). Format checked
+# against a real document (XML, MaineK00n/vuls-data-update fetch testdata
+# 2024-Mar) and the official MSRC PowerShell module (JSON: Remediations[].Type
+# 2 = Vendor Fix, .FixedBuild, Threats[].Type 3 = Severity, CVSSScoreSets).
+# Stored rows: ecosystem "Windows Server:2019" / "Windows:11-24h2" (the
+# os_identity cycle id), package "windows", fixed = FixedBuild, introduced =
+# the KB of that fix ("KB5050008" - Windows rows have no introduced version).
+# Left out on purpose: hotpatch updates (only Azure Edition / hotpatch-enrolled
+# machines take them; a CVE fixed ONLY by a hotpatch does not affect the
+# others), CVEs with "Customer Action Required: No" (fixed in the cloud).
+MSRC_MONTHS = 24                  # monthly documents downloaded (the data window)
+_CVRF_V = "{http://www.icasi.org/CVRF/schema/vuln/1.1}"
+_CVRF_P = "{http://www.icasi.org/CVRF/schema/prod/1.1}"
+_CVRF_C = "{http://www.icasi.org/CVRF/schema/cvrf/1.1}"
+_MS_SEV = {"critical": "critical", "important": "high", "moderate": "medium", "low": "low"}
+_MS_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def _ms_builds():
+    from ..core.os_identity import _CLIENT_BUILDS, _SERVER_BUILDS
+    return ({v: k for k, v in _SERVER_BUILDS.items() if k not in (6002,)},
+            {v: k for k, v in _CLIENT_BUILDS.items()})
+
+
+def msrc_product(name: str):
+    """MSRC product name -> (ecosystem, NT build) for Windows OS products,
+    else None. Server Core installations share the full product's row (the
+    inventory cannot tell them apart); 32-bit / x64 / ARM64 share one too."""
+    n = re.sub(r"\s*\(Server Core installation\)\s*$", "", (name or "").strip())
+    server, client = _ms_builds()
+    m = re.fullmatch(r"Windows Server (2012 R2|2012|2016|2019|2022|2025)", n)
+    if m:
+        cyc = m.group(1).lower().replace(" r2", "-r2")
+        return f"Windows Server:{cyc}", server[cyc]
+    if n == "Windows Server 2022, 23H2 Edition":
+        return "Windows Server:23h2-ac", server["23h2-ac"]
+    m = re.fullmatch(r"Windows (10|11)(?: Version (\w+))? for (?:x64-based|32-bit|ARM64-based) Systems", n)
+    if m:
+        cyc = f"{m.group(1)}-{(m.group(2) or ('1507' if m.group(1) == '10' else '21H2')).lower()}"
+        return (f"Windows:{cyc}", client[cyc]) if cyc in client else None
+    return None
+
+
+def _ms_val(x):
+    return x.get("Value") if isinstance(x, dict) else x
+
+
+def _ms_ids(x):
+    return [str(i) for i in (x if isinstance(x, list) else [x] if x else [])]
+
+
+def _msrc_xml(fileobj):
+    """(doc, products, vulnerability) from a CVRF XML document, streamed."""
+    import xml.etree.ElementTree as ET
+    V, P, C = _CVRF_V, _CVRF_P, _CVRF_C
+    doc, products = {"id": None, "date": None}, {}
+    for _, el in ET.iterparse(fileobj, events=("end",)):
+        tag = el.tag
+        if tag == P + "FullProductName":
+            products[el.get("ProductID")] = (el.text or "").strip()
+        elif tag == C + "ID" and doc["id"] is None:
+            doc["id"] = (el.text or "").strip()
+        elif tag == C + "CurrentReleaseDate":
+            doc["date"] = _ts((el.text or "").strip())
+        elif tag == V + "Vulnerability":
+            v = {"cve": (el.findtext(V + "CVE") or "").strip(),
+                 "title": (el.findtext(V + "Title") or "").strip(),
+                 "notes": {n.get("Title"): (n.text or "").strip() for n in el.iter(V + "Note")},
+                 "threats": [(t.get("Type"), (t.findtext(V + "Description") or "").strip(),
+                              [p.text for p in t.findall(V + "ProductID")]) for t in el.iter(V + "Threat")],
+                 "scores": [(s.findtext(V + "BaseScore"), [p.text for p in s.findall(V + "ProductID")])
+                            for s in el.iter(V + "ScoreSet")],
+                 "rems": [(r.get("Type"), (r.findtext(V + "Description") or "").strip(),
+                           r.findtext(V + "SubType") or "", (r.findtext(V + "FixedBuild") or "").strip(),
+                           [p.text for p in r.findall(V + "ProductID")]) for r in el.iter(V + "Remediation")],
+                 "dates": [d.text for r in el.iter(V + "Revision") for d in r if d.tag.endswith("}Date")]}
+            yield doc, products, v
+            el.clear()
+
+
+_MS_THREAT = {0: "Impact", 1: "Exploit Status", 2: "Target Set", 3: "Severity"}
+_MS_REM = {0: "Workaround", 1: "Mitigation", 2: "Vendor Fix", 3: "None Available", 4: "Will Not Fix"}
+
+
+def _msrc_json(doc: dict):
+    """Same, from the JSON form (Accept: application/json; enumerations are
+    numbers there)."""
+    tr = doc.get("DocumentTracking") or {}
+    meta = {"id": _ms_val((tr.get("Identification") or {}).get("ID")),
+            "date": _ts(tr.get("CurrentReleaseDate"))}
+    products = {str(p.get("ProductID")): str(_ms_val(p.get("Value")) or "").strip()
+                for p in (doc.get("ProductTree") or {}).get("FullProductName") or []}
+    for v in doc.get("Vulnerability") or []:
+        yield meta, products, {
+            "cve": str(v.get("CVE") or "").strip(), "title": str(_ms_val(v.get("Title")) or "").strip(),
+            "notes": {n.get("Title"): str(_ms_val(n.get("Value")) or "").strip() for n in v.get("Notes") or []},
+            "threats": [(_MS_THREAT.get(t.get("Type"), t.get("Type")), str(_ms_val(t.get("Description")) or ""),
+                         _ms_ids(t.get("ProductID"))) for t in v.get("Threats") or []],
+            "scores": [(s.get("BaseScore"), _ms_ids(s.get("ProductID"))) for s in v.get("CVSSScoreSets") or []],
+            "rems": [(_MS_REM.get(r.get("Type"), r.get("Type")), str(_ms_val(r.get("Description")) or "").strip(),
+                      r.get("SubType") or "", str(r.get("FixedBuild") or "").strip(), _ms_ids(r.get("ProductID")))
+                     for r in v.get("Remediations") or []],
+            "dates": [r.get("Date") for r in v.get("RevisionHistory") or []]}
+
+
+_MS_FIXED = re.compile(r"^\d+\.\d+\.(\d+)\.(\d+)$")
+_MS_UNKNOWN_NAME = re.compile(r"^Windows (?:Server (?:2016|2019|202\d)|1[01] )")
+
+
+def parse_msrc(items, stats: Optional[Counter] = None):
+    """CVRF vulnerabilities -> records (Windows OS products only). `stats`
+    counts Windows names / fixed builds that were not understood."""
+    for doc, products, v in items:
+        cve = v["cve"]
+        if not cve.startswith("CVE-"):
+            continue
+        if (v["notes"].get("Customer Action Required") or "Yes").strip().lower() == "no":
+            continue
+        prod = {}
+        for pid, name in products.items():
+            pm = msrc_product(name)
+            if pm:
+                prod[pid] = pm
+        best = {}                                     # eco -> (ubr, fixed, kb)
+        for typ, kb, sub, fixed, pids in v["rems"]:
+            if typ != "Vendor Fix" or "hotpatch" in sub.lower():
+                continue
+            for pid in pids:
+                pm = prod.get(pid)
+                if not pm:
+                    if stats is not None and _MS_UNKNOWN_NAME.match(products.get(pid) or ""):
+                        stats[products[pid]] += 1
+                    continue
+                eco, build = pm
+                m = _MS_FIXED.match(fixed)
+                if not m or int(m.group(1)) != build:
+                    if stats is not None:
+                        stats[f"{products.get(pid)}: FixedBuild {fixed or '-'}"] += 1
+                    continue
+                ubr = int(m.group(2))
+                if eco not in best or ubr < best[eco][0]:
+                    best[eco] = (ubr, fixed, kb)
+        if not best:
+            continue
+        win = {pid for pid, pm in prod.items() if pm[0] in best}
+        sev = "unknown"
+        for typ, desc, pids in v["threats"]:
+            if typ == "Severity" and win & set(pids):
+                sev = _worse(_MS_SEV.get(desc.strip().lower(), "unknown"), sev)
+        score = None
+        for base, pids in v["scores"]:
+            try:
+                b = float(base)
+            except (TypeError, ValueError):
+                continue
+            if win & set(pids) and (score is None or b > score):
+                score = b
+        dates = [d for d in (_ts(x) for x in v["dates"]) if d]
+        rows = [{"cve": cve, "ecosystem": eco, "package": "windows",
+                 "introduced": f"KB{kb}" if kb.isdigit() else "0", "fixed": fixed}
+                for eco, (_, fixed, kb) in sorted(best.items())]
+        yield {"id": f"MSRC-{cve}", "modified": max(dates) if dates else doc.get("date"),
+               "severity": sev, "score": None, "specific": False,
+               "summaries": {cve: v["title"][:400]} if v["title"] else {}, "rows": rows,
+               "cve_scores": {cve: score} if score is not None else {}}
+
+
+def _is_cvrf_xml(path: str) -> bool:
+    with open(path, "rb") as f:
+        return b"cvrfdoc" in f.read(4096)
+
+
+def import_msrc(db, path: str, source: str = "msrc") -> dict:
+    """One monthly CVRF document (XML or JSON)."""
+    stats = Counter()
+    if _is_cvrf_xml(path):
+        with open(path, "rb") as f:
+            res = _store(db, parse_msrc(_msrc_xml(f), stats), source)
+    else:
+        with open(path, "rb") as f:
+            res = _store(db, parse_msrc(_msrc_json(json.load(f)), stats), source)
+    return _with_stats(res, stats)
+
+
+def msrc_months(n: int = MSRC_MONTHS, today: Optional[date] = None) -> list:
+    """Document ids of the last n months, newest first ("2026-Nov", ...)."""
+    d = today or date.today()
+    y, m = d.year, d.month
+    out = []
+    for _ in range(n):
+        out.append(f"{y}-{_MS_MONTHS[m - 1]}")
+        m -= 1
+        if not m:
+            y, m = y - 1, 12
+    return out
+
+
 def import_kev(db, doc: dict) -> dict:
     """CISA KEV JSON; replaced only by a newer catalogVersion."""
     from ..core.app_settings import set_setting
@@ -673,11 +884,14 @@ def import_bundle(db, doc: dict) -> dict:
 
 def import_file(db, path: str) -> dict:
     """Detect and import an uploaded file: OSV all.zip, bundle (.json.gz /
-    .json), KEV JSON, one OSV record or a list of them."""
+    .json), KEV JSON, one OSV record or a list of them, Oracle OVAL, Photon
+    JSON, a Microsoft CVRF month (XML or JSON)."""
     with open(path, "rb") as f:
         head = f.read(4)
     if head[:4] == b"PK\x03\x04":
         return {"type": "osv-zip", **import_osv_zip(db, path, "upload")}
+    if head[:1] == b"<" and _is_cvrf_xml(path):
+        return {"type": "msrc", **import_msrc(db, path, "upload")}
     if head[:3] == b"BZh" or head[:4] in (b"<?xm", b"<ova"):
         return {"type": "oracle-oval", **import_oracle_oval(db, path, "upload")}
     if head[:2] == b"\x1f\x8b" and tarfile.is_tarfile(path):
@@ -695,6 +909,9 @@ def import_file(db, path: str) -> dict:
         return {"type": "bundle", **import_bundle(db, doc)}
     if isinstance(doc, dict) and "vulnerabilities" in doc and "catalogVersion" in doc:
         return {"type": "kev", **import_kev(db, doc)}
+    if isinstance(doc, dict) and "Vulnerability" in doc and "ProductTree" in doc:
+        stats = Counter()
+        return {"type": "msrc", **_with_stats(_store(db, parse_msrc(_msrc_json(doc), stats), "upload"), stats)}
     if isinstance(doc, list) and doc and all(isinstance(r, dict) and "cve_id" in r and "pkg" in r
                                             for r in doc[:50]):
         ver = _photon_version(doc, os.path.basename(path))
@@ -726,6 +943,8 @@ def _get(url, stream=False, timeout=(8, 60), headers=None):
     h = dict(_UA)
     if "api.github.com" in url:
         h["Accept"] = "application/vnd.github.raw"
+    elif "api.msrc.microsoft.com" in url:      # index = JSON, monthly documents = XML
+        h["Accept"] = "application/json" if url.rstrip("/").endswith("/updates") else "application/xml"
     h.update(headers or {})
     return outbound.get(url, stream=stream, timeout=timeout, headers=h)
 
@@ -837,7 +1056,8 @@ def _vm_distros(db) -> dict:
 # large and only added by hand.
 _AUTO_SOURCE = {"ubuntu": "Ubuntu", "debian": "Debian", "almalinux": "AlmaLinux",
                 "rocky-linux": "AlmaLinux", "rhel": "AlmaLinux", "sles": "SUSE",
-                "opensuse": "openSUSE", "oracle-linux": "Oracle Linux", "photon": "Photon OS"}
+                "opensuse": "openSUSE", "oracle-linux": "Oracle Linux", "photon": "Photon OS",
+                "windows-server": "Windows", "windows": "Windows"}
 
 
 def get_selection(db) -> dict:
@@ -906,7 +1126,7 @@ def sync_osv(db, ecosystems=None) -> dict:
     nothing."""
     ecosystems = list(selected_sources(db) if ecosystems is None else ecosystems)
     if not ecosystems:
-        raise RuntimeError("seçili OSV kaynağı yok (envanterde eşleşecek Linux VM yok "
+        raise RuntimeError("seçili zafiyet kaynağı yok (envanterde eşleşecek VM yok "
                            "veya elle seçim boş)")
     done, sources = {}, {}
     for name in [e for e in ecosystems if e in VENDOR]:
@@ -986,6 +1206,8 @@ def _vendor_versions(db, name: str) -> list:
 def sync_vendor(db, name: str) -> dict:
     """Download one vendor feed (per release); first reachable URL wins."""
     conf = VENDOR[name]
+    if conf["kind"] == "msrc":
+        return sync_msrc(db)
     out = {"versions": {}, "records": 0, "rows": 0, "source": None}
     errors, missing = [], []
     for v in _vendor_versions(db, name):
@@ -1042,6 +1264,79 @@ def sync_vendor(db, name: str) -> dict:
     return out
 
 
+MSRC_DOCS_KEY = "vuln_msrc_docs"
+
+
+def _msrc_stamp(mid: str, current: str) -> str:
+    """Compact "2611" + 6 hex of the document's CurrentReleaseDate (app
+    settings hold 512 characters; 24 months fit)."""
+    y, m = mid.split("-")
+    return f"{y[2:]}{_MS_MONTHS.index(m) + 1:02d}{hashlib.sha1(current.encode()).hexdigest()[:6]}"
+
+
+def sync_msrc(db) -> dict:
+    """The monthly MSRC documents of the data window (MSRC_MONTHS). The index
+    (/updates) gives each document's CurrentReleaseDate: an unchanged document
+    is not downloaded again (only the revised months come down each week).
+    Months the index does not list yet are tried directly - MSRC sometimes
+    lists the newest ones late; a 404 there just means "not published"."""
+    conf = VENDOR["Windows"]
+    seen = set((_setting(db, MSRC_DOCS_KEY) or "").split(","))
+    index, errors = {}, []
+    try:
+        r = _get(conf["index"], timeout=(8, 60))
+        r.raise_for_status()
+        for u in (r.json() or {}).get("value") or []:
+            index[str(u.get("ID"))] = str(u.get("CurrentReleaseDate") or "")
+    except Exception as exc:
+        errors.append(f"index: {_err(exc)}")
+    host = re.sub(r"^https?://([^/]+).*", r"\1", conf["urls"][0])
+    have_rows = db.query(VulnAdvisory.id).filter(VulnAdvisory.ecosystem.like("Windows%")).first() is not None
+    out = {"versions": {}, "records": 0, "rows": 0, "source": host if index else None, "unchanged": 0}
+    stamps, stats = [], Counter()
+    for mid in msrc_months():
+        st = _msrc_stamp(mid, index[mid]) if mid in index else None
+        if st and have_rows and st in seen:
+            out["unchanged"] += 1
+            stamps.append(st)
+            continue
+        path = None
+        try:
+            path = _download(conf["urls"][0].format(v=mid), ".xml", timeout=(8, 600))
+            res = import_msrc(db, path, "msrc")
+            out["versions"][mid] = res.get("records", 0)
+            out["records"] += res.get("records", 0)
+            out["rows"] += res.get("rows", 0)
+            out["source"] = host
+            for u in res.get("unrecognized") or []:
+                stats[u] += 1
+            if st:
+                stamps.append(st)
+        except Exception as exc:
+            if mid not in index and re.search(r"\b404\b", str(exc)):
+                continue                      # not published yet
+            errors.append(f"{mid}: {_err(exc)}")
+            if not out["versions"] and not out["unchanged"]:
+                break                         # host unreachable: one failure, not 24
+        finally:
+            if path:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+    _meta_set(db, MSRC_DOCS_KEY, ",".join(stamps))
+    db.commit()
+    if not out["versions"] and not out["unchanged"]:
+        raise RuntimeError("; ".join(errors)[:300] or "indirilemedi")
+    if out["unchanged"]:
+        out["versions"]["unchanged"] = out["unchanged"]
+    if stats:
+        out["unrecognized"] = list(stats)[:8]
+    if errors:
+        out["errors"] = errors[:6]
+    return out
+
+
 def probe() -> list:
     """Reachability of every download source (Administration -> 'Test
     sources'): status / time / short reason, checked in parallel, only the
@@ -1051,7 +1346,8 @@ def probe() -> list:
     targets += [("OSV", "osv.dev (" + e + ")", OSV_URL.format(quote(e))) for e in ("Ubuntu", "AlmaLinux")]
     targets += [("OSV", "github.com (" + e + ")", u) for e, u in OSV_GITHUB.items()]
     targets += [("Oracle Linux", "linux.oracle.com (OL9)", VENDOR["Oracle Linux"]["urls"][0].format(v="9")),
-                ("Photon OS", "packages.broadcom.com (5.0)", VENDOR["Photon OS"]["urls"][0].format(v="5.0"))]
+                ("Photon OS", "packages.broadcom.com (5.0)", VENDOR["Photon OS"]["urls"][0].format(v="5.0")),
+                ("Windows", "api.msrc.microsoft.com", VENDOR["Windows"]["index"])]
 
     def one(t):
         group, name, url = t
@@ -1295,17 +1591,75 @@ def _suse_cmp(running: str, fixed: str) -> int:
     return c
 
 
+_NT = re.compile(r"^\s*NT\s+(?:(\d+\.\d+)|[A-Za-z]+)\.(\d{4,5})(?:\.(\d+))?\s*$")
+
+
+def nt_version(kernel: Optional[str]):
+    """"NT 10.0.17763.6893" -> ("10.0", 17763, 6893); UBR None when the string
+    has none ("NT 10.0.17763" - Proxmox agent, old VMware Tools). The broken
+    "NT Windows.17763.6775" some Tools versions produced is read too."""
+    m = _NT.match(kernel or "")
+    if not m:
+        return None
+    build = int(m.group(2))
+    return (m.group(1) or ("10.0" if build >= 10240 else "?"), build,
+            int(m.group(3)) if m.group(3) else None)
+
+
+def _windows_evaluate(vm, data):
+    """Windows: the running build + UBR against each CVE's fixed build of the
+    same product (MSRC). Cumulative updates: a higher UBR contains every
+    earlier fix of that build."""
+    ident = identify(vm.guest_os, vm.kernel)
+    if ident.distro not in ("windows-server", "windows") or not ident.version:
+        return "unknown", f"Windows sürümü anlaşılamadı ({vm.guest_os or vm.kernel or '?'})", {}
+    nt = nt_version(vm.kernel)
+    if not nt:
+        return "unknown", "Windows yapı numarası bilinmiyor (agent / Tools bildirmiyor)", {}
+    mm, build, ubr = nt
+    if ubr is None:
+        return "unknown", (f"Windows güncelleme numarası (UBR) bilinmiyor: {vm.kernel} - "
+                           f"VMware Tools 11.2+ yapıyı \"Build {build}.xxxx\" olarak bildirir; "
+                           f"Proxmox QEMU agent UBR bildirmez"), {}
+    eco = f"{'Windows Server' if ident.distro == 'windows-server' else 'Windows'}:{ident.version}"
+    if (eco, "windows") not in data.pairs:
+        return "unknown", f"{ident.label} için Microsoft (MSRC) zafiyet verisi yüklenmemiş", {}
+    shown = f"{mm}.{build}.{ubr}"
+    findings, oldest = {}, None
+    for cve, (fixed, intro, osv_id, sev) in data.rows(eco, "windows").items():
+        m = _MS_FIXED.match(fixed or "")
+        if not m or int(m.group(1)) != build:
+            continue
+        fu = int(m.group(2))
+        oldest = fu if oldest is None else min(oldest, fu)
+        if ubr >= fu:
+            continue
+        kb = intro if (intro or "").startswith("KB") else None
+        findings[cve] = {"osv_id": osv_id, "package": kb or "windows", "fixed": fixed,
+                         "status": "affected", "fix_available": True,
+                         "severity": data.cve_sev.get(cve) or sev or "unknown", "kev": cve in data.kev,
+                         "reason": f"{ident.label} · yapı {shown} · düzeltme {fixed}"
+                                   f"{' (' + kb + ')' if kb else ''} -> etkileniyor"}
+    if oldest is None:
+        return "unknown", f"Yapı {build}, {ident.label} verisindeki yapılarla eşleşmedi", {}
+    head = f"{ident.label} · Windows yapı {shown}"
+    if ubr < oldest:
+        head += (f" · uyarı: güncelleme {MSRC_MONTHS} aylık veri penceresinden eski, "
+                 f"gerçek açık sayısı daha fazla olabilir")
+    return "evaluated", head, findings
+
+
 def evaluate(vm, data):
     """-> (vm_status, vm_reason, findings{cve: dict}).
     vm_status: evaluated | skipped (not supported) | unknown (cannot tell)."""
     if vm.is_template:
         return "skipped", "Şablon - değerlendirilmez", {}
-    if "windows" in (vm.guest_os or "").lower() or (vm.kernel or "").startswith("NT "):
-        return "skipped", "Kapsam dışı: yalnızca Linux çekirdekleri eşleştirilir", {}
     if (vm.support_status or "unknown") not in ELIGIBLE:
         return "skipped", ("İşletim sistemi desteği bitmiş (EOL) - değerlendirilmedi"
                            if vm.support_status == "eol" else
                            "İşletim sistemi desteği bilinmiyor - değerlendirilmedi"), {}
+    if "windows" in (vm.guest_os or "").lower() or (vm.kernel or "").startswith("NT "):
+        return _windows_evaluate(vm, data)
     if not vm.kernel:
         return "unknown", "Çekirdek sürümü bilinmiyor (agent / Tools bildirmiyor)", {}
     ident = identify(vm.guest_os, vm.kernel)
@@ -1402,7 +1756,7 @@ def _vm_summary(data, status, found) -> dict:
 
 
 # Bump when the matching rules change, so every VM is evaluated again once.
-MATCH_VERSION = 4
+MATCH_VERSION = 5
 
 
 def _data_signature(db) -> str:

@@ -297,7 +297,7 @@ const Settings = {
         dt(job.finished) + ' <span class="small text-muted">' + App.esc(job.ok ? Settings.vdJobText(job.message)
           : (job.message || '')) + '</span>' : '—';
     document.getElementById('vdMeta').innerHTML =
-      row(t('vd2.rows', 'Çekirdek kaydı'), d.rows.toLocaleString() + ' · ' + d.cves.toLocaleString() + ' CVE') +
+      row(t('vd2.rows', 'Zafiyet kaydı'), d.rows.toLocaleString() + ' · ' + d.cves.toLocaleString() + ' CVE') +
       row(t('vd2.dataDate', 'En yeni kayıt'), dt(d.data_date)) +
       row('CISA KEV', d.kev + (d.kev_version ? ' · ' + App.esc(d.kev_version) : '') +
         (d.kev_source ? ' <span class="text-muted">· ' + App.esc(d.kev_source) + '</span>' : '')) +
@@ -345,7 +345,8 @@ const Settings = {
     const nf = n => Number(n || 0).toLocaleString(window.I18N && I18N.lang === 'en' ? 'en' : 'tr');
     const lines = [];
     const typeTxt = {bundle: t('vd2.tBundle', 'Veri paketi'), 'osv-zip': 'OSV all.zip', 'osv-tar': 'OSV .tar.gz',
-                     'osv-json': 'OSV JSON', kev: 'CISA KEV'}[m.type] || m.type;
+                     'osv-json': 'OSV JSON', kev: 'CISA KEV', msrc: t('vd2.tMsrc', 'Microsoft güncelleme verisi (CVRF)'),
+                     'oracle-oval': 'Oracle OVAL', photon: 'Photon CVE'}[m.type] || m.type;
     if (m.contents) {
       const parts = Object.entries(m.contents).map(([k, v]) => k + ' ' + nf(v));
       lines.push('<b>' + App.esc(typeTxt) + '</b>' + (m.generated_at ? ' (' + App.fmtDate(m.generated_at) + ')' : '') + ': ' +
@@ -384,7 +385,7 @@ const Settings = {
     if (m.osv) parts.push('OSV ' + Object.keys(m.osv).filter(k => !m.osv[k].error).length + '/' + Object.keys(m.osv).length);
     if (m.match) parts.push(t('vd2.new', 'yeni bulgu') + ' ' + m.match.new + ' · ' + t('vd2.closed', 'kapanan') + ' ' + m.match.closed);
     const unk = (m.unrecognized || []).concat(...Object.values(m.osv || {}).map(x => x.unrecognized || []));
-    if (unk.length) parts.push('⚠ ' + t('vd2.unrecognized', 'tanınmayan çekirdek kayıtları') + ': ' + unk.slice(0, 4).join(', '));
+    if (unk.length) parts.push('⚠ ' + t('vd2.unrecognized', 'tanınmayan kayıtlar') + ': ' + unk.slice(0, 4).join(', '));
     return parts.join(' · ');
   },
 
@@ -440,6 +441,7 @@ const Settings = {
       if (r.name === 'SUSE' || r.name === 'openSUSE') notes.push(t('vd2.noteSuse', 'yeni - biçim gerçek kayıtla doğrulanmadı'));
       if (r.name === 'Oracle Linux') notes.push(t('vd2.noteOracle', 'Oracle\'ın kendi OVAL verisi (linux.oracle.com) - UEK ve RHCK çekirdekleri'));
       if (r.name === 'Photon OS') notes.push(t('vd2.notePhoton', 'Broadcom\'un Photon CVE verisi (packages.broadcom.com)'));
+      if (r.name === 'Windows') notes.push(t('vd2.noteWindows', 'Microsoft MSRC aylık güncellemeleri (api.msrc.microsoft.com), son 24 ay - yalnızca işletim sistemi, güncelleme numarası (UBR) gerekir'));
       if (r.size === 'large') notes.push(size.large);
       const vmTxt = r.vms ? '<b>' + r.vms + '</b>' + (r.vms_total > r.vms ? ' <span class="text-muted">/ ' + r.vms_total + '</span>' : '')
         : '<span class="text-muted">' + (r.vms_total ? '0 / ' + r.vms_total : '—') + '</span>';

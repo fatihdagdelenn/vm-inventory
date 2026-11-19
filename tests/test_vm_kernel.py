@@ -57,6 +57,9 @@ assert _detailed_kernel(_detailed_fields(LINUX)) == "5.14.0-427.13.1.el9_4.x86_6
 assert _detailed_kernel(_detailed_fields(WINDOWS)) == "NT 10.0.20348.2582"   # build + UBR
 assert _detailed_kernel(_detailed_fields(WIN_NOPRETTY)) == "NT 10.0.17763.6293"
 assert _detailed_kernel(_detailed_fields("familyName='Windows' distroVersion='10.0'")) == ""
+# some Tools versions send distroVersion='Windows' (was "NT Windows.17763.6775", phase 168)
+assert _detailed_kernel(_detailed_fields("familyName='Windows' distroVersion='Windows' kernelVersion='17763' "
+                                         "prettyName='Windows Server 2019 (Build 17763.6775)'")) == "NT 10.0.17763.6775"
 assert _detailed_kernel(_detailed_fields(FREEBSD)) == "13.2-RELEASE-p4"
 assert _detailed_kernel(_detailed_fields("familyName='Linux'")) == ""
 # Proxmox QEMU agent get-osinfo

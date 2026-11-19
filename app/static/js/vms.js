@@ -590,7 +590,7 @@ const VMs = {
       [t('vh.g.sys', 'Sistem ve durum'), [
         F(['os'], 'os:ubuntu', t('vh.f.os', 'OS adı (kısmi). os:linux ve os:windows tüm dağıtımları/sürümleri bulur.')),
         F(['kernel', 'cekirdek'], 'kernel:5.14', t('vh.f.kernel', 'Çekirdek sürümü (kısmi). Linux/FreeBSD: kernel sürümü; Windows: NT sürümü (NT 10.0.20348…). Eski Tools / agent yoksa boştur.')),
-        F(['zafiyet', 'vuln'], 'zafiyet:var', t('vh.f.vuln', 'Çekirdek zafiyetleri: var (düzeltmesi yayımlanmış açık CVE), yok, belirsiz, duzeltmesiz, bilinmiyor (değerlendirilemedi), kapsamdisi (EOL / desteği bilinmiyor).')),
+        F(['zafiyet', 'vuln'], 'zafiyet:var', t('vh.f.vuln', 'Zafiyetler (Linux çekirdeği, Windows): var (düzeltmesi yayımlanmış açık CVE), yok, belirsiz, duzeltmesiz, bilinmiyor (değerlendirilemedi), kapsamdisi (EOL / desteği bilinmiyor).')),
         F(['cve'], 'cve:CVE-2024-1086', t('vh.f.cve', 'Bu CVE\'den etkilenen VM\'ler (açık bulgu). Kısmi de olur: cve:2026-. cve:yok = açık CVE\'si olmayan değerlendirilmiş VM\'ler.')),
         F(['kev'], 'kev:evet', t('vh.f.kev', 'CISA KEV listesindeki (aktif istismar edilen) bir CVE\'den etkilenenler: evet / hayir.')),
         F(['acikcve'], 'acikcve:>10', t('vh.f.openCve', 'Açık CVE sayısı (düzeltmesi yayımlanmış): >, <, >=, <=, =.')),

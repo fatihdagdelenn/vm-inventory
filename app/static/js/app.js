@@ -248,8 +248,9 @@ const App = {
   /** VM detail: findings list. */
   vulnSection(v) {
     const st = v.vuln_status;
+    const win = /^NT /.test(v.kernel || '') || /windows/i.test(v.guest_os || '');
     const head = '<h6 class="mb-2 mt-1"><i class="bi bi-shield-exclamation"></i> ' +
-      t('vu.title', 'Çekirdek Zafiyetleri');
+      (win ? t('vu.titleWin', 'Windows Zafiyetleri') : t('vu.title', 'Çekirdek Zafiyetleri'));
     if (st !== 'evaluated') {
       return head + '</h6><div class="small text-muted mb-3">' +
         App.esc(v.vuln_reason || t('vu.notYet', 'Henüz değerlendirilmedi')) + '</div>';
@@ -257,7 +258,7 @@ const App = {
     const list = v.vulns || [];
     if (!list.length) {
       return head + '</h6><div class="small mb-3"><span class="vu-zero">' +
-        t('vu.none', 'Bilinen açık çekirdek zafiyeti yok') + '</span> <span class="text-muted">· ' +
+        (win ? t('vu.noneWin', 'Bilinen açık zafiyet yok') : t('vu.none', 'Bilinen açık çekirdek zafiyeti yok')) + '</span> <span class="text-muted">· ' +
         App.esc(v.vuln_reason || '') + '</span></div>';
     }
     const show = list;
@@ -271,7 +272,8 @@ const App = {
         App.sevBadge(f.severity) + (f.kev ? App.kevBadge(f.kev_due) : '') +
         (f.status === 'uncertain' ? '<span class="badge sp-badge sp-unk">' + t('vu.uncertain', 'Belirsiz') + '</span>'
           : !f.fix_available ? '<span class="badge sp-badge sp-soon">' + t('vu.nofix', 'Düzeltme yok') + '</span>' : '') +
-        '<span class="ms-auto text-muted text-nowrap">' + (f.fixed ? t('vu.fixedIn', 'düzeltme') + ' ' + App.esc(f.fixed) : '') + '</span></div>' +
+        '<span class="ms-auto text-muted text-nowrap">' + (f.fixed ? t('vu.fixedIn', 'düzeltme') + ' ' +
+          (/^KB\d/.test(f.package || '') ? '<b>' + App.esc(f.package) + '</b> · ' : '') + App.esc(f.fixed) : '') + '</span></div>' +
         (f.summary ? '<div class="text-muted vu-sum">' + App.esc(f.summary) + '</div>' : '') +
         '<div class="vu-reason text-muted">' + App.esc(f.reason || '') + '</div></div>').join('') +
       (total > show.length ? '<div class="text-muted pt-1">' + t('vu.mostUrgent', 'En acil {n} gösteriliyor').replace('{n}', show.length) +

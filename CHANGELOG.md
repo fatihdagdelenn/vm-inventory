@@ -30,6 +30,41 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 Phases not yet in a release (phase 152 →; internal v1.8.1 →).
 
+### 🪟 Windows vulnerabilities from Microsoft's update data (phase 168)
+- Windows VMs were "out of scope". Windows has no package versions: the OS is
+  one cumulative update per month, and its identity is the NT build + update
+  revision (UBR) the inventory already shows (`NT 10.0.17763.6775`).
+- Data: Microsoft's **MSRC CVRF API** (`api.msrc.microsoft.com/cvrf/v3.0`, no
+  key) - one document per month listing, per CVE and product, the update that
+  fixes it (KB number + fixed build). The last **24 months** are downloaded;
+  the index tells which months changed, so a weekly sync fetches only revised
+  documents. Months the index does not list yet are tried directly.
+- Matching: VM build + UBR against the fixed build of the same product -
+  Windows Server 2016 / 2019 / 2022 / 2022 23H2 / 2025 (Server Core shares
+  the row) and Windows 10 / 11 per feature update, each its own data (Server
+  2025 and Windows 11 24H2 share build 26100 but not every CVE). The finding
+  names the KB to install (`KB5050008`); severity from the CVSS score.
+  Hotpatch-only fixes are ignored (only hotpatch-enrolled machines take them)
+  and "Customer Action Required: No" CVEs are skipped (fixed in the cloud).
+  A VM older than the whole data window gets a warning that the real count
+  is higher.
+- Format checked against a real MSRC CVRF XML document (vuls-data-update
+  testdata) and the official MSRC PowerShell module (JSON field names); both
+  forms can be uploaded, and the offline package carries the Windows rows.
+- "Windows" is a selectable source (automatic when the inventory has
+  supported Windows VMs); **Test sources** checks `api.msrc.microsoft.com`.
+- VMware Tools versions that send `distroVersion='Windows'` produced
+  `NT Windows.17763.6775`; the collector now writes `NT 10.0.17763.6775`, and
+  stored strings of that shape are read too (also for OS lifecycle).
+- Honest limits: operating system only - SQL Server, Exchange, Office, .NET
+  and other installed products are not in the inventory, so their CVEs are
+  not shown. Needs the UBR: the Proxmox QEMU agent reports only the build
+  (`NT 10.0.17763`), as do old VMware Tools - those VMs are "not evaluable"
+  with the reason. The UBR changes after the reboot that completes an update.
+  Windows Server 2012 / 2012 R2 (ESU) and older are EOL here and skipped.
+  The download size of 24 monthly documents was not measured (no access to
+  the API from the build sandbox).
+
 ### 🟥 Oracle Linux and Photon OS kernels are matched (phase 167)
 - Prod's inventory is mostly **Oracle Linux 8 / 9 / 10 with UEK kernels**,
   plus Photon OS - all were "not evaluable" because neither is in OSV.
