@@ -55,14 +55,14 @@ import zipfile
 from collections import Counter, defaultdict
 from datetime import date, datetime
 from typing import Optional
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 from sqlalchemy import and_, func
 
 from ..core.os_identity import identify
 from ..core.pkgversion import cvss3_score, dpkg_cmp, rpm_cmp, severity_of_score
 from ..models import (ChangeHistory, VirtualMachine, VmVuln, VulnAdvisory, VulnCve,
-                      VulnCveStat, VulnKev)
+                      VulnCveStat, VulnKernelAbi, VulnKev)
 
 logger = logging.getLogger("vuln")
 
@@ -775,6 +775,96 @@ def msrc_months(n: int = MSRC_MONTHS, today: Optional[date] = None) -> list:
     return out
 
 
+# ------------------------------------------------------- Debian kernel ABI table
+ABI_SEED = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "resources", "debian_kernel_abi.json")
+# Archive folders listing every signed kernel image still in a suite; file
+# names "linux-image-6.1.0-40-amd64_6.1.153-1_amd64.deb" give ABI -> version.
+DEBIAN_ABI_URLS = ("https://deb.debian.org/debian/pool/main/l/linux-signed-amd64/",
+                   "https://security.debian.org/debian-security/pool/updates/main/l/linux-signed-amd64/")
+_ABI_FILE = re.compile(r"linux-image-(\d+\.\d+)\.0-(\d+)-amd64_(\d[^_\"'<>\s]*)_amd64\.deb")
+_seed_cache = None
+
+
+def _abi_seed() -> dict:
+    global _seed_cache
+    if _seed_cache is None:
+        try:
+            with open(ABI_SEED) as f:
+                _seed_cache = json.load(f).get("debian") or {}
+        except (OSError, ValueError):
+            logger.warning("Debian ABI seed not readable: %s", ABI_SEED)
+            _seed_cache = {}
+    return _seed_cache
+
+
+def abi_table(db) -> dict:
+    """{release: {abi number: {versions}}} = seed + stored rows."""
+    out = defaultdict(lambda: defaultdict(set))
+    for rel, rows in _abi_seed().items():
+        for abi, versions in rows.items():
+            m = re.match(r"\d+\.\d+\.0-(\d+)$", abi)
+            if m:
+                out[rel][int(m.group(1))].update(versions)
+    for rel, abi, ver in db.query(VulnKernelAbi.release, VulnKernelAbi.abi, VulnKernelAbi.version):
+        m = re.match(r"\d+\.\d+\.0-(\d+)$", abi or "")
+        if m and ver:
+            out[rel][int(m.group(1))].add(ver)
+    return {r: dict(v) for r, v in out.items()}
+
+
+def add_abi_rows(db, rows, source: str) -> int:
+    """rows: (release, "6.1.0-40", "6.1.153-1"); only new triples stored."""
+    have = {(r, a, v) for r, a, v in db.query(VulnKernelAbi.release, VulnKernelAbi.abi,
+                                               VulnKernelAbi.version)}
+    seed = {(r, a, v) for r, t in _abi_seed().items() for a, vs in t.items() for v in vs}
+    new = [dict(release=r, abi=a, version=v, source=source, updated_at=datetime.utcnow())
+           for r, a, v in dict.fromkeys(rows) if (r, a, v) not in have and (r, a, v) not in seed]
+    if new:
+        db.bulk_insert_mappings(VulnKernelAbi, new)
+        db.commit()
+    return len(new)
+
+
+def parse_abi_listing(text: str) -> list:
+    """Archive folder listing -> [(release, abi, version)] (Debian 11 / 12)."""
+    out = []
+    for mm, num, ver in _ABI_FILE.findall(text or ""):
+        rel = _DEB_SERIES.get(mm)
+        if rel and "~" not in ver:          # "~bpo12+1" / "~deb11u1" = other suites
+            out.append((rel, f"{mm}.0-{num}", ver))
+    return out
+
+
+def learn_abi_from_inventory(db) -> int:
+    """Proxmox Debian VMs report uname -r AND uname -v: each pair is a fact."""
+    rows = []
+    q = db.query(VirtualMachine.guest_os, VirtualMachine.kernel, VirtualMachine.kernel_build) \
+        .filter(VirtualMachine.kernel_build.like("%Debian %"))
+    for g, k, b in q:
+        old = _DEB_ABI_OLD.match((k or "").strip())
+        bm = re.search(r"Debian (\d[^\s)]*)", b or "")
+        if old and bm and _DEB_SERIES.get(old.group(1)) and bm.group(1).startswith(old.group(1) + "."):
+            rows.append((_DEB_SERIES[old.group(1)], f"{old.group(1)}.0-{old.group(2)}", bm.group(1)))
+    return add_abi_rows(db, rows, "inventory") if rows else 0
+
+
+def sync_debian_abi(db) -> dict:
+    """Refresh the ABI table from the Debian archive (online servers)."""
+    found, errors = [], []
+    for url in DEBIAN_ABI_URLS:
+        try:
+            r = _get(url, timeout=(8, 60))
+            r.raise_for_status()
+            found += parse_abi_listing(r.text)
+        except Exception as exc:
+            errors.append(urlparse(url).hostname + ": " + _err(exc))
+    added = add_abi_rows(db, found, "archive") if found else 0
+    if errors and not found:
+        logger.info("Debian ABI table not refreshed (%s)", "; ".join(errors))
+    return {"seen": len(set(found)), "added": added, **({"errors": errors} if errors else {})}
+
+
 def import_kev(db, doc: dict) -> dict:
     """CISA KEV JSON; replaced only by a newer catalogVersion."""
     from ..core.app_settings import set_setting
@@ -826,7 +916,8 @@ def export_bundle(db) -> bytes:
            "kev_version": _setting(db, "vuln_kev_version"),
            "kev": [[k.cve, k.date_added.isoformat() if k.date_added else None,
                     k.due_date.isoformat() if k.due_date else None, k.ransomware, k.name]
-                   for k in db.query(VulnKev).all()]}
+                   for k in db.query(VulnKev).all()],
+           "abi": [[a.release, a.abi, a.version] for a in db.query(VulnKernelAbi).all()]}
     return gzip.compress(json.dumps(doc, separators=(",", ":")).encode())
 
 
@@ -877,6 +968,8 @@ def import_bundle(db, doc: dict) -> dict:
                                          {"cveID": c, "dateAdded": a, "dueDate": du,
                                           "knownRansomwareCampaignUse": rw, "vulnerabilityName": n}
                                          for c, a, du, rw, n in doc["kev"]]})
+    if doc.get("abi"):
+        res["abi"] = add_abi_rows(db, [tuple(x) for x in doc["abi"] if len(x) == 3], "bundle")
     res["contents"] = contents
     res["generated_at"] = doc.get("generated_at")
     return res
@@ -1180,6 +1273,11 @@ def sync_osv(db, ecosystems=None) -> dict:
     except ValueError:
         merged = {}
     merged.update(sources)
+    if "Debian" in done:                     # Debian 12 VMware kernels need the ABI table
+        try:
+            done["Debian"]["abi"] = sync_debian_abi(db)
+        except Exception as exc:
+            logger.info("Debian ABI refresh failed: %s", exc)
     _meta_set(db, "vuln_osv_sources", json.dumps(merged))
     if not sources:
         raise RuntimeError("; ".join(f"{e}: {d['error']}" for e, d in done.items())[:600])
@@ -1385,6 +1483,13 @@ class _Data:
                           .filter(VulnCve.score.isnot(None)).all()}
         self._rows = {}
         self._series = {}
+        self._abi = None
+
+    @property
+    def abi(self):
+        if self._abi is None:
+            self._abi = abi_table(self.db)
+        return self._abi
 
     def rows(self, eco, pkg):
         """{cve: (fixed or None, introduced, osv_id, severity)} - for several
@@ -1497,23 +1602,75 @@ def _ubuntu_shown(m, build):
     return s + (f".{up.group(1)}{up.group(2) or ''}" if up else "")
 
 
+# Debian kernel release strings (uname -r):
+#  - Debian 13+: "6.12.107+deb13-amd64" = package 6.12.107-1; a re-upload of
+#    the same upstream version is "+deb13.1" = 6.12.115-2 (seen in the archive).
+#  - Debian 12 / 11: "6.1.0-40-amd64" = ABI 40 only -> VulnKernelAbi table.
+_DEB_ABI_NEW = re.compile(r"^(\d+\.\d+\.\d+)\+deb(\d+)(?:\.(\d+))?-[a-z0-9][a-z0-9-]*$")
+_DEB_ABI_OLD = re.compile(r"^(\d+\.\d+)\.0-(\d+)-[a-z0-9][a-z0-9-]*$")
+_DEB_SERIES = {"6.1": "12", "5.10": "11", "4.19": "10"}       # ABI table releases
+
+
 def _debian_source(vm, ident, data):
+    """-> ((eco, pkg, running version or None, abi or None), None) | (None, reason).
+    Exact version from uname -v (Proxmox agent) or a Debian 13 kernel name;
+    Debian 12 VMware kernels give only the ABI -> resolved by the ABI table."""
     eco = f"Debian:{ident.version}"
     if eco not in data.ecos:
         return None, f"Debian {ident.version} zafiyet verisi yüklenmemiş"
-    km = re.match(r"(\d+\.\d+)\.", vm.kernel or "")
+    k = (vm.kernel or "").strip()
+    km = re.match(r"(\d+\.\d+)\.", k)
     if not km:
         return None, f"Çekirdek dizesi tanınmadı: {vm.kernel}"
+    if k.endswith("-pve"):
+        return None, ("Proxmox VE çekirdeği (-pve): Debian güvenlik verisi bu çekirdeğe uygulanamaz, "
+                      "Proxmox çekirdekleri için yayımlanmış CVE verisi yok")
     mm = km.group(1)
     pkg = next((p for p in ("linux", f"linux-{mm}") if (eco, p) in data.pairs and
                 (p.endswith(f"-{mm}") or data.series(eco, p) in (mm, None))), None)
+    new = _DEB_ABI_NEW.match(k)
     if not pkg:
+        if new and new.group(2) == ident.version:
+            return None, (f"Backports çekirdeği: Debian {ident.version} güvenlik verisi "
+                          f"yalnızca dağıtımın kendi çekirdeğini kapsar ({k})")
         return None, f"Çekirdek paketi eşleşmedi (linux {mm})"
     bm = re.search(r"Debian (\d[^\s)]*)", vm.kernel_build or "")
-    if not bm:
-        return None, ("Debian paket sürümü bilinmiyor: uname -r paket sürümünü vermez, "
-                      "uname -v gerekli (yalnızca Proxmox QEMU agent bildirir)")
-    return (eco, pkg, bm.group(1)), None
+    if bm:
+        return (eco, pkg, bm.group(1), None), None
+    if new:
+        return (eco, pkg, f"{new.group(1)}-{int(new.group(3) or 0) + 1}", None), None
+    old = _DEB_ABI_OLD.match(k)
+    if old:
+        return (eco, pkg, None, (old.group(1), int(old.group(2)))), None
+    return None, ("Debian paket sürümü bilinmiyor: çekirdek adı tanınmadı ve uname -v yok "
+                  f"({vm.kernel})")
+
+
+def _abi_span(table: dict, release: str, num: int):
+    """(lower, upper, known versions) for ABI `num` of a Debian release:
+    lower = newest version of a smaller ABI, upper = oldest of a bigger one
+    (ABIs only grow), known = versions seen with exactly this ABI."""
+    from functools import cmp_to_key
+    rows = table.get(release) or {}
+    key = cmp_to_key(dpkg_cmp)
+    below = [v for n, vs in rows.items() if n < num for v in vs]
+    above = [v for n, vs in rows.items() if n > num for v in vs]
+    return (max(below, key=key) if below else None, min(above, key=key) if above else None,
+            sorted(rows.get(num) or (), key=key))
+
+
+def _abi_check(span, fixed: str) -> str:
+    lower, upper, known = span
+    if lower and dpkg_cmp(fixed, lower) <= 0:
+        return "ok"
+    if upper and dpkg_cmp(fixed, upper) >= 0:
+        return "affected"
+    if known:
+        if dpkg_cmp(fixed, known[0]) <= 0:
+            return "ok"
+        if dpkg_cmp(fixed, known[-1]) > 0:
+            return "affected"
+    return "uncertain"
 
 
 _RH_DATA = {"almalinux": ["AlmaLinux"], "rocky-linux": ["Rocky Linux", "Red Hat", "AlmaLinux"],
@@ -1606,6 +1763,13 @@ def nt_version(kernel: Optional[str]):
             int(m.group(3)) if m.group(3) else None)
 
 
+def _platform_type(vm) -> str:
+    try:
+        return (vm.platform.type or "") if vm.platform is not None else ""
+    except Exception:                       # detached object (tests, exports)
+        return ""
+
+
 def _windows_evaluate(vm, data):
     """Windows: the running build + UBR against each CVE's fixed build of the
     same product (MSRC). Cumulative updates: a higher UBR contains every
@@ -1615,12 +1779,18 @@ def _windows_evaluate(vm, data):
         return "unknown", f"Windows sürümü anlaşılamadı ({vm.guest_os or vm.kernel or '?'})", {}
     nt = nt_version(vm.kernel)
     if not nt:
-        return "unknown", "Windows yapı numarası bilinmiyor (agent / Tools bildirmiyor)", {}
+        return "unknown", (_no_kernel_reason(vm) if not vm.kernel else
+                           f"Windows yapı numarası okunamadı ({vm.kernel})"), {}
     mm, build, ubr = nt
     if ubr is None:
+        if _platform_type(vm) == "proxmox":
+            return "unknown", (f"Windows güncelleme numarası (UBR) bilinmiyor: {vm.kernel} - "
+                               f"QEMU agent get-osinfo UBR vermez; envanter onu agent ile "
+                               f"\"cmd /c ver\" çalıştırarak okur, bunun için API token'ına "
+                               f"VM.GuestAgent.Unrestricted (PVE 9) / VM.Monitor (PVE 8) izni gerekir"), {}
         return "unknown", (f"Windows güncelleme numarası (UBR) bilinmiyor: {vm.kernel} - "
-                           f"VMware Tools 11.2+ yapıyı \"Build {build}.xxxx\" olarak bildirir; "
-                           f"Proxmox QEMU agent UBR bildirmez"), {}
+                           f"VMware Tools 11.2+ yapıyı \"Build {build}.xxxx\" olarak bildirir, "
+                           f"Tools güncellenmeli"), {}
     eco = f"{'Windows Server' if ident.distro == 'windows-server' else 'Windows'}:{ident.version}"
     if (eco, "windows") not in data.pairs:
         return "unknown", f"{ident.label} için Microsoft (MSRC) zafiyet verisi yüklenmemiş", {}
@@ -1649,6 +1819,22 @@ def _windows_evaluate(vm, data):
     return "evaluated", head, findings
 
 
+def _no_kernel_reason(vm) -> str:
+    """Why the platform sent no kernel - with what fixes it."""
+    tv = getattr(vm, "tools_version", None)
+    running = (vm.tools_status or "").lower() in ("guesttoolsrunning", "running")
+    if tv == "unmanaged":
+        return ("Çekirdek sürümü bilinmiyor: işletim sisteminin kendi VMware Tools'u (unmanaged) "
+                "ayrıntılı misafir verisi göndermiyor - open-vm-tools 11.2+ gerekir")
+    m = re.match(r"(\d+)\.(\d+)", tv or "")
+    if m and (int(m.group(1)), int(m.group(2))) < (11, 2):
+        return (f"Çekirdek sürümü bilinmiyor: VMware Tools {tv} çekirdek bilgisini göndermez - "
+                f"Tools 11.2 veya üstüne güncellenmeli")
+    if not running:
+        return "Çekirdek sürümü bilinmiyor: VMware Tools / QEMU agent çalışmıyor"
+    return "Çekirdek sürümü bilinmiyor (agent / Tools bildirmiyor)"
+
+
 def evaluate(vm, data):
     """-> (vm_status, vm_reason, findings{cve: dict}).
     vm_status: evaluated | skipped (not supported) | unknown (cannot tell)."""
@@ -1661,7 +1847,7 @@ def evaluate(vm, data):
     if "windows" in (vm.guest_os or "").lower() or (vm.kernel or "").startswith("NT "):
         return _windows_evaluate(vm, data)
     if not vm.kernel:
-        return "unknown", "Çekirdek sürümü bilinmiyor (agent / Tools bildirmiyor)", {}
+        return "unknown", _no_kernel_reason(vm), {}
     ident = identify(vm.guest_os, vm.kernel)
     extended = vm.support_status == "extended"
     if ident.distro == "ubuntu" and ident.version:
@@ -1687,18 +1873,34 @@ def evaluate(vm, data):
         tgt, why = fn(vm, ident, data)
         if tgt is None:
             return "unknown", why, {}
-        eco, pkg, running = tgt
+        eco, pkg, running = tgt[:3]
+        abi = tgt[3] if len(tgt) > 3 else None
         src, shown = [(eco, pkg)], running
         cmp_ = {"debian": dpkg_cmp, "sles": _suse_cmp, "opensuse": _suse_cmp}.get(ident.distro, rpm_cmp)
         other = eco.split(":")[0]
+        if abi:                               # Debian 12 on VMware: ABI -> versions
+            span = _abi_span(data.abi, ident.version, abi[1])
+            if not any(span):
+                return "unknown", (f"Debian {ident.version} çekirdek ABI tablosu yok: "
+                                   f"{abi[0]}.0-{abi[1]}"), {}
+            known = span[2]
+            shown = (f"{abi[0]}.0-{abi[1]} (= {known[0]})" if len(known) == 1 else
+                     f"{abi[0]}.0-{abi[1]} ({' / '.join(known)})" if known else
+                     f"{abi[0]}.0-{abi[1]} (ABI tabloda yok)")
         head = f"{ident.label} · {pkg} {shown}"
         if (ident.distro in _RH_NAME and other != _RH_NAME[ident.distro]) or \
                 (ident.distro == "oracle-linux" and other != "Oracle Linux"):
             head += f" ({other} verisiyle - aynı çekirdek sürümleri)"
+        if abi:
+            head += " · paket sürümü ABI tablosundan"
 
-        def check(eco, fixed):
-            return "affected" if cmp_(running, fixed) < 0 else "ok"
-        cmp_running = (cmp_, running)
+            def check(eco, fixed):
+                return _abi_check(span, fixed)
+            cmp_running = None
+        else:
+            def check(eco, fixed):
+                return "affected" if cmp_(running, fixed) < 0 else "ok"
+            cmp_running = (cmp_, running)
     else:
         return "unknown", (f"Bu dağıtım için çekirdek zafiyet verisi yok "
                            f"({ident.label or vm.guest_os or '?'})"), {}
@@ -1721,6 +1923,8 @@ def evaluate(vm, data):
                     continue
                 why = (f"düzeltme {fixed} -> etkileniyor" if st == "affected" else
                        f"düzeltme {fixed} · ABI aynı, yükleme numarası bilinmiyor -> belirsiz")
+                if st == "uncertain" and ident.distro == "debian":
+                    why = f"düzeltme {fixed} · bu ABI'nin paket sürümü kesin bilinmiyor -> belirsiz"
             findings[cve] = {"osv_id": osv_id, "package": pkg, "fixed": fixed, "status": st,
                              "fix_available": fixed is not None,
                              "severity": data.cve_sev.get(cve) or sev or "unknown",
@@ -1756,19 +1960,22 @@ def _vm_summary(data, status, found) -> dict:
 
 
 # Bump when the matching rules change, so every VM is evaluated again once.
-MATCH_VERSION = 5
+MATCH_VERSION = 6
 
 
 def _data_signature(db) -> str:
     adv = db.query(func.count(VulnAdvisory.id), func.max(VulnAdvisory.id)).one()
     cve = db.query(func.count(VulnCve.cve), func.max(VulnCve.modified)).one()
     kev = db.query(func.count(VulnKev.cve)).scalar()
-    return f"{MATCH_VERSION}|{adv[0]}|{adv[1]}|{cve[0]}|{cve[1]}|{kev}|{_setting(db, 'vuln_kev_version')}"
+    abi = db.query(func.count(VulnKernelAbi.id), func.max(VulnKernelAbi.id)).one()
+    return (f"{MATCH_VERSION}|{adv[0]}|{adv[1]}|{cve[0]}|{cve[1]}|{kev}|{_setting(db, 'vuln_kev_version')}"
+            f"|{abi[0]}|{abi[1]}")
 
 
 def _vm_signature(vm, base: str) -> str:
     import hashlib
-    key = (bool(vm.is_template), vm.support_status, vm.guest_os, vm.kernel, vm.kernel_build)
+    key = (bool(vm.is_template), vm.support_status, vm.guest_os, vm.kernel, vm.kernel_build,
+           getattr(vm, "tools_version", None), vm.platform_id)
     return hashlib.sha1((repr(key) + base).encode()).hexdigest()
 
 
@@ -1780,6 +1987,11 @@ def recompute(db, platform_id: Optional[int] = None, vm_ids=None) -> dict:
     findings are read as plain tuples in small VM batches, and only rows that
     really change are written (bulk insert / update) - a sync with no kernel
     change writes nothing."""
+    try:                                     # Proxmox Debian VMs teach the ABI table
+        learn_abi_from_inventory(db)
+    except Exception as exc:                 # never block the evaluation
+        logger.warning("Debian ABI learning failed: %s", exc)
+        db.rollback()
     data = _Data(db)
     q = db.query(VirtualMachine)
     if platform_id is not None:
@@ -1817,7 +2029,8 @@ def recompute(db, platform_id: Optional[int] = None, vm_ids=None) -> dict:
         inserts, updates = [], []
         for vm in chunk:
             was_evaluated = vm.vuln_status == "evaluated"
-            key = (bool(vm.is_template), vm.support_status, vm.guest_os, vm.kernel, vm.kernel_build)
+            key = (bool(vm.is_template), vm.support_status, vm.guest_os, vm.kernel, vm.kernel_build,
+                   getattr(vm, "tools_version", None), vm.platform_id)
             if key not in memo:
                 st, why, fnd = evaluate(vm, data)
                 memo[key] = (st, why, fnd, _vm_summary(data, st, fnd))
@@ -2142,6 +2355,52 @@ def cve_list(db, q: str = "", kev_only: bool = False, severity: str = "",
     """Every CVE with an open finding (exports); the page uses cve_page."""
     return cve_page(db, q=q, kev_only=kev_only, severity=severity, fix=fix, vm_id=vm_id,
                     per_page=None)[0]
+
+
+# What to do about each kind of "not verifiable" (Administration table).
+_REASON_HINTS = (
+    (r"verisi yüklenmemiş", "Bu sunucuda o dağıtımın verisi yok. İnternetli sunucuda \"İndirilecek "
+     "dağıtımlar\"dan seçip indirin; internetsiz sunucu için paketi o dağıtım seçiliyken hazırlayıp yükleyin."),
+    (r"UBR", "Windows'un güncelleme numarası gelmiyor. VMware: Tools 11.2+ kurulmalı. Proxmox: API "
+     "token'ına agent exec izni (PVE 9: VM.GuestAgent.Unrestricted, PVE 8: VM.Monitor) verilirse "
+     "envanter \"cmd /c ver\" ile okur."),
+    (r"Çekirdek sürümü bilinmiyor|yapı numarası okunamadı",
+     "Platform çekirdek sürümünü göndermiyor. VMware: VMware Tools / open-vm-tools 11.2 veya üstü "
+     "gerekli (10.x ve 11.0-11.1 göndermez). Proxmox: QEMU guest agent açık ve çalışır olmalı."),
+    (r"Proxmox VE çekirdeği", "Proxmox VE çekirdeği için yayımlanmış CVE verisi yok; bu VM'ler "
+     "değerlendirilemez (Proxmox'un kendi güncellemeleriyle takip edilir)."),
+    (r"Backports", "Backports çekirdekleri dağıtımın güvenlik verisinde yok; dağıtımın kendi çekirdeğine dönmek ya da elle takip gerekir."),
+    (r"CIQ", "CIQ LTS çekirdeklerinin herkese açık CVE verisi yok; CIQ portalından takip edilir."),
+    (r"ABI tablosu", "Debian ABI tablosunda bu çekirdek yok: internetli sunucuda Debian seçiliyken \"Şimdi indir\" "
+     "tabloyu Debian arşivinden günceller; paket de tabloyu taşır."),
+    (r"Çekirdek paketi eşleşmedi", "Yüklü veri bu çekirdek akışını içermiyor (ör. UEK sürümü, bulut / "
+     "özel çekirdek). Kaynağın güncel olduğunu kontrol edin."),
+    (r"kapsam dışı", "Bu çekirdek türü için veri tutulmuyor (bulut / OEM çekirdekleri)."),
+    (r"sürümü anlaşılamadı|dizesi tanınmadı", "İşletim sistemi adı veya çekirdek dizesi tanınmadı; örneği bize iletin."),
+)
+
+
+def _reason_key(reason: str) -> str:
+    r = (reason or "").strip()
+    i = r.find(": ")
+    return r[:i] if i > 8 else r
+
+
+def unknown_overview(db, examples: int = 4) -> list:
+    """Not-verifiable VMs grouped by reason, biggest group first, each with
+    examples and what to do."""
+    groups = {}
+    for name, reason in db.query(VirtualMachine.name, VirtualMachine.vuln_reason) \
+            .filter(VirtualMachine.vuln_status == "unknown").order_by(VirtualMachine.name):
+        key = _reason_key(reason) or "?"
+        g = groups.get(key)
+        if g is None:
+            hint = next((h for pat, h in _REASON_HINTS if re.search(pat, reason or "")), "")
+            g = groups[key] = {"reason": key, "count": 0, "examples": [], "hint": hint, "detail": reason}
+        g["count"] += 1
+        if len(g["examples"]) < examples:
+            g["examples"].append(name)
+    return sorted(groups.values(), key=lambda g: (-g["count"], g["reason"]))
 
 
 def summary(db) -> dict:

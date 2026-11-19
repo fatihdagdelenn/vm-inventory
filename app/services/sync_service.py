@@ -731,6 +731,12 @@ def sync_platform(platform_id: int):
                 for f in ("kernel", "kernel_build", "arch"):
                     if f in vd and _preserve_old(f, getattr(vm, f), vd[f]):
                         vd[f] = getattr(vm, f)
+                # Windows: "NT 10.0.17763" this round but "NT 10.0.17763.6775"
+                # stored = the update revision could not be read this time
+                # (Proxmox agent exec) - keep the more precise value
+                kin = vd.get("kernel") or ""
+                if kin.startswith("NT ") and (vm.kernel or "").startswith(kin + "."):
+                    vd["kernel"] = vm.kernel
                 # A new kernel without its own uname -v: the stored build string
                 # belongs to the OLD kernel - drop it (CVE matching would read a
                 # wrong package version from it)

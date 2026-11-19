@@ -215,6 +215,17 @@
     </div>
     <div class="col-12">
       <div class="card panel">
+        <div class="card-header d-flex align-items-center gap-2"><i class="bi bi-question-circle"></i>
+          <span data-i18n="vd2.unvTitle">Doğrulanamayan VM'ler - nedenleri</span>
+          <a class="ms-auto small" href="/vms?q=zafiyet:bilinmiyor" data-i18n="vd2.unvList">listeyi aç</a>
+        </div>
+        <div class="table-responsive"><table class="table table-sm align-middle mb-0 vd-ecos"><thead><tr>
+          <th data-i18n="vd2.unvReason">Neden</th><th class="text-end" data-i18n="vd2.unvCount">VM</th>
+          <th data-i18n="vd2.unvTodo">Ne yapılmalı</th></tr></thead><tbody id="vdUnvBody"></tbody></table></div>
+      </div>
+    </div>
+    <div class="col-12">
+      <div class="card panel">
         <div class="card-header"><i class="bi bi-patch-check"></i> <span data-i18n="vd2.caTitle">Kurum sertifikası (SSL denetimi)</span></div>
         <div class="card-body">
           <p class="text-muted small mb-2" data-i18n="vd2.caDesc">Kaynak testinde "Sertifika doğrulanamadı" görüyorsanız ağınız HTTPS trafiğini kendi kök sertifikasıyla yeniden imzalıyordur. O kök sertifikayı (PEM / .crt / .cer ya da sunucunun tüm sertifika paketi) buraya yükleyin: yalnızca veri indirmelerinde (zafiyet verisi, endoflife.date) Python'un genel listesine eklenir, doğrulama kapatılmaz. vCenter / Proxmox bağlantıları etkilenmez.</p>

@@ -96,3 +96,23 @@ class VulnCveStat(Base):
     rank = Column(Integer, index=True)          # worst severity (vuln_service.SEV_RANK)
     kev = Column(Boolean, index=True)
     first_seen = Column(DateTime)
+
+
+class VulnKernelAbi(Base):
+    """Debian kernel ABI name -> package version(s) (phase 170).
+
+    uname -r on Debian 12 says "6.1.0-40-amd64" (ABI 40), not the package
+    version "6.1.153-1" the CVE data is written in; VMware never reports
+    uname -v. This table maps them. A seed ships with the app
+    (app/resources/debian_kernel_abi.json); rows here come from the Debian
+    archive (online sync), from Proxmox VMs that report both strings, or from
+    an uploaded data package."""
+    __tablename__ = "vuln_kernel_abi"
+    __table_args__ = (UniqueConstraint("release", "abi", "version", name="uq_vuln_kernel_abi"),)
+
+    id = Column(Integer, primary_key=True)
+    release = Column(String(8), nullable=False)      # Debian major: "12"
+    abi = Column(String(24), nullable=False)         # "6.1.0-40"
+    version = Column(String(64), nullable=False)     # "6.1.153-1"
+    source = Column(String(16))                      # archive | inventory | bundle
+    updated_at = Column(DateTime, default=datetime.utcnow)

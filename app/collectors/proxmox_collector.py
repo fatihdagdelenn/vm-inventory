@@ -76,6 +76,25 @@ OSTYPE_MAP = {
 }
 
 
+# Windows build + update revision read through the agent (phase 170):
+# get-osinfo gives only the build ("NT 10.0.17763"), the vulnerability matching
+# needs the UBR. "cmd /c ver" prints "Microsoft Windows [Version
+# 10.0.17763.6775]" (localised word, same numbers). Read-only, but agent exec
+# needs VM.GuestAgent.Unrestricted (PVE 9) / VM.Monitor (PVE 8) on the token.
+# Cached per (host, vmid, build, boot time): the UBR changes only on reboot.
+_WIN_VER_CACHE: dict = {}
+_WIN_VER_RE = re.compile(r"(\d+)\.(\d+)\.(\d{4,5})\.(\d+)")
+
+
+def _parse_ver_output(out: str, kernel: str) -> str:
+    """'Microsoft Windows [Version 10.0.17763.6775]' -> 'NT 10.0.17763.6775'
+    when the build matches the agent's kernel ('NT 10.0.17763')."""
+    m = _WIN_VER_RE.search(out or "")
+    if not m or not (kernel or "").rstrip().endswith("." + m.group(3)):
+        return ""
+    return "NT " + ".".join(m.groups())
+
+
 def _agent_kernel(result: dict) -> str:
     """Kernel identity from a QEMU agent get-osinfo result.
 
@@ -323,6 +342,31 @@ class ProxmoxCollector:
                 pass
         self._hw_cache[node] = result
         return result
+
+    def _windows_version(self, qa, vmid, kernel, boot) -> str:
+        """'NT 10.0.17763.6775' via agent exec 'cmd /c ver', or '' (denied,
+        agent without exec, timeout). Failures are cached for an hour."""
+        key = (self.host, str(vmid), kernel, int(boot.timestamp() // 600) if boot else None)
+        hit = _WIN_VER_CACHE.get(key)
+        now = time.time()
+        if hit and hit[0] > now:
+            return hit[1]
+        full = ""
+        try:
+            started = qa.agent("exec").post(command=["cmd.exe", "/c", "ver"])
+            pid = started.get("pid") if isinstance(started, dict) else None
+            for _ in range(10 if pid else 0):         # ~2 s
+                st = qa.agent("exec-status").get(pid=pid)
+                if isinstance(st, dict) and st.get("exited"):
+                    full = _parse_ver_output(str(st.get("out-data") or ""), kernel)
+                    break
+                time.sleep(0.2)
+        except Exception as exc:
+            logger.info("Windows update revision not readable vmid=%s (agent exec: %s)", vmid, exc)
+        if len(_WIN_VER_CACHE) > 5000:
+            _WIN_VER_CACHE.clear()
+        _WIN_VER_CACHE[key] = (now + (6 * 3600 if full else 3600), full)
+        return full
 
     def _guest_uptime(self, qa, vmid) -> float | None:
         """Real uptime (seconds) from inside a Linux guest via the QEMU agent.
@@ -756,6 +800,10 @@ class ProxmoxCollector:
                         kbuild = str(result.get("kernel-version") or "").strip()
                         if kbuild and (result.get("id") or "").lower() != "mswindows":
                             entry["kernel_build"] = kbuild[:255]
+                        if kern and (result.get("id") or "").lower() == "mswindows" \
+                                and kern.count(".") == 2:
+                            # build only -> the UBR the CVE matching needs
+                            kern = self._windows_version(qa, vmid, kern, entry.get("last_boot")) or kern
                         if kern:
                             entry["kernel"] = kern
                         if result.get("machine"):

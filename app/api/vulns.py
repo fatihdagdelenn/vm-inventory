@@ -46,6 +46,12 @@ def vuln_status(db: Session = Depends(get_db), user: User = Depends(get_current_
     return {**vs.meta(db), **vs.summary(db)}
 
 
+@router.get("/unverified")
+def vuln_unverified(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """VMs that could not be checked, grouped by reason, with what to do."""
+    return {"groups": vs.unknown_overview(db)}
+
+
 @router.get("/sources")
 def vuln_sources(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Selectable OSV sources with the VMs that need each and the stored data."""

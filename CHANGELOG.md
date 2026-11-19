@@ -30,6 +30,41 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 Phases not yet in a release (phase 152 →; internal v1.8.1 →).
 
+### 🔍 Fewer "Not verified" VMs, and a reason for every one left (phase 170)
+Prod screenshots showed whole groups as "Not verified". Each kind got its root cause:
+- **Debian 13 on VMware** (`6.12.107+deb13-amd64`): the kernel name carries
+  the package version (`6.12.107-1`; `+deb13.1` = `-2`, seen in the archive)
+  -> evaluated exactly, no uname -v needed.
+- **Debian 12 on VMware** (`6.1.0-40-amd64`): only the ABI number. New
+  ABI -> package version table (`vuln_kernel_abi` + seed
+  `app/resources/debian_kernel_abi.json`, 53 ABIs 6.1.0-1 … -56 built from
+  the file names `linux-image-<abi>-amd64_<version>_amd64.deb` in Debian
+  archive mirrors that keep old versions). An ABI with one version is exact;
+  ABIs are ordered, so a fix newer than the next ABI is "affected" and one
+  older than the previous ABI is "not affected" even for an ABI missing from
+  the table - only what falls in between is "uncertain". The table grows by
+  itself: Proxmox Debian VMs report both strings (learned on every
+  recompute), an online server reads the Debian archive folders when Debian
+  is downloaded, and the offline package carries it.
+- **Windows on Proxmox** (`NT 10.0.17763`): the QEMU agent's get-osinfo has
+  no update revision. The collector now runs the read-only `cmd /c ver`
+  through the agent (cached per VM until reboot; a miss keeps the stored
+  value). Needs agent exec on the API token - PVE 9 `VM.GuestAgent.Unrestricted`,
+  PVE 8 `VM.Monitor`; without it the VM stays "Not verified" and the reason
+  names the privilege.
+- **No kernel at all on VMware**: the VMware Tools version is now stored
+  (`tools_version`); the reason says "Tools 10.3.22 - update to 11.2+" or
+  "OS-provided (unmanaged) Tools".
+- **Proxmox VE kernels** (`…-pve`) and **Debian backports kernels** get their
+  own reason (no public CVE data for them) instead of a generic one.
+- Administration -> Vulnerability Data: new **"VMs not verified - reasons"**
+  table - each reason, how many VMs, examples and what to do.
+- Honest limits: Debian 12 ABIs missing from the table (4, 19, 24) and future
+  ones before the table learns them can give "uncertain" findings; Proxmox
+  kernels, CIQ LTS and VMs whose Tools never send a kernel stay not verifiable.
+  The archive URLs used for the refresh were not reachable from the build
+  sandbox (found through mirrors).
+
 ### 🛡️ Open CVEs cell: "checked, none" no longer looks like "could not check" (phase 169)
 - Asked on prod: Debian 12 VMs on VMware showed "—" next to Proxmox ones
   with thousands of CVEs - was "—" safe? It was not: "—" meant **not

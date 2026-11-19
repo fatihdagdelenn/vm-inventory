@@ -328,7 +328,7 @@ const Settings = {
     ['vdSyncBtn', 'vdKevBtn'].forEach(id => { document.getElementById(id).disabled = !!job.running; });
     clearTimeout(Settings._vdTimer);
     if (job.running) Settings._vdTimer = setTimeout(() => Settings.loadVuln(), 3000);
-    else if (Settings._vdWasRunning) Settings.loadSources();
+    else if (Settings._vdWasRunning) { Settings.loadSources(); Settings.loadUnverified(); }
     Settings._vdWasRunning = !!job.running;
   },
 
@@ -464,6 +464,22 @@ const Settings = {
 
   vdModeChanged() { Settings.renderSources(); },
 
+  /** Not-verifiable VMs grouped by reason (phase 170). */
+  async loadUnverified() {
+    let d;
+    try { d = await App.api('/api/vulns/unverified'); } catch (e) { return; }
+    const body = document.getElementById('vdUnvBody');
+    if (!body) return;
+    body.innerHTML = d.groups.length ? d.groups.map(g =>
+      '<tr><td><div title="' + App.esc(g.detail || '') + '">' + App.esc(g.reason) + '</div>' +
+        '<div class="small text-muted">' + g.examples.map(App.esc).join(', ') +
+        (g.count > g.examples.length ? ' …' : '') + '</div></td>' +
+      '<td class="text-end"><b>' + g.count + '</b></td>' +
+      '<td class="small text-muted">' + App.esc(g.hint || '') + '</td></tr>').join('')
+      : '<tr><td colspan="3" class="text-muted small p-3">' +
+        t('vd2.unvNone', 'Değerlendirilemeyen VM yok.') + '</td></tr>';
+  },
+
   async vdSrcSave() {
     const mode = document.getElementById('vdModeManual').checked ? 'manual' : 'auto';
     const manual = mode === 'manual'
@@ -579,6 +595,7 @@ Settings.loadSync();
 Settings.loadLifecycle();
 Settings.loadVuln();
 Settings.loadSources();
+Settings.loadUnverified();
 Settings.loadCa();
 document.getElementById('auditSearch').addEventListener('input', App.debounce(() => Settings.loadAudit(), 300));
 document.getElementById('auditAction').addEventListener('change', () => Settings.loadAudit());

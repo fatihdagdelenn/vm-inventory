@@ -33,7 +33,7 @@ from _actor_harness import make_env  # noqa: E402
 db, ss = make_env("_vuln")
 from app.core.pkgversion import cvss3_score, dpkg_cmp, rpm_cmp  # noqa: E402
 from app.models import (ChangeHistory, Platform, VirtualMachine, VmVuln,  # noqa: E402
-                        VulnAdvisory, VulnCve, VulnKev, LifecycleOverride)
+                        VulnAdvisory, VulnCve, VulnKernelAbi, VulnKev, LifecycleOverride)
 from app.services import lifecycle_service as ls  # noqa: E402
 from app.services import vuln_service as vs  # noqa: E402
 
@@ -209,7 +209,7 @@ assert alma.vuln_open == 61 and alma.vuln_kev == 1, (alma.vuln_open, alma.vuln_k
 assert alma_ok.vuln_total == 0
 assert finding(rhel, "CVE-2024-1086") and rhel.vuln_total == 1      # Red Hat's own data
 assert "Red Hat verisiyle" in rocky.vuln_reason and rocky.vuln_total == 1   # Rocky -> RH fallback
-assert win.vuln_status == "unknown" and "yapı numarası" in win.vuln_reason, win.vuln_reason   # no kernel
+assert win.vuln_status == "unknown" and "Çekirdek sürümü bilinmiyor" in win.vuln_reason, win.vuln_reason   # no kernel
 print("4) matching ok (acceptance CVE-2026-43040 passed)")
 
 # ------------------------------------------------------------ 5) Debian
@@ -233,8 +233,9 @@ db.expire_all()
 assert finding(d_old, "CVE-2026-1111").reason.endswith("düzeltme 6.12.48-1 -> etkileniyor")
 assert finding(d_old, "CVE-2026-2222") is None, "introduced after the running version"
 assert d_new.vuln_total == 0
-assert d_vc.vuln_status == "unknown" and "uname -v" in d_vc.vuln_reason
-assert db.query(VmVuln).filter_by(vm_id=d_vc.id).count() == 0
+# VMware gives no uname -v, but Debian 13's kernel name carries the version (phase 170)
+assert d_vc.vuln_status == "evaluated" and "6.12.43-1" in d_vc.vuln_reason, d_vc.vuln_reason
+assert finding(d_vc, "CVE-2026-1111").status == "affected"
 print("5) debian ok")
 
 # ------------------------------------------------------------ 6) lifecycle of findings
@@ -927,5 +928,90 @@ finally:
     vs._get = _orig_get
     vs.msrc_months = _today
 print("15) Windows (MSRC) ok")
+
+# ------------------------------------------------------------ 16) "not verified" cases (phase 170)
+# Debian 12 on VMware: uname -r has only the ABI -> ABI table (seed from the
+# Debian archive file names, e.g. linux-image-6.1.0-40-amd64_6.1.153-1)
+seed = vs._abi_seed()["12"]
+assert seed["6.1.0-40"] == ["6.1.153-1"] and seed["6.1.0-47"] == ["6.1.170-3"] and "6.1.0-19" not in seed
+DEB12 = [{"id": f"DEBIAN-CVE-2026-71{n:02d}", "modified": "2026-10-01T00:00:00Z", "upstream": [f"CVE-2026-71{n:02d}"],
+          "affected": [{"package": {"ecosystem": "Debian:12", "name": "linux"},
+                        "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": fx}]}]}]}
+         for n, fx in enumerate(["6.1.158-1", "6.1.153-1", "6.1.140-1", "6.1.80-1", "6.1.70-1", "6.1.90-1",
+                                 "6.1.195-1"])]
+vs._store(db, vs._osv_records(DEB12), "upload")
+D12 = "Debian GNU/Linux 12 (bookworm)"
+d40 = vm(D12, "6.1.0-40-amd64", name="deb12-abi40")        # = 6.1.153-1
+d19 = vm(D12, "6.1.0-19-amd64", name="deb12-abi19")        # not in the table: between 18 and 20
+d57 = vm(D12, "6.1.0-57-amd64", name="deb12-abi57")        # newer than the table
+pve = vm("Debian GNU/Linux 13 (trixie)", "7.0.14-23-pve", platform=pm, name="pve-nested")
+bpo = vm(D12, "6.12.95+deb12-amd64", name="deb12-bpo")
+ls.recompute(db)
+db.expire_all()
+
+
+def st(v, cve):
+    f = finding(v, cve)
+    return f.status if f else None
+
+
+assert [st(d40, f"CVE-2026-71{n:02d}") for n in range(7)] == \
+    ["affected", None, None, None, None, None, "affected"], [st(d40, f"CVE-2026-71{n:02d}") for n in range(7)]
+d = db.get(VirtualMachine, d40.id)
+assert d.vuln_status == "evaluated" and "6.1.0-40 (= 6.1.153-1)" in d.vuln_reason and "ABI tablosundan" in d.vuln_reason, d.vuln_reason
+assert [st(d19, f"CVE-2026-71{n:02d}") for n in (3, 4, 5)] == ["uncertain", None, "affected"]
+assert "kesin bilinmiyor" in finding(d19, "CVE-2026-7103").reason
+assert st(d57, "CVE-2026-7106") == "uncertain" and st(d57, "CVE-2026-7100") is None
+p_ = db.get(VirtualMachine, pve.id)
+assert p_.vuln_status == "unknown" and p_.vuln_reason.startswith("Proxmox VE çekirdeği"), p_.vuln_reason
+assert db.get(VirtualMachine, bpo.id).vuln_reason.startswith("Backports çekirdeği")
+# a Proxmox Debian VM reports both strings -> learned, the VMware twin becomes exact
+vm(D12, "6.1.0-57-amd64", "#1 SMP PREEMPT_DYNAMIC Debian 6.1.195-1 (2026-11-02)", platform=pm, name="deb12-px57")
+ls.recompute(db)
+db.expire_all()
+assert db.query(VulnKernelAbi).filter_by(release="12", abi="6.1.0-57", source="inventory").one().version == "6.1.195-1"
+assert st(d57, "CVE-2026-7106") is None and "(= 6.1.195-1)" in db.get(VirtualMachine, d57.id).vuln_reason
+# archive listing refresh + the offline package carries the table
+LISTING = ('<a href="linux-image-6.1.0-58-amd64_6.1.196-1_amd64.deb">x</a> '
+           '<a href="linux-image-6.1.0-58-amd64-dbg_6.1.196-1_amd64.deb">x</a> '
+           '<a href="linux-image-6.12.115+deb13-amd64_6.12.115-1_amd64.deb">x</a> '
+           '<a href="linux-image-6.1.0-0.deb11.44-amd64_6.1.164-1~deb11u1_amd64.deb">x</a>')
+assert vs.parse_abi_listing(LISTING) == [("12", "6.1.0-58", "6.1.196-1")]
+
+
+class _Txt:
+    status_code, text = 200, LISTING
+
+    def raise_for_status(self):
+        pass
+
+
+vs._get = lambda url, **k: _Txt()
+try:
+    r = vs.sync_debian_abi(db)
+finally:
+    vs._get = _orig_get
+assert r["added"] == 1 and r["seen"] == 1, r
+doc = json.loads(gzip.decompress(vs.export_bundle(db)))
+assert ["12", "6.1.0-58", "6.1.196-1"] in doc["abi"] and ["12", "6.1.0-57", "6.1.195-1"] in doc["abi"]
+db.query(VulnKernelAbi).delete(); db.commit()
+assert vs.import_bundle(db, doc)["abi"] == 2
+# Tools version explains a missing kernel; Proxmox Windows names the privilege
+old_tools = vm("Red Hat Enterprise Linux 8 (64-bit)", None, name="rhel-old-tools")
+old_tools.tools_version = "10.3.22"
+os_tools = vm("Microsoft Windows Server 2019 (64-bit)", None, name="win-os-tools")
+os_tools.tools_version = "unmanaged"
+pxw = vm("Windows Server 2019 Standard", "NT 10.0.17763", platform=pm, name="win-px")
+db.commit()
+ls.recompute(db)
+db.expire_all()
+assert "Tools 10.3.22" in db.get(VirtualMachine, old_tools.id).vuln_reason
+assert "unmanaged" in db.get(VirtualMachine, os_tools.id).vuln_reason
+assert "VM.GuestAgent.Unrestricted" in db.get(VirtualMachine, pxw.id).vuln_reason
+groups = {g["reason"]: g for g in vs.unknown_overview(db)}
+g = groups["Windows güncelleme numarası (UBR) bilinmiyor"]
+assert g["count"] >= 2 and "win-px" in g["examples"] and "Proxmox" in g["hint"], g
+assert "Proxmox VE çekirdeği (-pve)" in groups and groups["Çekirdek sürümü bilinmiyor"]["count"] >= 2
+print("16) not-verified cases ok")
 
 print("ALL VULN TESTS PASSED")

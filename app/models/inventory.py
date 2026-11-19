@@ -97,6 +97,7 @@ class VirtualMachine(Base):
     uptime_from_agent = Column(Boolean, default=False)  # boot time read from guest agent
     uptime_carried = Column(Boolean, default=False)     # boot time carried across a migration
     tools_status = Column(String(64))               # VMware Tools / QEMU Agent durumu
+    tools_version = Column(String(32))              # VMware Tools version "12.3.5" / "unmanaged" (phase 170)
     agent_miss_count = Column(Integer, default=0)   # Consecutive indeterminate agent probes (sticky-state guard)
     owner = Column(String(128))                     # Manuel: VM sahibi
     notes = Column(Text)                            # Manuel: notlar

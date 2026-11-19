@@ -43,6 +43,20 @@ def _detailed_os(d: dict) -> str:
 _WIN_BUILD_RE = re.compile(r"Build (\d+(?:\.\d+)?)", re.IGNORECASE)
 
 
+def _tools_version(raw) -> str:
+    """guest.toolsVersion (major*1024 + minor*32 + patch) -> "12.3.5";
+    2147483647 = Tools shipped by the OS (unmanaged), version not reported."""
+    try:
+        v = int(raw)
+    except (TypeError, ValueError):
+        return ""
+    if v == 2147483647:
+        return "unmanaged"
+    if v <= 0:
+        return ""
+    return f"{v >> 10}.{(v >> 5) & 31}.{v & 31}"
+
+
 def _windows_nt_version(d: dict) -> str:
     """NT kernel version of a Windows guest, e.g. 'NT 10.0.20348.2582'.
 
@@ -474,6 +488,9 @@ class VMwareCollector:
                 # detailed data this round, or a Windows guest).
                 if kernel:
                     entry["kernel"] = kernel
+                tv = _tools_version(getattr(guest, "toolsVersion", None)) if guest else ""
+                if tv:                       # explains a missing kernel (Tools < 11.2)
+                    entry["tools_version"] = tv
                 vms.append(entry)
             except Exception as exc:
                 # A VM that exists but could not be read THIS round (vMotion in

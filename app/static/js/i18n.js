@@ -262,7 +262,7 @@ const I18N = {
     'vd2.notePhoton': 'Broadcom\u2019s Photon CVE data (packages.broadcom.com)',
     'vd2.noteWindows': 'Microsoft MSRC monthly updates (api.msrc.microsoft.com), last 24 months - operating system only, needs the update revision (UBR)',
     'vd2.tMsrc': 'Microsoft update data (CVRF)',
-    'vd2.srcSaved': 'Saved.', 'vd2.unrecognized': 'records not recognised',
+    'vd2.srcSaved': 'Saved.', 'vd2.unrecognized': 'records not recognised', 'vd2.unvTitle': 'VMs not verified - reasons', 'vd2.unvList': 'open the list', 'vd2.unvReason': 'Reason', 'vd2.unvCount': 'VMs', 'vd2.unvTodo': 'What to do', 'vd2.unvNone': 'No VM that could not be evaluated.',
     'vd2.bundleHas': 'The package contains all data on this server:',
     'vd2.bundleHas2': 'The server that imports it matches it against its own VMs; the results show up there.',
     'vd2.bundleEmpty': 'No data to package yet.',

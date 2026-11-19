@@ -144,4 +144,57 @@ pdf = rep_api.export_vms(fmt="pdf", q="", db=db, user=U).body
 assert pdf[:4] == b"%PDF"
 print("4) exports ok")
 
+# --- 5) phase 170: Tools version, Windows update revision through the Proxmox agent ---
+from app.collectors.vmware_collector import _tools_version  # noqa: E402
+from app.collectors import proxmox_collector as pxc  # noqa: E402
+assert _tools_version(12389) == "12.3.5" and _tools_version(10358) == "10.3.22"
+assert _tools_version(2147483647) == "unmanaged" and _tools_version(None) == "" and _tools_version("x") == ""
+assert pxc._parse_ver_output("\r\nMicrosoft Windows [Version 10.0.17763.6775]\r\n", "NT 10.0.17763") == "NT 10.0.17763.6775"
+assert pxc._parse_ver_output("Microsoft Windows [Sürüm 10.0.17763.6775]", "NT 10.0.17763") == "NT 10.0.17763.6775"
+assert pxc._parse_ver_output("Microsoft Windows [Version 10.0.20348.2700]", "NT 10.0.17763") == ""   # other build
+
+
+class _QA:
+    def __init__(self, deny=False):
+        self.deny, self.calls = deny, []
+
+    def agent(self, cmd):
+        qa = self
+
+        class C:
+            def post(self, **k):
+                qa.calls.append((cmd, k))
+                if qa.deny:
+                    raise RuntimeError("403 Forbidden: Permission check failed (VM.GuestAgent.Unrestricted)")
+                return {"pid": 7}
+
+            def get(self, **k):
+                qa.calls.append((cmd, k))
+                return {"exited": 1, "out-data": "\r\nMicrosoft Windows [Version 10.0.17763.6775]\r\n"}
+        return C()
+
+
+col = pxc.ProxmoxCollector.__new__(pxc.ProxmoxCollector)
+col.host = "pve-test"
+qa = _QA()
+assert col._windows_version(qa, 101, "NT 10.0.17763", None) == "NT 10.0.17763.6775"
+assert qa.calls[0] == ("exec", {"command": ["cmd.exe", "/c", "ver"]})
+n = len(qa.calls)
+assert col._windows_version(qa, 101, "NT 10.0.17763", None) == "NT 10.0.17763.6775" and len(qa.calls) == n  # cached
+denied = _QA(deny=True)
+assert col._windows_version(denied, 102, "NT 10.0.17763", None) == ""
+assert col._windows_version(denied, 102, "NT 10.0.17763", None) == "" and len(denied.calls) == 1   # failure cached
+# sync keeps "NT 10.0.17763.6775" when a round only brings "NT 10.0.17763"
+win_px = Platform(name="pxw", type="proxmox", host="px", environment="production", enabled=True)
+db.add(win_px); db.commit()
+base = dict(vms[0], external_id="h1/300", vmid="300", name="win-px", guest_os="Windows Server 2019 Standard",
+            kernel="NT 10.0.17763.6775")
+base.pop("kernel_build", None)
+run_sync(ss, win_px.id, FakeCollector(vms=[base])); db.expire_all()
+run_sync(ss, win_px.id, FakeCollector(vms=[dict(base, kernel="NT 10.0.17763")])); db.expire_all()
+assert db.query(VirtualMachine).filter_by(platform_id=win_px.id).one().kernel == "NT 10.0.17763.6775"
+run_sync(ss, win_px.id, FakeCollector(vms=[dict(base, kernel="NT 10.0.17763.6893")])); db.expire_all()
+assert db.query(VirtualMachine).filter_by(platform_id=win_px.id).one().kernel == "NT 10.0.17763.6893"
+print("5) tools version / Windows UBR ok")
+
 print("KERNEL SUITE OK")
