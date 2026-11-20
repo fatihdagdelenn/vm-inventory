@@ -83,7 +83,7 @@ def main():
         save(shot(pg), "vm-list.png")
         pg.keyboard.press("Escape")
 
-        pg.locator("#vmBody tr.vm-row").first.click(); pg.wait_for_timeout(1200)   # 3) VM detail
+        pg.locator("#vmBody tr.vm-row td[data-col=name]").first.click(); pg.wait_for_timeout(1200)   # 3) VM detail
         save(shot(pg), "vm-detail.png")
         pg.close()
 
@@ -106,6 +106,22 @@ def main():
         pg = page(b, "dark")                                   # 7) datastores
         pg.goto(BASE + "/datastores"); settle(pg, 1200)
         save(shot(pg), "datastores.png")
+        pg.close()
+
+        pg = page(b, "dark")                                   # 8) vulnerabilities
+        pg.goto(BASE + "/vulns"); settle(pg, 1200)
+        save(shot(pg), "vulnerabilities.png")
+        pg.close()
+
+        pg = page(b, "light")                                  # 9) vulnerability data (admin)
+        pg.goto(BASE + "/settings"); settle(pg)
+        pg.click("a[href='#tabVuln']"); pg.wait_for_timeout(1200)
+        # sync buttons + the distributions table (the reasons card below stays out:
+        # its texts are server-side Turkish)
+        pg.evaluate("""() => { const c = document.getElementById('vdSrcTable').closest('.card');
+                               window.scrollTo(0, c.getBoundingClientRect().top + window.scrollY - 215); }""")
+        pg.wait_for_timeout(400)
+        save(shot(pg), "vuln-data.png")
         pg.close()
         b.close()
 

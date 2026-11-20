@@ -392,6 +392,12 @@ for _v in vms:
 db.commit()
 _vs._store(db, _vs._osv_records(_recs), "upload")
 _vs.import_kev(db, _json.load(open(os.path.join(_fx, "kev.json"))))
+_vs.import_file(db, os.path.join(_fx, "msrc-cvrf-sample.xml"))     # Windows (MSRC) - real CVE values
+# one VMware VM with old Tools: shows a "Not verified" reason with what to do
+for _v in vms:
+    if _v.name == "app-09":
+        _v.kernel, _v.tools_version = None, "10.3.22"
+db.commit()
 vu = _vs.recompute(db)
 # spread the "first seen" dates a little, like a system that has been running
 from app.models import VmVuln  # noqa: E402

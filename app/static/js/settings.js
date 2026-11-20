@@ -449,7 +449,7 @@ const Settings = {
         : (r.auto ? '<span class="badge sp-badge sp-eol">' + t('vd2.noDataShort', 'veri yok') + '</span>' : '<span class="text-muted">—</span>');
       return '<tr' + (checked ? '' : ' class="text-muted"') + '><td><input class="form-check-input vd-src" type="checkbox" value="' + App.esc(r.name) + '"' +
         (checked ? ' checked' : '') + (manual && admin ? '' : ' disabled') + '></td>' +
-        '<td>' + App.esc(r.name) + (r.ecosystems.length ? ' <span class="text-muted small" title="' + App.esc(r.ecosystems.join(', ')) + '">(' + r.ecosystems.length + ' ' + t('vd2.releases', 'sürüm') + ')</span>' : '') + '</td>' +
+        '<td>' + App.esc(r.name) + (r.ecosystems.length ? ' <span class="text-muted small" title="' + App.esc(r.ecosystems.join(', ')) + '">(' + r.ecosystems.length + ' ' + (r.ecosystems.length === 1 ? t('vd2.release1', 'sürüm') : t('vd2.releases', 'sürüm')) + ')</span>' : '') + '</td>' +
         '<td class="text-end">' + vmTxt + '</td><td class="text-end">' + dataTxt + '</td>' +
         '<td class="small text-muted ps-4">' + App.esc(r.source || '—') + '</td>' +
         '<td class="small text-muted">' + App.esc(notes.join(' · ')) + '</td></tr>';

@@ -32,6 +32,7 @@
 - [İlk Yapılandırma](#-i̇lk-yapılandırma)
 - [Kullanım Kılavuzu](#-kullanım-kılavuzu)
 - [Değişiklik Geçmişi: Kim, Neyi, Ne Zaman?](#-değişiklik-geçmişi-kim-neyi-ne-zaman)
+- [İşletim Sistemi Desteği ve Zafiyetler](#-i̇şletim-sistemi-desteği-ve-zafiyetler)
 - [Arama Söz Dizimi](#-arama-söz-dizimi)
 - [Roller ve Yetkiler](#-roller-ve-yetkiler)
 - [LDAP / Active Directory](#-ldap--active-directory-opsiyonel)
@@ -46,7 +47,7 @@
 
 Birden fazla **VMware vCenter** ve **Proxmox VE** ortamı işleten ekipler için merkezi envanter:
 
-> *"10.10.10.15 IP'li makine hangi host'ta?"* — *"VLAN 100'de kaç Windows sunucu var?"* — *"Geçen hafta hangi VM'lerin RAM'i değişti?"* — *"Agent kurulu olmayan VM'ler hangileri?"*
+> *"10.10.10.15 IP'li makine hangi host'ta?"* — *"VLAN 100'de kaç Windows sunucu var?"* — *"Geçen hafta hangi VM'lerin RAM'i değişti?"* — *"Agent kurulu olmayan VM'ler hangileri?"* — *"Desteği bitmiş işletim sistemi çalıştıran sunucular hangileri?"* — *"Aktif istismar edilen bir CVE'ye açık VM'ler hangileri, hangi güncelleme kapatıyor?"*
 
 Bu soruların hepsi tek arama kutusundan, saniyeden kısa sürede yanıtlanır. SSH erişimi veya misafir ajan dağıtımı **gerekmez** — yalnızca platformların resmî API'leri kullanılır.
 
@@ -59,6 +60,7 @@ Bu soruların hepsi tek arama kutusundan, saniyeden kısa sürede yanıtlanır. 
 | <img src="docs/screenshots/vm-list.png" alt="Sanal makineler" width="440"><br>**Sanal Makineler** — sayılı, çoklu seçimli filtre menüleri, anlık kullanım çubukları | <img src="docs/screenshots/vm-detail.png" alt="VM detayı" width="440"><br>**VM detayı** — tek VM'in tüm bilgileri; sahip / etiket / not / elle IP |
 | <img src="docs/screenshots/hosts.png" alt="Host'lar" width="440"><br>**Host'lar** — host başına CPU / RAM / disk yükü, donanım modeli, uptime, VM sayısı | <img src="docs/screenshots/datastores.png" alt="Datastore'lar" width="440"><br>**Datastore'lar** — depo başına doluluk, paylaşımlı / yerel, bağlı host ve VM'ler |
 | <img src="docs/screenshots/search-help.png" alt="Arama söz dizimi" width="440"><br>**Arama söz dizimi** — `alan:değer` sorguları; her örnek tıklanabilir | <img src="docs/screenshots/change-history.png" alt="Değişiklik geçmişi" width="440"><br>**Değişiklik geçmişi** — eski → yeni ve *kim yaptı*, platformun kendi kaydından |
+| <img src="docs/screenshots/vulnerabilities.png" alt="Zafiyetler" width="440"><br>**Zafiyetler** — açık her CVE, önem derecesi, CISA KEV işareti ve etkilediği VM'ler | <img src="docs/screenshots/vuln-data.png" alt="Zafiyet verisi" width="440"><br>**Zafiyet verisi** — dağıtım başına kaynaklar, envanterden otomatik seçilir |
 
 ## ✨ Özellikler
 
@@ -79,8 +81,8 @@ Bu soruların hepsi tek arama kutusundan, saniyeden kısa sürede yanıtlanır. 
 | 🐧 **Tam OS sürümü** | VMware'de ayrıntılı misafir OS verisi (ör. *"Ubuntu 24.04.1 LTS"*) — vSphere 8.0 U2+ ve VMware Tools 11.2+ ile; Proxmox'ta QEMU Guest Agent ile |
 | 🆔 **VM ID & çalışma süresi** | VM ID (Proxmox sayısal / VMware MoRef) ve host+VM **uptime** kolonları; host'larda CPU/RAM/Disk kullanım çubukları |
 | 🖧 **Host detayı & sıralama** | Host tablosunda tüm kolonlar tıklanabilir sıralanır (metin/sayı/IP/durum); VM sayısına tıklayınca host'un VM listesi açılır, oradan VM detayı **aynı sayfada** görüntülenir |
-| 🛡️ **İşletim sistemi yaşam döngüsü (EOL)** | Her VM'in OS sürümü [endoflife.date](https://endoflife.date) verisiyle eşleşir: **Destek** sütunu (destekli / yakında bitiyor / uzatılmış / EOL / bilinmiyor; bitiş tarihi ve neden ipucunda), `destek:eol` araması, dashboard kartı, export sütunları. Uzatılmış destek abonelikleri (Ubuntu Pro, RHEL ELS, Windows ESU…) VM, etiket veya ürün bazında girilir. Uygulamayla gelen veriyle internetsiz çalışır |
-| 🐞 **Zafiyetler (çekirdek + Windows)** | Desteklenen Linux VM'lerin çalışan çekirdekleri [OSV.dev](https://osv.dev) (Ubuntu, Debian, RHEL, AlmaLinux, Rocky, SUSE, openSUSE) ve üreticilerin kendi verisiyle (Oracle Linux OVAL - UEK ve RHCK -, Photon OS); Windows Server / Windows 10-11 VM'leri yapı + güncelleme numarasıyla (UBR) Microsoft MSRC güncelleme verisiyle (son 24 ay, yalnızca işletim sistemi); hepsi **CISA KEV** listesiyle eşleşir: **Açık CVE** sütunu, Zafiyetler sayfası, `cve:` / `kev:evet` / `zafiyet:var` araması, dashboard KEV satırı, export sütunları. Her bulgunun kanıtı (paket, sürüm, düzeltme - Windows'ta kurulacak KB) yazar; kontrol edilip bulgu çıkmayan VM'de **Açık yok**, kontrol edilemeyende gerekçesiyle **Doğrulanamadı** yazar, boş hücre güvenli sanılmaz; nedenleri ve yapılacakları **Yönetim → Zafiyet Verisi → Doğrulanamayan VM'ler** tablosu gösterir. VMware'deki Debian 12 / 13 çekirdekleri çekirdek adından değerlendirilir (Debian 12 ABI → sürüm tablosuyla); Proxmox'taki Windows'un güncelleme numarası için API token'ına agent exec izni gerekir (PVE 9 `VM.GuestAgent.Unrestricted`, PVE 8 `VM.Monitor`). İnternetsiz sunucu, internete erişen makineden indirilen sıkıştırılmış veri paketiyle çalışır |
+| 🛡️ **İşletim sistemi yaşam döngüsü (EOL)** | Her VM'in OS sürümü [endoflife.date](https://endoflife.date) verisiyle eşleşir: **Destek** sütunu, `destek:eol` araması, dashboard kartı, export sütunları; uzatılmış destek abonelikleri VM, etiket veya ürün bazında girilir — [ayrıntılar](#-i̇şletim-sistemi-desteği-ve-zafiyetler) |
+| 🐞 **Zafiyetler** | Linux çekirdekleri (Ubuntu, Debian, RHEL ailesi, Oracle Linux, SUSE, Photon) ve Windows (yapı + güncelleme numarası) OSV.dev, üreticilerin kendi verisi, Microsoft MSRC ve **CISA KEV** listesiyle eşleşir: **Açık CVE** sütunu, Zafiyetler sayfası, `cve:` / `kev:evet` araması, her bulguyu kapatan güncelleme veya KB; internetsiz sunucuda veri paketiyle çalışır — [ayrıntılar](#-i̇şletim-sistemi-desteği-ve-zafiyetler) |
 | 🏢 **Fiziksel envanter** | Sanallaştırma dışı donanım (fiziksel sunucu, storage, SAN switch, yedekleme ünitesi) elle girilir; lokasyon / yönetim IP / iLO-BMC IP / marka / model / seri no / rol. Sanallaştırma host'ları buraya otomatik akar, elle eklenen alanlar senkronizasyonda korunur |
 | 💽 **Disk disk görünürlük** | Çok diskli VM'lerde her diskin boyutu ayrı listelenir; export'ta ayrı "Diskler" sayfası. *(Kullanım oranı platformlarda yalnız VM geneli verilir — disk başına değil; arayüzde böyle etiketlidir)* |
 | ⏱️ **Göç-farkında uptime** | Proxmox'un uptime sayacı canlı göçte sıfırlanır (bugzilla #499). Gerçek misafir uptime'ı mümkünse QEMU ajanından okunur, değilse göç boyunca boot zamanı taşınır — gerçek yeniden başlatmada sıfırlanır |
@@ -121,7 +123,7 @@ Bu soruların hepsi tek arama kutusundan, saniyeden kısa sürede yanıtlanır. 
 | Yazılım | Docker + Docker Compose **veya** Python 3.11+ |
 | Ağ | Sunucudan vCenter'a `443/tcp`, Proxmox'a `8006/tcp` erişimi |
 | vCenter | 6.7+ (8.x test edildi) — salt-okunur hesap yeterli |
-| Proxmox | 7.x / 8.x — API token; temel envanter için `PVEAuditor` yeterli. **"Kim yaptı" / yedek içeriği** için ek yetki: `Sys.Syslog` + `Datastore.Audit` (aşağıda) |
+| Proxmox | 7.x / 8.x / 9.x (9.2 test edildi) — API token; temel envanter için `PVEAuditor` yeterli. **"Kim yaptı" / yedek içeriği** için `Sys.Syslog` + `Datastore.Audit`, **Windows güncelleme numarası** için agent exec (aşağıda) |
 | Misafirler | IP/OS detayı için: VMware Tools veya QEMU Guest Agent *(opsiyonel)* |
 
 ## 🚀 Kurulum (Adım Adım)
@@ -277,6 +279,17 @@ pveum acl modify / --tokens 'svc-envanter@pve!envanter' --roles EnvanterEk
 > değişikliklerinin "Kullanıcı" sütunu boş ("—")** kalır ve yedek içerik dökümü gelmez.
 > vCenter tarafında "kim yaptı" için ek bir şey gerekmez (**Read-only / System.View** yeterli).
 
+**(Opsiyonel) Zafiyet eşleştirmesi için Windows güncelleme numarası.** QEMU agent Windows misafirin yapısını (`NT 10.0.17763`) bildirir ama Windows eşleştirmesinin ihtiyaç duyduğu güncelleme numarasını (UBR) bildirmez. Agent exec izni verilirse envanter bunu misafirde salt-okuma `cmd /c ver` komutuyla okur (her açılışta bir kez):
+
+```bash
+# PVE 9 (agent yetkileri 9.0'da bölündü):
+pveum role modify EnvanterEk --privs "VM.GuestAgent.Unrestricted" --append 1
+# PVE 8:
+# pveum role modify EnvanterEk --privs "VM.Monitor" --append 1
+```
+
+> ⚠️ `VM.GuestAgent.Unrestricted` misafirlerde komut çalıştırmaya izin verir — Proxmox bunun için daha dar bir yetki sunmuyor. Envanter yalnızca `cmd /c ver` (Windows) ve çalışma süresi için yedek yol olarak `cat /proc/uptime` (Linux) çalıştırır. Kabul edilebilir değilse vermeyin; o Windows VM'ler gerekçesiyle **Doğrulanamadı** görünür.
+
 Arayüzde **Platformlar → Platform Ekle**:
 
 | Alan | Değer |
@@ -299,6 +312,10 @@ Dashboard'daki **"Dikkat Gerektirenler"** kartından *"Agent/Tools kurulu olmaya
 - **vCenter VM'leri** → VMware Tools / open-vm-tools kurun
 - **Proxmox VM'leri** → `apt install qemu-guest-agent` + VM Options'ta *QEMU Guest Agent: Enabled* + VM'i yeniden başlatın
 
+### Adım 6 — (Opsiyonel) Zafiyet verisi
+
+**Yönetim → Zafiyet Verisi**: **Kaynakları test et** sunucunun hangi indirme adreslerine eriştiğini gösterir, **Şimdi indir (OSV + KEV)** envanterdeki dağıtımların verisini indirir. İnternetsiz sunucular veri paketi alır — bkz. [İşletim Sistemi Desteği ve Zafiyetler](#-i̇şletim-sistemi-desteği-ve-zafiyetler).
+
 ## 📖 Kullanım Kılavuzu
 
 | Ekran | Ne yapılır? |
@@ -314,8 +331,9 @@ Dashboard'daki **"Dikkat Gerektirenler"** kartından *"Agent/Tools kurulu olmaya
 | **Fiziksel Envanter** | Sanallaştırma dışındaki donanım: fiziksel sunucu, storage, SAN switch, yedekleme ünitesi. Lokasyon, yönetim IP, iLO/BMC IP, marka, model, seri no, CPU, RAM, rol, durum. **Cihaz tipi zorunludur** ve alanlar tipe göre değişir (storage/SAN switch'te CPU/RAM sorulmaz). Sanallaştırma host'ları buraya **salt-okunur** olarak akar; onlara iLO/lokasyon/seri no/rol gibi alanları siz eklersiniz, senkronizasyon bu eklemeleri ezmez. Yanlış gelen marka/model elle düzeltilebilir. **Yönetim IP ve iLO adresleri tıklanabilir**: cihazın web arayüzü yeni sekmede açılır (Proxmox node'u `:8006`, ESXi host'u `/ui/` varsayılan); farklı port/yoldaki arayüzler için isteğe bağlı **Web arayüzü** alanı vardır |
 | **Raporlar** | Anlık Excel/CSV/PDF (filtre destekler) + her gün belirli saatte çalışan zamanlanmış raporlar (`data/reports/` klasörüne yazılır). Kapsam seçilir: **VM / Host / Datastore / Fiziksel / Tüm Envanter**. VM export'unda tahsis **ve** kullanım kolonları (CPU/RAM/disk), Pool, Çalışma Süresi; çok diskli VM'ler için ayrı **"Diskler"** sayfası (disk başına bir satır) |
 | **Geçmiş** | Envanter değişiklikleri: eklenen/silinen/klonlanan/göç eden VM'ler, alan bazında **eski→yeni** değerler, **kategori** (Donanım/Disk/Ağ/Güç/Göç/Yaşam Döngüsü), **kaynak** (platform/cluster/host/VM ID) ve **kim yaptı** (kullanıcı). Kategori ve varlık türüne göre filtrelenir. Ayrıntı için aşağıdaki "[Değişiklik Geçmişi: Kim, Neyi, Ne Zaman?](#-değişiklik-geçmişi-kim-neyi-ne-zaman)" bölümüne bakın |
+| **Zafiyetler** | Açık bulgusu olan her CVE: önem / CVSS, son tarihli CISA KEV işareti, açıklama, etkilenen VM'ler (düzeltilebilir / düzeltmesiz / belirsiz). Önem, düzeltme durumu ve KEV filtreleri; Excel / CSV. `?vm=<id>` tek VM'in bulgularını listeler |
 | **Platformlar** | Bağlantı yönetimi, manuel senkronizasyon, API hata logları |
-| **Yönetim** *(admin)* | Kullanıcı CRUD + audit log (kim, ne zaman, ne yaptı) + **Senkronizasyon** sekmesi: tam ve kullanım senkron aralıklarını (1–1440 dk) arayüzden ayarlama (anında yeniden zamanlanır, restart gerekmez), **konsol erişimi takibi** anahtarı ve **konsol geçmişini temizle** |
+| **Yönetim** *(admin)* | Kullanıcılar ve audit log; **Senkronizasyon** (tam ve kullanım senkron aralıkları 1–1440 dk, anında uygulanır; konsol erişimi takibi ve temizliği); **İşletim Sistemi Desteği** (yaşam döngüsü verisi, takip edilen ürünler, uzatılmış destek istisnaları); **Zafiyet Verisi** (indirme / yükleme, indirilecek dağıtımlar, kurum sertifikası, doğrulanamayan VM'ler ve nedenleri) |
 
 ## 🕵️ Değişiklik Geçmişi: Kim, Neyi, Ne Zaman?
 
@@ -358,6 +376,68 @@ yazılır. Mevcut konsol kayıtları aynı ekrandaki butonla toplu silinebilir.
 > - "Kim yaptı" düzeltmesinden **önce** kaydedilmiş eski satırlarda kullanıcı `—` kalır;
 >   yalnızca yeni değişiklikler zenginleşir.
 > - Yakalama gecikmesi = tam senkronizasyon aralığı kadardır (Yönetim → Senkronizasyon).
+
+## 🛡️ İşletim Sistemi Desteği ve Zafiyetler
+
+Her senkronizasyondan sonra envanter verisi üzerinde iki salt-okuma kontrolü çalışır: **misafir işletim sistemi hâlâ destekleniyor mu** ve **çalışan çekirdekte / Windows yapısında yayımlanmış zafiyet var mı**. Misafirlere hiçbir şey kurulmaz — platformların zaten bildirdiği sürüm bilgileri herkese açık veriyle karşılaştırılır. Bir zafiyet tarayıcısı değildir: misafirde kurulu uygulamalar (SQL Server, Exchange, nginx…) ve yapılandırma kontrol edilmez.
+
+### İşletim sistemi desteği (EOL)
+
+Her VM'in OS sürümü [endoflife.date](https://endoflife.date) verisiyle eşleşir (veri uygulamayla gelir; internetli sunucu haftada bir günceller). **Destek** sütunu *Destekli*, *Yakında bitiyor* (180 gün içinde, ayarlanabilir), *Uzatılmış*, *EOL* ya da *Bilinmiyor* gösterir; bitiş tarihi ve neden ipucundadır. Ücretli uzatılmış destek (Ubuntu Pro, RHEL ELS, Windows ESU…) **Yönetim → İşletim Sistemi Desteği → Uzatılmış destek istisnaları** bölümünden VM, etiket veya ürün bazında girilir. İnternetsiz sunucu: internetli herhangi bir makinede `python3 tools/refresh_lifecycle_seed.py lifecycle.json` çalıştırıp dosyayı aynı ekrandan yükleyin.
+
+### Zafiyetler
+
+Yalnızca işletim sistemi destekli, yakında bitecek ya da uzatılmış destekte olan VM'ler değerlendirilir; EOL sistemler *kapsam dışı*dır.
+
+| İşletim sistemi | Veri | Envanterin ihtiyacı | Sonuç |
+|---|---|---|---|
+| Ubuntu | OSV.dev | çekirdek sürümü | kesin; aynı ABI'nin sonraki yüklemesi, Proxmox agent `uname -v` bildirmiyorsa *belirsiz* |
+| Debian 13+ | OSV.dev | çekirdek sürümü (`6.12.107+deb13-amd64` sürümü taşır) | kesin |
+| Debian 12 | OSV.dev + ABI tablosu | çekirdek sürümü (`6.1.0-40-amd64` = yalnızca ABI) | bilinen ABI'lerde kesin, diğerlerinde sınırlı / *belirsiz*; Proxmox agent `uname -v` ile kesin |
+| RHEL, Rocky, AlmaLinux | OSV.dev (AlmaLinux verisi üçünü de kapsar) | çekirdek sürümü | kesin; CIQ LTS çekirdekleri değerlendirilmez (kendi geri taşımaları) |
+| Oracle Linux | Oracle OVAL (linux.oracle.com) | çekirdek sürümü | kesin, UEK akışları ve RHCK ayrı ayrı |
+| SUSE / openSUSE Leap | OSV.dev | çekirdek sürümü | kesin |
+| Photon OS | Broadcom CVE verisi | çekirdek sürümü | kesin |
+| Windows Server 2016–2025, Windows 10 / 11 | Microsoft MSRC, son 24 ay | yapı **+ güncelleme numarası** (`NT 10.0.17763.6775`) | kesin, yalnızca işletim sistemi; kurulacak KB'yi yazar |
+
+Her CVE ayrıca **CISA KEV** (aktif istismar edilen) listesiyle karşılaştırılır. Çekirdek sürümü VMware Tools / open-vm-tools **11.2+** ya da Proxmox **QEMU guest agent**'tan gelir; Windows güncelleme numarası VMware Tools 11.2+'dan ya da Proxmox'ta exec izni verilmiş agent'tan ([Adım 3](#adım-3--proxmox-ekleyin)).
+
+**Açık CVE sütunu**
+
+| Hücre | Anlamı |
+|---|---|
+| <code>CVE-2024-1086</code> rozeti | En acil bulgu (⚠ işaretli kırmızı = CISA KEV). Tıklayınca o CVE |
+| `+2 KEV` | Bu VM'deki diğer aktif istismar edilen CVE'ler |
+| `+60` (mavi) | **Düzeltmesi yayımlanmış** diğer CVE'ler — tıklayınca liste. Toplam sayı (eski çekirdekte çoğu düzeltmesiz binlerce) ipucunda |
+| `+4.000` (gri) | Yalnızca **düzeltmesi olmayan** CVE'ler kalmış |
+| ✓ *Açık yok* | Kontrol edildi, eşleşme yok |
+| ? *Doğrulanamadı* | Kontrol edilemedi — nedeni ipucunda |
+| *kapsam dışı* | OS desteği bitmiş ya da bilinmiyor |
+
+Birkaç aylık bir çekirdek kolayca binlerce CVE ile eşleşir: 2024'ten beri Linux çekirdeği neredeyse her hata düzeltmesine CVE veriyor. Bunlar binlerce ayrı iş değildir — **tek bir çekirdek güncellemesi ve yeniden başlatma, düzeltmesi olan bütün bulguları kapatır**. Önce KEV olanlardan başlayın (Zafiyetler sayfasında **Yalnızca KEV**).
+
+**Yönetim → Zafiyet Verisi**
+
+- **Şimdi indir (OSV + KEV)** / **Yalnız KEV** — internetli sunucu bunu kendiliğinden de yapar (KEV her gün, diğerleri haftalık).
+- **Kaynakları test et** — sunucunun hangi indirme adreslerine eriştiği; SSL denetiminde sertifikayı kimin imzaladığı.
+- **İndirilecek dağıtımlar** — *Otomatik* envanterin ihtiyaç duyduğu kaynakları seçer; *Elle seç* ile işaretlenir.
+- **Kurum sertifikası (SSL denetimi)** — kurumun kök sertifikası, yalnızca bu indirmeler için eklenir (doğrulama açık kalır).
+- **Doğrulanamayan VM'ler - nedenleri** — kalan her neden, VM sayısı, örnekler ve yapılacaklar.
+
+**İnternetsiz sunucular**
+
+1. İnternetli sunucuda: **İndirilecek dağıtımlar → Elle seç**, internetsiz sunucunun dağıtımlarını (ve Windows'u) işaretleyin, **Kaydet**, **Şimdi indir**.
+2. **Veri paketini indir** (gzip JSON, birkaç MB — çekirdek / Windows kayıtları, CVE açıklamaları, CISA KEV, Debian ABI tablosu).
+3. İnternetsiz sunucuda: **Dosya yükle**. Dosya 900 KB'lık parçalarla gider; 1 MB istek sınırı olan ters vekil sunucular sorun olmaz. Sonuç kutusu paketin içeriğini ve hâlâ verisi olmayan dağıtımları gösterir.
+
+cisa.gov veya osv.dev kapalı ama GitHub açıksa KEV ve AlmaLinux verisi otomatik olarak GitHub'dan alınır. `.env` seçenekleri: `VULN_PROXY` (yalnızca bu indirmeler için vekil sunucu), `VULN_KEV_URLS` (kurum içi KEV aynası), `OUTBOUND_CA_BUNDLE` (yükleme yerine CA dosyası / klasörü).
+
+> **Dürüst sınırlar:**
+> - Kurulu ama açılmamış çekirdekler ve canlı yamalar dikkate alınmaz — *çalışan* çekirdek / yapı esas alınır.
+> - VMware Tools'u 11.2'den eski (ya da işletim sisteminin kendi "unmanaged" paketi) olan VM'ler çekirdek bildirmez, *Doğrulanamadı* kalır.
+> - Herkese açık verisi olmayanlar: Proxmox VE (`-pve`) çekirdekleri, CIQ LTS, Debian backports çekirdekleri, bulut / OEM çekirdekleri, Flatcar, cihazlar (appliance).
+> - SUSE kayıt biçimi henüz gerçek bir indirmeyle doğrulanmadı; ilk indirmeden sonra "tanınmayan kayıtlar" notuna bakın.
+> - Windows: yalnızca işletim sistemi, son 24 ay; bu pencereden önce yamalanmış VM'de gerçek sayının daha fazla olabileceği uyarısı çıkar.
 
 ## 🔍 Arama Söz Dizimi
 
@@ -441,7 +521,20 @@ server {
 
 **Güncelleme** — Yeni sürümü açın, ardından `docker compose up -d --build`; tarayıcıda Ctrl+F5. Veriler volume'lerde korunur.
 
-**İnternetsiz ortam** — Arayüzün tüm JavaScript/CSS/fontları uygulamayla gelir. İşletim sistemi yaşam döngüsü verisi de uygulamayla gelir; internete erişen sunucu haftada bir endoflife.date'ten günceller. İnternet yoksa internete erişen herhangi bir makinede `python3 tools/refresh_lifecycle_seed.py lifecycle.json` çalıştırıp dosyayı **Yönetim → İşletim Sistemi Desteği**'nden yükleyin. Çekirdek zafiyet verisi de aynı mantıkla çalışır: internete erişen sunucu OSV + CISA KEV'i kendisi indirir; internetsiz sunucu için internete erişen makinede **Yönetim → Zafiyet Verisi → Veri paketini indir** ile alınan dosyayı aynı ekrandan yükleyin. cisa.gov veya osv.dev kapalı ama GitHub açıksa KEV ve AlmaLinux verisi (RHEL / Rocky için de kullanılır) otomatik olarak GitHub'dan alınır; sunucunun hangi adreslere eriştiğini aynı ekrandaki **Kaynakları test et** gösterir. Ağınız SSL denetimi yapıyorsa (her kaynakta "Sertifika doğrulanamadı"), aynı ekrandaki **Kurum sertifikası (SSL denetimi)** bölümünden kurumun kök sertifikasını yükleyin: yalnızca veri indirmelerinde kullanılır, doğrulama kapanmaz. **İndirilecek dağıtımlar** kaynakları envanterden otomatik seçer (ya da elle, ör. farklı dağıtımları olan internetsiz bir sunucuya paket hazırlarken); SUSE Linux Enterprise Server ve openSUSE Leap da eşleştirilir. Windows verisi `api.msrc.microsoft.com`'dan gelir (her ay için bir belge; değişmeyen aylar yeniden indirilmez); bir Windows VM, çekirdek dizesinde güncelleme numarası varsa değerlendirilir (`NT 10.0.17763.6775` - VMware Tools 11.2+; Proxmox QEMU agent bunu bildirmez).
+**İnternetsiz ortam** — arayüzün tüm JavaScript/CSS/fontları uygulamayla gelir (CDN yok), internet olmadan çalışır. İşletim sistemi yaşam döngüsü ve zafiyet verisi internetsiz sunucuya dosya olarak yüklenir — bkz. [İşletim Sistemi Desteği ve Zafiyetler](#-i̇şletim-sistemi-desteği-ve-zafiyetler).
+
+**İmajı kapalı ağa taşımak** — internetsiz sunucu derleyemediğinde (ör. yeni bir pip bağımlılığından sonra) imajı internetli makinede derleyip dosya olarak taşıyın:
+
+```bash
+# internetli makine (imaj adları: `docker images`)
+docker compose build
+docker save vm-inventory-app:latest postgres:16-alpine | gzip > vminv-images.tar.gz
+# internetsiz sunucu, proje klasöründe
+gunzip -c vminv-images.tar.gz | docker load
+docker compose up -d --no-build --pull never
+```
+
+Birimlere (veritabanı, yüklenen dosyalar) dokunulmaz — asla `docker compose down -v` çalıştırmayın. Diskteki kodu da aynı sürümde tutun; yoksa sonraki bir `--build` eski kodu derler. Docker'ın containerd imaj deposunda `docker compose images` "No such image" hatası verebilir; zararsızdır, `docker images` kullanın.
 
 **Diğer** — `docker-compose.yml` içindeki PostgreSQL parolasını değiştirin; senkronizasyon aralığını ortamınıza göre ayarlayın (`SYNC_INTERVAL_MINUTES`); güvenlik duvarında yalnızca seçtiğiniz portu açın.
 
@@ -463,6 +556,10 @@ server {
 | Platform kartında "Hata" | Karttaki **Loglar** butonu API hatasının tam mesajını gösterir |
 | Cluster "(Cluster'sız)" / "—" görünüyor | Cluster'a bağlı olmayan (standalone ESXi host) VM'lerdir. Üst çubuktaki **Cluster'lar** → **(Cluster'sız)** → **Ad ver** ile bu host'lara cluster adı verin ya da grubu orada gizleyin; `cluster:=` aramasıyla listelenir |
 | Kullanım çubukları boş | Veri açılıştan ~30 sn sonra ve her `USAGE_SYNC_INTERVAL_MINUTES` aralığında dolar. Kapalı VM'lerde çubuk çizilmez (anlık kullanım yoktur) |
+| **Açık CVE "Doğrulanamadı" gösteriyor** | Nedeni hücrenin ipucunda; **Yönetim → Zafiyet Verisi → Doğrulanamayan VM'ler - nedenleri** bunları yapılacaklarla gruplar (eski VMware Tools, bir dağıtımın verisinin eksik olması, Windows güncelleme numarası için Proxmox agent exec izni…) |
+| Zafiyet indirmelerinde her kaynakta **"Sertifika doğrulanamadı"** | Ağ SSL denetimi yapıyor: **Kurum sertifikası (SSL denetimi)** bölümüne kurumun kök sertifikasını yükleyin; **Kaynakları test et** denetlenen bağlantıyı imzalayan CA'yı gösterir |
+| Veri paketi yüklemesi **HTTP 413** ile düşüyor | v1.9.0'dan beri düzeldi (yükleme 900 KB parçalarla). Eski sürümde ters vekil sunucunun gövde sınırını (`client_max_body_size`) yükseltin |
+| Proxmox'ta Windows: loglarda **"update revision not readable … 403"** | Token'da agent exec izni yok: `VM.GuestAgent.Unrestricted` (PVE 9) / `VM.Monitor` (PVE 8), bkz. Adım 3. Başarısız denemeler bir saat sonra ya da uygulama yeniden başlatılınca tekrarlanır |
 | Güncelleme sonrası arayüz eski görünüyor | Statik dosyalar otomatik sürümlenir; sorun sürerse bir kez Ctrl+F5 yapın |
 | `ENCRYPTION_KEY` hatası | `.env`'de geçerli bir Fernet anahtarı olmalı (üretme komutu yukarıda) |
 | cryptography ImportError (host'ta) | Sistem paketi bozuk; anahtar üretiminde `base64+os.urandom` komutunu kullanın veya venv açın |
@@ -474,17 +571,18 @@ vm-inventory/
 ├── app/
 │   ├── main.py              # FastAPI uygulaması, sayfa rotaları, başlangıç
 │   ├── config.py            # Ortam değişkenleri (pydantic-settings)
-│   ├── database.py          # SQLAlchemy engine/session
-│   ├── models/              # ORM: User, Platform, Host, VM, Network, Tag, ChangeHistory, AuditLog, PhysicalDevice
-│   ├── core/                # security (Fernet/bcrypt/CSRF), search (sorgu motoru), scheduler, version
+│   ├── database.py          # SQLAlchemy engine/session + otomatik sütun / indeks ekleme
+│   ├── models/              # ORM: envanter, fiziksel, yaşam döngüsü, zafiyet verisi, kullanıcılar, audit
+│   ├── core/                # güvenlik, arama motoru, zamanlayıcı, OS tanıma, sürüm karşılaştırma, dış HTTP
 │   ├── collectors/          # vmware_collector (pyVmomi), proxmox_collector (proxmoxer)
-│   ├── services/            # sync (fark analizi), report (xlsx/csv/pdf), ldap
-│   ├── api/                 # REST endpoint'leri (auth, vms, hosts, platforms, physical, reports, admin…)
+│   ├── services/            # sync (fark analizi, kim yaptı), yaşam döngüsü, zafiyetler, raporlar, ldap
+│   ├── api/                 # REST endpoint'leri (vms, hosts, clusters, platforms, physical, lifecycle, vulns…)
+│   ├── resources/           # uygulamayla gelen veri: yaşam döngüsü seed'i, Debian çekirdek ABI tablosu
 │   ├── templates/           # Jinja2 HTML şablonları
-│   └── static/              # custom.css + sayfa başına JS + i18n.js (TR/EN) + vendor/ (CDN'siz yerel varlıklar)
-├── tools/                   # demo_data.py (kurgusal envanter), screenshots.py (README görselleri)
+│   └── static/              # custom.css + sayfa başına JS + i18n.js (TR/EN) + vendor/ (CDN'siz)
+├── tools/                   # demo_data.py (kurgusal envanter), screenshots.py, refresh_lifecycle_seed.py
 ├── docs/screenshots/        # README'deki görseller
-├── tests/                   # Aktör tespiti regresyon testleri (vmware/proxmox)
+├── tests/                   # regresyon testleri, betik olarak çalışır (PYTHONPATH=. python3 tests/<dosya>.py)
 ├── Dockerfile
 ├── docker-compose.yml       # app + PostgreSQL 16
 ├── requirements.txt
@@ -501,6 +599,8 @@ vm-inventory/
 **Cluster gizleme nasıl çalışır?** Dashboard, Sanal Makineler, Snapshot'lar ve Topoloji sayfalarının üst çubuğundaki **Cluster'lar** düğmesi (gizli sayısını gösterir) görünürlük penceresini açar; arama, **Tümünü göster** ve **Yalnız bu** (yalnızca o cluster görünür kalır) seçenekleri vardır. Kapattığınız cluster sayılara/grafiklere girmez, VM listesinde, snapshot listesinde ve topolojide varsayılan görünmez. Ayar **herkes için** geçerlidir (operatör ve üstü değiştirir). Veri silinmez — Sanal Makineler sayfasındaki **Cluster** filtre menüsünden (gizliler işaretlidir) seçilen cluster, gelişmiş paneldeki "gizli cluster'ları dahil et" kutusu veya doğrudan `cluster:` araması yine erişir; anahtarı açınca her şey geri gelir.
 
 **Cluster'sız host'lara ad verme:** vCenter'da bir cluster'a bağlı olmayan (standalone) ESXi host'ların VM'leri "(Cluster'sız)" altında toplanır. Görünürlük penceresinde bu satırdaki **Ad ver** ile host bazında (ya da platformdaki tümüne aynı) bir takma ad verin: ad host'a ve VM'lerine cluster adı olarak yazılır, arama/filtre/gizleme/grafik/gruplama/raporlarda normal bir cluster gibi davranır ("takma ad" etiketiyle görünür). Aynı adı birden çok host'a vererek birleştirebilirsiniz. Platform ileride o host için gerçek bir cluster bildirirse **gerçek ad kazanır**; host cluster'dan çıkarsa takma ad geri gelir. Gizli "(Cluster'sız)" grubuna verilen ad gizli başlar. Gerçek bir cluster'ın adı takma ad olarak kullanılamaz.
+
+**Bir zafiyet tarayıcısı mı?** Hayır. Platformların zaten bildirdiği OS sürümü, çekirdek ve Windows yapısını yayımlanmış duyurularla (OSV.dev, üretici verileri, Microsoft MSRC, CISA KEV) karşılaştırır. Misafirlerde — Proxmox'ta izin verirseniz Windows güncelleme numarası için `cmd /c ver` dışında — hiçbir şey çalışmaz. Kurulu uygulamalar kapsanmaz.
 
 **Kaç platform eklenebilir?** Sınır yok; her platform bağımsız senkronize edilir, hepsi aynı envanterde birleşir.
 

@@ -1577,4 +1577,8 @@ html.theme-dark .vu-skip { color: #7d8b9c; }
 .vu-cell .vu-top:hover { filter: brightness(.95); text-decoration: underline; }
 .vu-cell .vu-more { font-size: .78rem; color: var(--accent, #2f81f7); text-decoration: none; margin-left: .15rem; font-variant-numeric: tabular-nums; }
 .vu-cell .vu-more:hover { text-decoration: underline; }
+.vu-cell .vu-more-nofix { color: #8b98a9; }
+.vu-cell .vu-kevmore { font-size: .74rem; font-weight: 600; color: #c9443c; text-decoration: none; margin-left: .2rem; white-space: nowrap; }
+.vu-cell .vu-kevmore:hover { text-decoration: underline; }
+html.theme-dark .vu-cell .vu-kevmore { color: #ff8a80; }
 .vu-pager { display: flex; gap: .4rem; align-items: center; justify-content: flex-end; padding: .5rem .75rem; }

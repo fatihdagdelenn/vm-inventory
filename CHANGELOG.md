@@ -28,7 +28,66 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-Phases not yet in a release (phase 152 →; internal v1.8.1 →).
+Nothing yet (phase 173 →; internal v1.9.1 →).
+
+---
+
+## [v1.9.0] — 2026-11-20
+
+**21 phases since v1.8.0 (phase 152–172; internal v1.8.1 → v1.8.20).** Focus:
+**security posture of the inventory** — every VM now shows whether its OS is
+still supported (OS lifecycle / EOL) and which published vulnerabilities its
+running kernel or Windows build has, with CISA KEV, the fix to install and an
+offline workflow for servers without internet. Plus the Kernel column, a
+resizable click-to-filter VM table, hardware models on the Hosts page and
+device web-console links.
+
+### ⬆️ Upgrading
+- No manual migration: new tables (`os_lifecycle`, `lifecycle_overrides`,
+  `vuln_*`) and columns are created on startup; the first start after the
+  upgrade evaluates every VM once (a few seconds to a minute).
+- **Vulnerability data** has to be downloaded once: **Administration →
+  Vulnerability Data → Download now** (internet), or a data package from a
+  server with internet (**Download data package** → **Upload file**).
+  Prepare packages for an offline server with **Distributions to download →
+  Choose**, ticking that server's distributions.
+- **Proxmox, optional:** for the Windows update revision the API token needs
+  agent exec — `VM.GuestAgent.Unrestricted` (PVE 9) / `VM.Monitor` (PVE 8).
+  See README → First-time setup → Step 3 (and its security note).
+- **Networks with TLS inspection:** upload the company root CA under
+  **Company certificate (TLS inspection)**; `.env` gains `VULN_PROXY`,
+  `VULN_KEV_URLS`, `OUTBOUND_CA_BUNDLE` (all optional).
+- Reverse proxies with a small request limit no longer break uploads (900 KB
+  pieces).
+
+### ℹ️ Honest limits
+- Matching compares versions; it is not a scanner. Installed applications
+  (SQL Server, Exchange, Office, .NET…) and configuration are not covered;
+  the *running* kernel / build counts (no live patches, no installed-but-not-
+  booted kernels).
+- Not verifiable: VMware Tools older than 11.2 (no kernel reported), Proxmox
+  Windows without agent exec, Proxmox VE / CIQ LTS / backports / cloud
+  kernels. Each shows **Not verified** with its reason.
+- SUSE record format and Oracle's per-release file names were not verified
+  against a real download; Windows data covers the last 24 months.
+- Server-side messages, vulnerability reasons and report titles are Turkish.
+
+### 🔢 Open CVEs shows what needs doing; README brought up to date (phase 172)
+- The cell's `+N` counted every other matched CVE - on an old kernel thousands,
+  most without a fix, which read as thousands of tasks. Now: the top CVE badge,
+  **`+k KEV`** for further actively exploited CVEs, **`+N`** for the other CVEs
+  **with a published fix** (click: that VM's fixable list), a grey `+N` when
+  only CVEs without a fix remain. The full total is in the tooltip.
+  Vulnerabilities page accepts `?fix=fixable|nofix`.
+- README (EN + TR): new **OS support and vulnerabilities** section (data per
+  OS, what the inventory needs, cell states, offline workflow, honest limits),
+  Proxmox 9 and the optional agent exec privilege, Vulnerabilities page and
+  Administration tabs in the user guide, moving images to a closed network,
+  new troubleshooting rows, current project layout; all screenshots re-taken
+  (+ Vulnerabilities, Vulnerability Data).
+- Page titles of Physical Inventory and Vulnerabilities are translated; demo
+  data includes Windows (MSRC) findings; `tools/screenshots.py` opens the VM
+  detail from the name cell.
 
 ### 🐛 Oracle Linux 8 UEK 5.4 (and other shared advisories) were missing (phase 171)
 - Prod: every Oracle Linux 8.10 VM on UEK 5.4 stayed "Not verified - no

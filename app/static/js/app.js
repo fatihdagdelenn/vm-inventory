@@ -239,16 +239,25 @@ const App = {
         (sevs.length ? ' (' + sevs.join(', ') + ')' : ''),
       other ? t('vu.tipOther', '{n} düzeltmesiz / belirsiz').replace('{n}', nf(other)) : '',
       kev ? t('vu.tipKev', '{n} tanesi CISA KEV (aktif istismar)').replace('{n}', nf(kev)) : '',
-      t('vu.tipClick', 'CVE adına tıklayın: o CVE · sayıya tıklayın: bu VM\'in tüm CVE listesi')]
+      t('vu.tipTotal', 'Toplam eşleşen: {n} CVE').replace('{n}', nf(total)),
+      t('vu.tipClick2', 'CVE adı: o CVE · "+N": düzeltmesi yayımlanmış diğer CVE\'ler · gri sayı: düzeltmesizler')]
       .filter(Boolean).join('\n');
     const cls = kev ? 'vu-kev' : ({critical: 'vu-crit', high: 'vu-high', medium: 'vu-med'}[v.vuln_top_sev] || 'vu-low');
     const top = v.vuln_top
       ? '<a class="badge sp-badge vu-top ' + cls + '" href="/vulns?q=' + encodeURIComponent(v.vuln_top) + '">' +
         (kev ? '<i class="bi bi-exclamation-octagon-fill"></i> ' : '') + App.esc(v.vuln_top) + '</a>'
       : '';
-    const more = total > 1
-      ? ' <a class="vu-more" href="/vulns?vm=' + v.id + '">+' + nf(total - 1) + '</a>' : '';
-    return '<span class="vu-cell" title="' + App.esc(tip) + '">' + top + more + '</span>';
+    // Visible = what needs doing (phase 172): extra KEV CVEs, then the other
+    // CVEs that HAVE a fix; the full total (thousands on an old kernel, mostly
+    // without a fix) only in the tooltip. The top CVE is the fixable one
+    // whenever one exists (ranking puts KEV, then "fix available" first).
+    const href = '/vulns?vm=' + v.id;
+    const kevMore = kev > 1 ? ' <a class="vu-kevmore" href="' + href + '&kev=1">+' + nf(kev - 1) + ' KEV</a>' : '';
+    const fixOthers = open > 0 ? open - 1 : 0;
+    const more = fixOthers > 0
+      ? ' <a class="vu-more" href="' + href + '&fix=fixable">+' + nf(fixOthers) + '</a>'
+      : (total > 1 ? ' <a class="vu-more vu-more-nofix" href="' + href + '&fix=nofix">+' + nf(total - 1) + '</a>' : '');
+    return '<span class="vu-cell" title="' + App.esc(tip) + '">' + top + kevMore + more + '</span>';
   },
 
   /** VM detail: findings list. */

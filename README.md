@@ -32,6 +32,7 @@
 - [First-time setup](#-first-time-setup)
 - [User guide](#-user-guide)
 - [Change history: who, what, when?](#-change-history-who-what-when)
+- [OS support and vulnerabilities](#-os-support-and-vulnerabilities)
 - [Search syntax](#-search-syntax)
 - [Roles and permissions](#-roles-and-permissions)
 - [LDAP / Active Directory](#-ldap--active-directory-optional)
@@ -46,7 +47,7 @@
 
 A central inventory for teams running several **VMware vCenter** and **Proxmox VE** environments:
 
-> *"Which host is 10.10.10.15 on?"* — *"How many Windows servers are on VLAN 100?"* — *"Whose RAM changed last week, and who changed it?"* — *"Which VMs have no guest agent?"*
+> *"Which host is 10.10.10.15 on?"* — *"How many Windows servers are on VLAN 100?"* — *"Whose RAM changed last week, and who changed it?"* — *"Which VMs have no guest agent?"* — *"Which servers run an OS that is out of support?"* — *"Which VMs are exposed to an actively exploited CVE, and which update fixes it?"*
 
 All of these are answered from one search box in well under a second. **No SSH access and no agent rollout** — only the platforms' official APIs are used, with read-only accounts.
 
@@ -59,6 +60,7 @@ All of these are answered from one search box in well under a second. **No SSH a
 | <img src="docs/screenshots/vm-list.png" alt="Virtual machines with filter menus" width="440"><br>**Virtual machines** — multi-select filter menus with counts, live usage bars | <img src="docs/screenshots/vm-detail.png" alt="VM detail panel" width="440"><br>**VM detail** — everything about one VM, plus owner / tags / notes / manual IP |
 | <img src="docs/screenshots/hosts.png" alt="Hosts" width="440"><br>**Hosts** — CPU / RAM / disk load per host, hardware model, uptime, VM count | <img src="docs/screenshots/datastores.png" alt="Datastores" width="440"><br>**Datastores** — fill level per store, shared vs. local, hosts and VMs on it |
 | <img src="docs/screenshots/search-help.png" alt="Search syntax help" width="440"><br>**Search syntax** — Google-like `field:value` queries; every example is clickable | <img src="docs/screenshots/change-history.png" alt="Change history" width="440"><br>**Change history** — old → new values and *who did it*, from the platforms' own logs |
+| <img src="docs/screenshots/vulnerabilities.png" alt="Vulnerabilities" width="440"><br>**Vulnerabilities** — every open CVE with severity, CISA KEV flag and the VMs it affects | <img src="docs/screenshots/vuln-data.png" alt="Vulnerability data" width="440"><br>**Vulnerability data** — sources per distribution, picked automatically from the inventory |
 
 ## ✨ Features
 
@@ -80,8 +82,8 @@ All of these are answered from one search box in well under a second. **No SSH a
 | 🐧 **Full OS version** | Detailed guest OS on VMware (e.g. *"Ubuntu 24.04.1 LTS"*, vSphere 8.0 U2+ with VMware Tools 11.2+); on Proxmox via the QEMU Guest Agent |
 | ✍️ **Manual IP** | For VMs whose agent cannot be installed: type the IP yourself — searchable and exported, replaced automatically once an agent reports one |
 | 🖧 **Hosts** | Sortable host table with CPU / RAM / disk bars, uptime and per-host VM list |
-| 🛡️ **OS lifecycle (EOL)** | Every VM's OS release is matched against [endoflife.date](https://endoflife.date): **Support** column (supported / ending soon / extended / EOL / unknown, with the end date and the reason in the tooltip), `support:eol` search, dashboard card, export columns. Extended-support subscriptions (Ubuntu Pro, RHEL ELS, Windows ESU…) can be recorded per VM, tag or product. Works offline with the bundled data |
-| 🐞 **Vulnerabilities (kernel + Windows)** | Supported Linux VMs' running kernels are matched against [OSV.dev](https://osv.dev) (Ubuntu, Debian, RHEL, AlmaLinux, Rocky, SUSE, openSUSE) and the vendors' own feeds (Oracle Linux OVAL - UEK and RHCK -, Photon OS); Windows Server / Windows 10-11 VMs by their build + update revision (UBR) against Microsoft's MSRC update data (last 24 months, operating system only); all of it with the **CISA KEV** list: **Open CVEs** column, Vulnerabilities page, `cve:` / `kev:evet` / `zafiyet:var` search, dashboard KEV item, export columns. Every finding has its evidence (package, version, fix - the KB to install for Windows); a checked VM without findings shows **No open CVE**, one that cannot be checked shows **Not verified** with the reason, so an empty cell is never mistaken for safe; **Administration → Vulnerability Data → VMs not verified - reasons** lists why and what to do. Debian 12 / 13 kernels on VMware are evaluated from the kernel name (Debian 12 through an ABI → version table); Windows on Proxmox needs agent exec on the API token (PVE 9 `VM.GuestAgent.Unrestricted`, PVE 8 `VM.Monitor`) for the update revision. Offline servers take a compact data package exported from a machine with internet |
+| 🛡️ **OS lifecycle (EOL)** | Every VM's OS release is matched against [endoflife.date](https://endoflife.date): **Support** column, `support:eol` search, dashboard card, export columns; extended-support subscriptions recorded per VM, tag or product — [details](#-os-support-and-vulnerabilities) |
+| 🐞 **Vulnerabilities** | Linux kernels (Ubuntu, Debian, RHEL family, Oracle Linux, SUSE, Photon) and Windows (build + update revision) matched against OSV.dev, the vendors' own feeds, Microsoft MSRC and the **CISA KEV** list: **Open CVEs** column, Vulnerabilities page, `cve:` / `kev:evet` search, the update or KB that fixes each finding; works offline with a data package — [details](#-os-support-and-vulnerabilities) |
 | 🏢 **Physical inventory** | Non-virtualised hardware (servers, storage, SAN switches, backup appliances) entered by hand; hypervisor hosts flow in automatically and keep your manual fields |
 | 💽 **Per-disk view** | Every disk of a multi-disk VM is listed; a separate "Disks" sheet in exports |
 | ⏱️ **Migration-aware uptime** | Proxmox resets uptime on live migration (bugzilla #499); the real guest uptime is read from the agent when possible, otherwise boot time is carried across the migration |
@@ -120,7 +122,7 @@ All of these are answered from one search box in well under a second. **No SSH a
 | Software | Docker + Docker Compose **or** Python 3.11+ |
 | Network | From the server to vCenter `443/tcp`, to Proxmox `8006/tcp` |
 | vCenter | 6.7+ (8.x tested) — a read-only account is enough |
-| Proxmox | 7.x / 8.x — API token; `PVEAuditor` is enough for the inventory. For **"who did it" / backup contents** add `Sys.Syslog` + `Datastore.Audit` (below) |
+| Proxmox | 7.x / 8.x / 9.x (9.2 tested) — API token; `PVEAuditor` is enough for the inventory. For **"who did it" / backup contents** add `Sys.Syslog` + `Datastore.Audit`, for the **Windows update revision** agent exec (below) |
 | Guests | For IP / OS details: VMware Tools or QEMU Guest Agent *(optional)* |
 
 ## 🚀 Installation (step by step)
@@ -271,6 +273,17 @@ pveum acl modify / --tokens 'svc-inventory@pve!inventory' --roles InventoryExtra
 
 > ℹ️ Without these the inventory still works; only the **User column stays empty ("—") for config changes** in the change history, and backup contents are not listed. vCenter needs nothing extra for "who did it" (**Read-only / System.View** is enough).
 
+**(Optional) Windows update revision for vulnerability matching.** The QEMU agent reports a Windows guest's build (`NT 10.0.17763`) but not its update revision (UBR), which the Windows matching needs. With agent exec allowed, the inventory reads it by running the read-only `cmd /c ver` in the guest (once per boot):
+
+```bash
+# PVE 9 (agent privileges were split in 9.0):
+pveum role modify InventoryExtra --privs "VM.GuestAgent.Unrestricted" --append 1
+# PVE 8:
+# pveum role modify InventoryExtra --privs "VM.Monitor" --append 1
+```
+
+> ⚠️ `VM.GuestAgent.Unrestricted` allows running commands inside guests — Proxmox has no narrower privilege for this. The inventory only runs `cmd /c ver` (Windows) and, as an uptime fallback, `cat /proc/uptime` (Linux). Skip it if that is not acceptable; those Windows VMs then show **Not verified** with the reason.
+
 In the app: **Platforms → Add Platform**:
 
 | Field | Value |
@@ -295,6 +308,10 @@ On the dashboard, **Needs Attention** → *"No Agent / Tools installed"*. These 
 
 If an agent cannot be installed (appliances, locked-down OSes), type the IP in the VM detail panel's **Manual IP** field.
 
+### Step 6 — (Optional) Vulnerability data
+
+**Administration → Vulnerability Data**: **Test sources** shows which download hosts the server reaches, **Download now (OSV + KEV)** fetches the data for the distributions in your inventory. Servers without internet get a data package instead — see [OS support and vulnerabilities](#-os-support-and-vulnerabilities).
+
 ## 📖 User guide
 
 | Screen | What you do there |
@@ -310,8 +327,9 @@ If an agent cannot be installed (appliances, locked-down OSes), type the IP in t
 | **Physical Inventory** | Non-virtualised hardware: servers, storage, SAN switches, backup appliances, with location, management / iLO-BMC IP, optional web UI address, brand, model, serial, role and state. Management and iLO addresses are **links that open the device's web console** in a new tab (Proxmox nodes `:8006`, ESXi hosts `/ui/` by default). Hypervisor hosts appear here **read-only**; the fields you add to them survive every sync |
 | **Reports** | Instant Excel / CSV / PDF (with filters) + scheduled daily reports (written to `data/reports/`). Scope: **VM / Host / Datastore / Physical / Everything**; VM exports include allocation **and** usage columns and a separate **Disks** sheet |
 | **Change History** | Added / deleted / cloned / migrated VMs, per-field **old → new** values, category, source and **who did it**, with date range and filters — see below |
+| **Vulnerabilities** | Every CVE with an open finding: severity / CVSS, CISA KEV flag with due date, description, affected VMs (fixable / no fix / uncertain). Filters for severity, fix state and KEV; Excel / CSV export. `?vm=<id>` lists one VM's findings |
 | **Platforms** | Connections, manual sync, API error logs |
-| **Administration** *(admin)* | Users, audit log, and the **Synchronization** tab: full and usage sync intervals (1–1440 min, applied immediately), console-access tracking switch |
+| **Administration** *(admin)* | Users, audit log; **Synchronization** (full and usage sync intervals, 1–1440 min, applied immediately; console-access tracking); **OS Support** (lifecycle data, tracked products, extended-support exceptions); **Vulnerability Data** (download / upload, distributions to download, company certificate, VMs not verified and why) |
 
 ## 🕵️ Change history: who, what, when?
 
@@ -341,6 +359,69 @@ Tracked: **hardware** (vCPU, RAM, OS type), **disk & storage** (size, datastore)
 > - The operator's **client IP / user agent** is not present in vCenter events or Proxmox task / log records → these columns are usually empty for infrastructure changes. (In-app actions have a separate **Audit Log** with IP / UA.)
 > - Rows recorded before the "who did it" feature keep `—` as the user; only new changes are enriched.
 > - Detection delay equals the full sync interval (Administration → Synchronization).
+
+## 🛡️ OS support and vulnerabilities
+
+Two read-only checks run on the inventory after every sync: **is the guest OS still supported**, and **does its running kernel / Windows build contain published vulnerabilities**. Nothing is installed in the guests — the version strings the platforms already report are compared with public data. It is not a vulnerability scanner: applications installed in the guest (SQL Server, Exchange, nginx…) and configuration are not checked.
+
+### OS support (EOL)
+
+Each VM's OS release is matched against [endoflife.date](https://endoflife.date) (data ships with the app; a server with internet refreshes it weekly). The **Support** column shows *Supported*, *Ending soon* (within 180 days, configurable), *Extended*, *EOL* or *Unknown*, with the end date and the reason in the tooltip. Paid extended support (Ubuntu Pro, RHEL ELS, Windows ESU…) is recorded under **Administration → OS Support → Extended-support exceptions**, per VM, tag or product. Offline: run `python3 tools/refresh_lifecycle_seed.py lifecycle.json` on any machine with internet and upload the file on the same screen.
+
+### Vulnerabilities
+
+Only VMs whose OS is supported, ending soon or under extended support are evaluated; EOL systems are *out of scope*.
+
+| OS | Data | The inventory needs | Result |
+|---|---|---|---|
+| Ubuntu | OSV.dev | kernel release | exact; a later upload of the same ABI is *uncertain* unless the Proxmox agent reports `uname -v` |
+| Debian 13+ | OSV.dev | kernel release (`6.12.107+deb13-amd64` carries the version) | exact |
+| Debian 12 | OSV.dev + ABI table | kernel release (`6.1.0-40-amd64` = ABI only) | exact for known ABIs, otherwise bounded / *uncertain*; exact with the Proxmox agent's `uname -v` |
+| RHEL, Rocky, AlmaLinux | OSV.dev (AlmaLinux data covers all three) | kernel release | exact; CIQ LTS kernels are not evaluated (own backports) |
+| Oracle Linux | Oracle OVAL (linux.oracle.com) | kernel release | exact, UEK streams and RHCK separately |
+| SUSE / openSUSE Leap | OSV.dev | kernel release | exact |
+| Photon OS | Broadcom CVE data | kernel release | exact |
+| Windows Server 2016–2025, Windows 10 / 11 | Microsoft MSRC, last 24 months | build **+ update revision** (`NT 10.0.17763.6775`) | exact, operating system only; names the KB to install |
+
+Every CVE is also checked against the **CISA KEV** list (actively exploited). The kernel release comes from VMware Tools / open-vm-tools **11.2+** or the Proxmox **QEMU guest agent**; the Windows update revision from VMware Tools 11.2+ or, on Proxmox, the agent with exec allowed ([Step 3](#step-3--add-proxmox)).
+
+**Open CVEs column**
+
+| Cell | Meaning |
+|---|---|
+| <code>CVE-2024-1086</code> badge | The most urgent finding (red with ⚠ = CISA KEV). Click: that CVE |
+| `+2 KEV` | Further actively exploited CVEs on this VM |
+| `+60` (blue) | Other CVEs **with a published fix** — click for the list. The full total (often thousands on an old kernel, mostly without a fix) is in the tooltip |
+| `+4,000` (grey) | Only CVEs **without a fix** remain |
+| ✓ *No open CVE* | Checked, nothing matched |
+| ? *Not verified* | Could not be checked — the tooltip says why |
+| *out of scope* | OS is EOL or its support status is unknown |
+
+A kernel a few months old easily matches thousands of CVEs: since 2024 the Linux kernel assigns a CVE to almost every bug fix. They are not thousands of tasks — **one kernel update and a reboot closes every finding that has a fix**. Start with the KEV ones (**KEV only** on the Vulnerabilities page).
+
+**Administration → Vulnerability Data**
+
+- **Download now (OSV + KEV)** / **KEV only** — a server with internet also does this by itself (KEV daily, the rest weekly).
+- **Test sources** — which download hosts the server reaches, and who signed the certificate when TLS is inspected.
+- **Distributions to download** — *Automatic* picks the sources the inventory needs; *Choose* ticks them by hand.
+- **Company certificate (TLS inspection)** — a corporate root CA, added for these downloads only (verification stays on).
+- **VMs not verified - reasons** — every remaining reason with the VM count, examples and what to do.
+
+**Servers without internet**
+
+1. On a server with internet: **Distributions to download → Choose**, tick the offline server's distributions (and Windows), **Save**, **Download now**.
+2. **Download data package** (gzip JSON, a few MB — kernel / Windows rows, CVE texts, CISA KEV, the Debian ABI table).
+3. On the offline server: **Upload file**. The file goes up in 900 KB pieces, so reverse proxies with a 1 MB request limit are fine. The result box shows what the package contained and which distributions still have no data.
+
+If cisa.gov or osv.dev is blocked but GitHub is open, KEV and the AlmaLinux data come from GitHub automatically. `.env` options: `VULN_PROXY` (proxy for these downloads only), `VULN_KEV_URLS` (internal KEV mirror), `OUTBOUND_CA_BUNDLE` (CA file / folder instead of the upload).
+
+> **Honest limits:**
+> - Installed-but-not-booted kernels and live patches are not considered — the *running* kernel / build is what counts.
+> - VMware VMs whose Tools are older than 11.2 (or OS-provided "unmanaged" builds) report no kernel and stay *Not verified*.
+> - No public data: Proxmox VE (`-pve`) kernels, CIQ LTS, Debian backports kernels, cloud / OEM kernels, Flatcar, appliances.
+> - SUSE record format is not yet verified against a real download; check the "records not recognised" note after the first one.
+> - Windows: operating system only, last 24 months; a VM patched before that window gets a warning that the real count is higher.
+> - Server-side reasons and finding texts are in Turkish.
 
 ## 🔍 Search syntax
 
@@ -423,7 +504,20 @@ server {
 
 **Upgrades** — pull the new version, then `docker compose up -d --build`, and Ctrl+F5 in the browser. Data lives in Docker volumes; new columns are added automatically.
 
-**Offline / intranet** — all JavaScript, CSS and fonts are vendored (no CDN), so the UI works without internet access. OS lifecycle data ships with the app; a server with internet refreshes it weekly from endoflife.date. Without internet, refresh it by running `python3 tools/refresh_lifecycle_seed.py lifecycle.json` on any machine that has internet and uploading the file in **Administration → OS Support**. Kernel vulnerability data works the same way: a server with internet downloads OSV + CISA KEV by itself; for an offline server download the data package in **Administration → Vulnerability Data** on a machine with internet and upload it there. If cisa.gov or osv.dev is blocked but GitHub is open, KEV and the AlmaLinux data (also used for RHEL / Rocky) are taken from GitHub automatically; **Test sources** on the same screen shows which hosts the server reaches. On networks that inspect TLS ("certificate could not be verified" for every source), upload the company root certificate in **Company certificate (TLS inspection)** on the same screen: it is added for data downloads only, verification stays on. **Distributions to download** picks the sources automatically from the inventory (or by hand, e.g. to prepare a package for an offline server with other distributions); SUSE Linux Enterprise Server and openSUSE Leap are supported too. Windows data comes from `api.msrc.microsoft.com` (one document per month, unchanged months are not downloaded again); a Windows VM is evaluated only when its kernel string carries the update revision (`NT 10.0.17763.6775` - VMware Tools 11.2+; the Proxmox QEMU agent does not report it).
+**Offline / intranet** — all JavaScript, CSS and fonts are vendored (no CDN), so the UI works without internet access. OS lifecycle and vulnerability data reach an offline server as uploaded files — see [OS support and vulnerabilities](#-os-support-and-vulnerabilities).
+
+**Moving the image to a closed network** — when the offline server cannot build (e.g. after a new pip dependency), build on a machine with internet and carry the images as a file:
+
+```bash
+# machine with internet (image names: `docker images`)
+docker compose build
+docker save vm-inventory-app:latest postgres:16-alpine | gzip > vminv-images.tar.gz
+# offline server, in the project folder
+gunzip -c vminv-images.tar.gz | docker load
+docker compose up -d --no-build --pull never
+```
+
+Volumes (database, uploaded files) are not touched — never `docker compose down -v`. Keep the code on disk at the same version, otherwise a later `--build` rebuilds the old code. `docker compose images` may fail with "No such image" on Docker's containerd image store; it is harmless — use `docker images`.
 
 **Other** — change the PostgreSQL password in `docker-compose.yml`, tune the sync interval to your environment, and open only the chosen port in the firewall.
 
@@ -445,6 +539,10 @@ server {
 | Cluster shows **"(No cluster)"** / "—" | VMs on standalone ESXi hosts. **Clusters** (top bar) → **(No cluster)** → **Name it** gives those hosts a cluster name, or hide the group there; list them with `cluster:=` |
 | Platform card shows "Error" | The card's **Sync Logs** button shows the full API error |
 | Usage bars empty | Filled ~30 s after start and every `USAGE_SYNC_INTERVAL_MINUTES`; powered-off VMs have no live usage |
+| **Open CVEs shows "Not verified"** | Hover the cell for the reason; **Administration → Vulnerability Data → VMs not verified - reasons** groups them with what to do (old VMware Tools, missing data for a distribution, Proxmox agent exec for the Windows update revision…) |
+| Vulnerability downloads: **"Certificate could not be verified"** for every source | The network inspects TLS: upload the company root certificate under **Company certificate (TLS inspection)**; **Test sources** names the CA that signed the inspected connection |
+| Data package upload fails with **HTTP 413** | Fixed since v1.9.0 (uploads go in 900 KB pieces). On an older version, raise the reverse proxy's body limit (`client_max_body_size`) |
+| Windows on Proxmox: **"update revision not readable … 403"** in the logs | The token lacks agent exec: `VM.GuestAgent.Unrestricted` (PVE 9) / `VM.Monitor` (PVE 8), see Step 3. Failures are retried after an hour or on an app restart |
 | UI looks old after an upgrade | Static files are versioned automatically; if it persists, press Ctrl+F5 once. If the footer version is still old, the Docker image was not rebuilt: `docker compose up -d --build` |
 | `ENCRYPTION_KEY` error | `.env` needs a valid Fernet key (generator command above) |
 
@@ -455,17 +553,18 @@ vm-inventory/
 ├── app/
 │   ├── main.py              # FastAPI app, page routes, startup
 │   ├── config.py            # environment settings (pydantic-settings)
-│   ├── database.py          # SQLAlchemy engine/session + automatic column migration
-│   ├── models/              # ORM: User, Platform, Host, VM, Network, Tag, ChangeHistory, AuditLog, PhysicalDevice, …
-│   ├── core/                # security (Fernet/bcrypt/CSRF), search engine, scheduler, version
+│   ├── database.py          # SQLAlchemy engine/session + automatic column / index migration
+│   ├── models/              # ORM: inventory, physical, lifecycle, vulnerability data, users, audit
+│   ├── core/                # security, search engine, scheduler, OS identity, version compare, outbound HTTP
 │   ├── collectors/          # vmware_collector (pyVmomi), proxmox_collector (proxmoxer)
-│   ├── services/            # sync (diffing, actor matching), reports (xlsx/csv/pdf), ldap
-│   ├── api/                 # REST endpoints (auth, vms, hosts, clusters, platforms, physical, reports, admin, …)
+│   ├── services/            # sync (diffing, actor matching), lifecycle, vulnerabilities, reports, ldap
+│   ├── api/                 # REST endpoints (vms, hosts, clusters, platforms, physical, lifecycle, vulns, …)
+│   ├── resources/           # bundled data: OS lifecycle seed, Debian kernel ABI table
 │   ├── templates/           # Jinja2 HTML templates
 │   └── static/              # custom.css, one JS file per page, i18n.js (TR/EN), vendor/ (no CDN)
-├── tools/                   # demo_data.py (fictional inventory), screenshots.py (README images)
+├── tools/                   # demo_data.py (fictional inventory), screenshots.py, refresh_lifecycle_seed.py
 ├── docs/screenshots/        # images used in this README
-├── tests/                   # actor-detection regression suites (vmware / proxmox)
+├── tests/                   # regression suites, run as scripts (PYTHONPATH=. python3 tests/<file>.py)
 ├── Dockerfile
 ├── docker-compose.yml       # app + PostgreSQL 16
 ├── requirements.txt
@@ -482,6 +581,8 @@ vm-inventory/
 **How does hiding a cluster work?** The **Clusters** button in the top bar of the Dashboard, Virtual Machines, Snapshots and Topology pages (it shows how many are hidden) opens the visibility window, with search, **Show all** and **Only this**. A hidden cluster is left out of counts and charts and is not listed by default in the VM list, snapshot list and topology. The setting applies to **everyone** (operator and above can change it). Nothing is deleted — picking the cluster in the VM page's **Cluster** filter menu (hidden ones are marked), the "Include hidden clusters" switch, or a `cluster:` search still reaches it.
 
 **Naming cluster-less hosts:** VMs on standalone ESXi hosts (outside any vCenter cluster) are grouped under "(No cluster)". In the visibility window, **Name it** on that row gives a name per host (or the same name to all hosts of a platform). The name is written to the host and its VMs as their cluster, so search, filters, hiding, charts, grouping and reports treat it like a real cluster (marked "alias"). The same name on several hosts merges them. If the platform later reports a real cluster for the host, **the real name wins**; if the host leaves the cluster, the alias comes back. A name given to a hidden group starts hidden. A real cluster's name cannot be used as an alias.
+
+**Is it a vulnerability scanner?** No. It compares the OS release, kernel and Windows build the platforms already report with published advisories (OSV.dev, vendor feeds, Microsoft MSRC, CISA KEV). Nothing runs in the guests except — when you allow it on Proxmox — `cmd /c ver` for the Windows update revision. Installed applications are not covered.
 
 **How many platforms can I add?** No limit; each platform syncs independently and all of them merge into one inventory.
 

@@ -99,6 +99,7 @@ const Vu = {
     const p = new URLSearchParams(location.search);
     if (p.get('q')) document.getElementById('vuSearch').value = p.get('q');
     if (p.get('kev')) document.getElementById('vuKev').checked = true;
+    if (['fixable', 'nofix'].includes(p.get('fix'))) document.getElementById('vuFix').value = p.get('fix');
     this.vm = p.get('vm') ? parseInt(p.get('vm'), 10) || null : null;
     const reload = App.debounce(() => this.load(), 300);
     document.getElementById('vuSearch').addEventListener('input', reload);
