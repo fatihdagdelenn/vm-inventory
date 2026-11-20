@@ -420,6 +420,7 @@ Birkaç aylık bir çekirdek kolayca binlerce CVE ile eşleşir: 2024'ten beri L
 
 - **Şimdi indir (OSV + KEV)** / **Yalnız KEV** — internetli sunucu bunu her gün kendiliğinden de yapar ve **yalnızca değişenleri** indirir (OSV'nin değişiklik listesi, üretici dosyalarında `If-None-Match`; ilk seferde, 30 günde bir ya da büyük bir çekirdek güncellemesi gününde tam döküm). KEV günde iki kez denetlenir; başarısız indirmeler artan aralıklarla yeniden denenir.
 - **Kaynakları test et** — sunucunun hangi indirme adreslerine eriştiği; SSL denetiminde sertifikayı kimin imzaladığı.
+- **Durdur** — çalışan indirmeyi / yüklemeyi bir sonraki adımda keser. **Otomatik indir** — internetsiz sunucuda kapatın: zamanlanmış trafik ve iş olmaz.
 - **İndirilecek dağıtımlar** — *Otomatik* envanterin ihtiyaç duyduğu kaynakları seçer; *Elle seç* ile işaretlenir.
 - **Kurum sertifikası (SSL denetimi)** — kurumun kök sertifikası, yalnızca bu indirmeler için eklenir (doğrulama açık kalır).
 - **Doğrulanamayan VM'ler - nedenleri** — kalan her neden, VM sayısı, örnekler ve yapılacaklar.

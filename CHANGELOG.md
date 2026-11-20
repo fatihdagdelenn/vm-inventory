@@ -30,6 +30,27 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 Phases after v1.9.0 (phase 173 →; internal v1.9.1 →).
 
+### ⏹ Stop a running download, switch automatic downloads off; package file names (phase 174)
+- Asked on prod (no internet): the automatic boot sync kept running for a
+  long time ("running (boot)") - wasted traffic and work, with no way to stop it.
+- **Stop** button next to the download buttons while a job runs (admin):
+  the job ends at its next check point - before every HTTP request, every
+  1 MB downloaded, every 500 records stored, every 25 VMs evaluated. Queued
+  record fetches are dropped; the source in progress is rolled back, sources
+  already finished stay. The job row shows ⏹ "stopped by the user".
+- **Download automatically** switch (default on): off = no scheduled
+  download, no boot catch-up - no traffic and no work on a server without
+  internet. Manual **Download now** and uploads keep working.
+- Why it was slow offline: the retries added in phase 173 also retried a
+  tunnel the proxy refused (403) and waited through the backoff for every
+  source. Refused tunnels are no longer retried (`other=0`), and a failed
+  connect is tried only once more (`connect=1`).
+- The first package after phase 173 is always complete (there is no earlier
+  package to compare with), even when **Changes only** is clicked - but its
+  file was still named `vm-inventory-vuln-changes-….json.gz`, so a 5.9 MB
+  "changes" file looked like the feature did not work. The name now follows
+  the content: `…-changes-…` only for a real changes-only package.
+
 ### 🔁 Daily vulnerability data, downloading only what changed (phase 173)
 - Asked: the full download took long; CVEs come out every day. Before, OSV
   dumps (Ubuntu / Debian: hundreds of MB) were downloaded **weekly in full**,

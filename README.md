@@ -403,6 +403,7 @@ A kernel a few months old easily matches thousands of CVEs: since 2024 the Linux
 
 - **Download now (OSV + KEV)** / **KEV only** — a server with internet also does this by itself every day, downloading **only what changed** (OSV's change list, `If-None-Match` for vendor files; a full dump the first time, after 30 days or on a big kernel-update day). KEV is checked twice a day; failed downloads are retried with backoff.
 - **Test sources** — which download hosts the server reaches, and who signed the certificate when TLS is inspected.
+- **Stop** — ends a running download / import at its next step. **Download automatically** — switch it off on a server without internet: no scheduled traffic, no work.
 - **Distributions to download** — *Automatic* picks the sources the inventory needs; *Choose* ticks them by hand.
 - **Company certificate (TLS inspection)** — a corporate root CA, added for these downloads only (verification stays on).
 - **VMs not verified - reasons** — every remaining reason with the VM count, examples and what to do.

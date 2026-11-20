@@ -125,14 +125,18 @@ _local = threading.local()
 def _session():
     """One keep-alive session per thread (the incremental OSV sync fetches
     hundreds of small records), with retries for the transient failures a
-    corporate network produces: connection resets, 429 / 5xx answers -
-    3 tries with backoff (1.5 s, 3 s, 6 s), GET only."""
+    corporate network produces: 429 / 5xx answers and dropped reads - up to
+    3 tries with backoff (1.5 s, 3 s, 6 s), GET only; a failed connect is
+    tried once more only."""
     s = getattr(_local, "session", None)
     if s is None:
         import requests
         from requests.adapters import HTTPAdapter
         from urllib3.util.retry import Retry
-        retry = Retry(total=3, connect=3, read=2, backoff_factor=1.5,
+        # connect=1: an offline server (DNS / no route) gives up after one
+        # quick second try instead of waiting through three backoffs per URL
+        # other=0: a proxy that refuses the tunnel (403) is an answer, not a glitch
+        retry = Retry(total=3, connect=1, read=2, other=0, backoff_factor=1.5,
                       status_forcelist=(429, 500, 502, 503, 504), allowed_methods=frozenset({"GET"}),
                       raise_on_status=False, respect_retry_after_header=True)
         s = requests.Session()

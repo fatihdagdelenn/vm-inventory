@@ -137,6 +137,29 @@ def vuln_sync(request: Request, kev_only: bool = False, db: Session = Depends(ge
     return {"started": True}
 
 
+@router.post("/cancel")
+def vuln_cancel(request: Request, db: Session = Depends(get_db),
+                user: User = Depends(require_role("admin"))):
+    """Stop the running download / import at its next check point (phase 174)."""
+    validate_csrf(request, None)
+    if not vs.cancel_job():
+        raise HTTPException(409, "Çalışan bir zafiyet verisi işi yok")
+    log_audit(db, user, "vuln_cancel", target=str(vs.JOB.get("kind")), request=request)
+    db.commit()
+    return {"cancelling": True}
+
+
+@router.put("/auto")
+def vuln_auto(request: Request, payload: dict = Body(...), db: Session = Depends(get_db),
+              user: User = Depends(require_role("admin"))):
+    """Scheduled downloads on / off (off on servers without internet)."""
+    validate_csrf(request, None)
+    enabled = vs.set_auto_sync(db, bool(payload.get("enabled")))
+    log_audit(db, user, "vuln_auto", target="on" if enabled else "off", request=request)
+    db.commit()
+    return {"auto": enabled}
+
+
 def _start_import(db, request, user, path: str, name: str, size: int) -> dict:
     """Import an uploaded file in the background (one job at a time)."""
     def job(d):
@@ -279,8 +302,9 @@ def vuln_bundle(request: Request, mode: str = "full", db: Session = Depends(get_
                 user: User = Depends(require_role("admin"))):
     """Data package for servers without internet; mode=delta = only what
     changed since the last package (phase 173)."""
-    delta = mode == "delta"
-    blob = vs.export_bundle(db, delta=delta)
+    info = {}
+    blob = vs.export_bundle(db, delta=mode == "delta", info=info)
+    delta = info.get("partial", False)      # the first package is complete even when "changes only" was asked
     stamp = datetime.utcnow().strftime("%Y%m%d-%H%M")
     log_audit(db, user, "vuln_bundle", target=f"{'delta' if delta else 'full'} {len(blob)} bytes",
               request=request)

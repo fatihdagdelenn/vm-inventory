@@ -158,6 +158,12 @@
               <i class="bi bi-lightning"></i> <span data-i18n="vd2.syncKev">Yalnız KEV</span></button>
             <button class="btn btn-sm btn-outline-secondary" id="vdProbeBtn" onclick="Settings.vdProbe()">
               <i class="bi bi-broadcast"></i> <span data-i18n="vd2.probe">Kaynakları test et</span></button>
+            <button class="btn btn-sm btn-outline-danger d-none" id="vdCancelBtn" onclick="Settings.vdCancel()">
+              <i class="bi bi-stop-circle"></i> <span data-i18n="vd2.cancel">Durdur</span></button>
+          </div>
+          <div class="form-check form-switch small mb-1">
+            <input class="form-check-input" type="checkbox" id="vdAuto" onchange="Settings.vdAuto(this)">
+            <label class="form-check-label" for="vdAuto" data-i18n="vd2.auto">Otomatik indir (her gün; internetsiz sunucuda kapatın - trafik ve iş yapılmaz)</label>
           </div>
           <div id="vdProbe" class="d-none mt-2"></div>
           <div class="small mt-2" id="vdMsg"></div>

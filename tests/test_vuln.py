@@ -24,6 +24,7 @@ import json
 import os
 import sys
 import tempfile
+import threading
 import zipfile
 from sqlalchemy import func
 from datetime import datetime
@@ -1134,11 +1135,14 @@ finally:
 print("17a) incremental OSV ok")
 
 # changes-only package for the offline server, with gap detection
-full = json.loads(gzip.decompress(vs.export_bundle(db4)))
+_info = {}
+full = json.loads(gzip.decompress(vs.export_bundle(db4, delta=True, info=_info)))   # first package: complete
+assert _info == {"partial": False} and not full.get("partial")
 assert not full.get("partial") and vs.bundle_info(db4)["changed_records"] == 0
 vs._store(db4, vs._osv_records([_deb("DEBIAN-CVE-2026-9004", "6.1.160-1", "2026-11-04T08:00:00Z")]), "osv")
 assert vs.bundle_info(db4)["changed_records"] == 1
-part = json.loads(gzip.decompress(vs.export_bundle(db4, delta=True)))
+part = json.loads(gzip.decompress(vs.export_bundle(db4, delta=True, info=_info)))
+assert _info == {"partial": True}
 assert part["partial"] and part["since"] == full["generated_at"], part
 assert [r["id"] for r in part["records"]] == ["DEBIAN-CVE-2026-9004"] and [c[0] for c in part["cves"]] == ["CVE-2026-9004"]
 db5, _ = make_env("_vuln5")
@@ -1177,5 +1181,69 @@ assert all(v != "same" for v in a1["versions"].values()) and set(a2["versions"].
 assert pcalls[-1].get("If-None-Match") == '"ph-1"' and n_rows > 0
 assert db4.query(func.max(VulnAdvisory.id)).scalar() == max_id      # nothing re-inserted -> no recompute
 print("17c) conditional vendor download ok")
+
+# ------------------------------------------------------------ 18) stop a running job, automatic download off (phase 174)
+import time  # noqa: E402
+hits = []
+
+
+def _slow_get(url, **k):
+    hits.append(url)
+    time.sleep(0.05)
+    raise requests.ConnectionError("slow network")
+
+
+def _many_downloads(d):
+    for i in range(400):                       # like a long sync: one request after the other
+        try:
+            vs._get(f"https://example.invalid/{i}")
+        except requests.ConnectionError:
+            pass
+    return "finished"
+
+
+from app.core import outbound as _ob  # noqa: E402
+_ob_get, _ob.get = _ob.get, _slow_get                       # the real vs._get (with its check point) runs
+try:
+    assert vs.cancel_job() is False                         # nothing running
+    assert vs.run_background("manual", _many_downloads)
+    time.sleep(0.4)
+    assert vs.cancel_job() is True
+    for _ in range(100):
+        if not vs.JOB["running"]:
+            break
+        time.sleep(0.05)
+finally:
+    _ob.get = _ob_get
+assert not vs.JOB["running"] and vs.JOB["cancelled"] and vs.JOB["ok"] is False, vs.JOB
+assert "durduruldu" in vs.JOB["message"] and len(hits) < 60, (vs.JOB, len(hits))
+# the check point lives in the real _get: a cancelled job makes no further request
+vs.JOB["cancel"] = True
+threading.current_thread().name = "vuln-test"
+try:
+    vs._get("https://example.invalid/never")
+    raise AssertionError("request made after Stop")
+except vs.JobCancelled:
+    pass
+finally:
+    vs.JOB["cancel"] = False
+    threading.current_thread().name = "MainThread"
+# automatic download off: the boot / daily jobs do nothing
+assert vs.auto_sync_enabled(db) is True and vs.meta(db)["auto"] is True
+vs.set_auto_sync(db, False)
+started = []
+_rb, vs.run_background = vs.run_background, lambda kind, fn: started.append(kind) or True
+import app.database as _dbmod  # noqa: E402
+_sl, _dbmod.SessionLocal = _dbmod.SessionLocal, ss.SessionLocal
+try:
+    vs.scheduled_osv(); vs.scheduled_kev(); vs.scheduled_boot()
+    assert started == [], started
+    vs.set_auto_sync(db, True)
+    vs.scheduled_kev()
+    assert started == ["kev"], started
+finally:
+    vs.run_background = _rb
+    _dbmod.SessionLocal = _sl
+print("18) stop / automatic download ok")
 
 print("ALL VULN TESTS PASSED")

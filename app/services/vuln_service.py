@@ -329,7 +329,9 @@ def _store(db, records, source: str) -> dict:
         replace_ids.clear()
         inserts.clear()
 
-    for rec in records:
+    for n_rec, rec in enumerate(records):
+        if n_rec % 500 == 0:
+            check_cancel()
         oid, modified, rows = rec["id"], rec["modified"], rec["rows"]
         if not oid:
             continue
@@ -952,14 +954,16 @@ def bundle_info(db) -> dict:
             "last_applied": _setting(db, BUNDLE_APPLIED_KEY)}
 
 
-def export_bundle(db, delta: bool = False) -> bytes:
+def export_bundle(db, delta: bool = False, info: Optional[dict] = None) -> bytes:
     """Compact gzip JSON of the stored kernel / Windows rows + CVE descriptions
     + KEV + the Debian ABI table, for servers without internet.
     delta=True: only the records stored or replaced since the last package
     (a replaced record is re-inserted whole, so new row ids = changed records);
     KEV and the ABI table are always complete (small)."""
     mark, mark_at = _bundle_mark(db)
-    delta = delta and mark is not None
+    delta = delta and mark is not None          # no earlier package here -> always complete
+    if info is not None:
+        info["partial"] = delta
     q = db.query(VulnAdvisory)
     if delta:
         q = q.filter(VulnAdvisory.id > mark)
@@ -1119,6 +1123,7 @@ def _meta_set(db, key, value):
 def _get(url, stream=False, timeout=(8, 60), headers=None, retries=True):
     """Single place for outbound HTTP (tests replace it). Extra company CAs,
     VULN_PROXY and retries come from core/outbound."""
+    check_cancel()
     from ..core import outbound
     h = dict(_UA)
     if "api.github.com" in url:
@@ -1136,6 +1141,7 @@ def _download(url, suffix, timeout=(8, 300)) -> str:
         with _get(url, stream=True, timeout=timeout) as r:
             r.raise_for_status()
             for chunk in r.iter_content(1 << 20):
+                check_cancel()
                 tmp.write(chunk)
         tmp.close()
         return tmp.name
@@ -1328,6 +1334,7 @@ def _download_if_changed(db, url, suffix, have_data: bool, timeout=(8, 300)):
                 return None, old
             r.raise_for_status()
             for chunk in r.iter_content(1 << 20):
+                check_cancel()
                 tmp.write(chunk)
             h = getattr(r, "headers", None) or {}
             val = {"etag": h.get("ETag"), "lm": h.get("Last-Modified")}
@@ -1404,8 +1411,17 @@ def _osv_fetch(eco: str, ids) -> tuple:
             logger.debug("OSV record %s/%s failed: %s", eco, rid, exc)
             return None, False
     recs, ok, failed = [], 0, 0
+    stop = threading.Event()
+
+    def guarded(rid):
+        if stop.is_set():
+            return None, False
+        return one(rid)
     with ThreadPoolExecutor(max_workers=8) as ex:
-        for rec, good in ex.map(one, ids):
+        for rec, good in ex.map(guarded, ids):
+            if JOB.get("cancel") and threading.current_thread().name.startswith("vuln-"):
+                stop.set()                        # queued fetches return at once
+                check_cancel()
             if good:
                 ok += 1
                 if rec:
@@ -2269,6 +2285,7 @@ def recompute(db, platform_id: Optional[int] = None, vm_ids=None) -> dict:
     cols = (VmVuln.id, VmVuln.vm_id, VmVuln.cve, VmVuln.closed_at) + \
         tuple(getattr(VmVuln, f) for f in _FIELDS)
     for i in range(0, len(vms), 25):
+        check_cancel()
         chunk = vms[i:i + 25]
         existing = defaultdict(dict)
         for r in db.query(*cols).filter(VmVuln.vm_id.in_([v.id for v in chunk])):
@@ -2372,7 +2389,39 @@ def _cve_list(cves, kev, word):
 # =============================================================== background
 _job_lock = threading.Lock()
 JOB = {"running": False, "kind": None, "started": None, "finished": None,
-       "ok": None, "message": None}
+       "ok": None, "message": None, "cancel": False}
+AUTO_KEY = "vuln_auto_sync"
+
+
+class JobCancelled(BaseException):
+    """Raised at the next check point after "Stop" (phase 174). A
+    BaseException on purpose: the per-source `except Exception` handlers must
+    not swallow it and carry on with the next source."""
+
+
+def check_cancel() -> None:
+    """Check point: every HTTP request, every 1 MB downloaded, every 500
+    records stored, every VM batch evaluated."""
+    if JOB.get("cancel") and threading.current_thread().name.startswith("vuln-"):
+        raise JobCancelled()
+
+
+def cancel_job() -> bool:
+    """Ask the running job to stop; True if one was running."""
+    if not JOB.get("running"):
+        return False
+    JOB["cancel"] = True
+    return True
+
+
+def auto_sync_enabled(db) -> bool:
+    return (_setting(db, AUTO_KEY) or "1") != "0"
+
+
+def set_auto_sync(db, enabled: bool) -> bool:
+    _meta_set(db, AUTO_KEY, "1" if enabled else "0")
+    db.commit()
+    return enabled
 
 
 def run_background(kind: str, fn) -> bool:
@@ -2380,7 +2429,7 @@ def run_background(kind: str, fn) -> bool:
     if not _job_lock.acquire(blocking=False):
         return False
     JOB.update(running=True, kind=kind, started=datetime.utcnow().isoformat() + "Z",
-               finished=None, ok=None, message=None)
+               finished=None, ok=None, message=None, cancel=False, cancelled=False)
 
     def work():
         from ..database import SessionLocal
@@ -2388,13 +2437,17 @@ def run_background(kind: str, fn) -> bool:
         try:
             msg = fn(db)
             JOB.update(ok=True, message=msg)
+        except JobCancelled:
+            db.rollback()                         # the source in progress is dropped; earlier ones stay
+            logger.info("Vulnerability job '%s' stopped by the user", kind)
+            JOB.update(ok=False, message="Kullanıcı tarafından durduruldu", cancelled=True)
         except Exception as exc:
             db.rollback()
             logger.info("Vulnerability job '%s' failed: %s", kind, exc)
             JOB.update(ok=False, message=f"{type(exc).__name__}: {exc}"[:400])
         finally:
             db.close()
-            JOB.update(running=False, finished=datetime.utcnow().isoformat() + "Z")
+            JOB.update(running=False, finished=datetime.utcnow().isoformat() + "Z", cancel=False)
             _job_lock.release()
     threading.Thread(target=work, name=f"vuln-{kind}", daemon=True).start()
     return True
@@ -2432,12 +2485,24 @@ def job_sync(db, osv: bool = True):
     return out
 
 
+def _auto_on() -> bool:
+    """Scheduled downloads switched off (offline server: no traffic, no work)."""
+    from ..database import SessionLocal
+    db = SessionLocal()
+    try:
+        return auto_sync_enabled(db)
+    finally:
+        db.close()
+
+
 def scheduled_kev():
-    run_background("kev", lambda db: job_sync(db, osv=False))
+    if _auto_on():
+        run_background("kev", lambda db: job_sync(db, osv=False))
 
 
 def scheduled_osv():
-    run_background("osv", lambda db: job_sync(db, osv=True))
+    if _auto_on():
+        run_background("osv", lambda db: job_sync(db, osv=True))
 
 
 def scheduled_boot():
@@ -2446,6 +2511,9 @@ def scheduled_boot():
     from ..database import SessionLocal
     db = SessionLocal()
     try:
+        if not auto_sync_enabled(db):
+            logger.info("Vulnerability data: automatic download is off - boot sync skipped")
+            return
         last = _setting(db, "vuln_last_osv")
         empty = not db.query(VulnAdvisory.id).first()
     finally:
@@ -2455,6 +2523,7 @@ def scheduled_boot():
 
 
 def meta(db) -> dict:
+    """(+ "auto": scheduled downloads on/off)"""
     n = db.query(func.count(VulnAdvisory.id)).scalar() or 0
     by_eco = dict(db.query(VulnAdvisory.ecosystem, func.count(func.distinct(VulnAdvisory.cve)))
                   .group_by(VulnAdvisory.ecosystem).all())
@@ -2466,7 +2535,8 @@ def meta(db) -> dict:
             "last_sync": _setting(db, "vuln_last_sync"), "last_attempt": _setting(db, "vuln_last_attempt"),
             "last_error": _setting(db, "vuln_last_error"), "job": dict(JOB),
             "kev_source": _setting(db, "vuln_kev_source"),
-            "osv_sources": json.loads(_setting(db, "vuln_osv_sources") or "{}")}
+            "osv_sources": json.loads(_setting(db, "vuln_osv_sources") or "{}"),
+            "auto": auto_sync_enabled(db)}
 
 
 # ==================================================================== views

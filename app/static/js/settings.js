@@ -293,7 +293,8 @@ const Settings = {
     const job = d.job || {};
     const jobTxt = job.running
       ? '<span class="spinner-border spinner-border-sm"></span> ' + t('vd2.running', 'çalışıyor') + ' (' + App.esc(job.kind || '') + ')'
-      : job.finished ? (job.ok ? '<span class="text-success">✓</span> ' : '<span class="text-danger">✗</span> ') +
+      : job.finished ? (job.ok ? '<span class="text-success">✓</span> ' : job.cancelled ? '<span class="text-muted">⏹</span> '
+          : '<span class="text-danger">✗</span> ') +
         dt(job.finished) + ' <span class="small text-muted">' + App.esc(job.ok ? Settings.vdJobText(job.message)
           : (job.message || '')) + '</span>' : '—';
     document.getElementById('vdMeta').innerHTML =
@@ -326,6 +327,12 @@ const Settings = {
           '<tr><td>' + App.esc(e) + '</td><td class="text-end">' + n.toLocaleString() + '</td></tr>').join('')
       : '<tr><td colspan="2" class="text-muted small p-3">' + t('vd2.noData', 'Henüz veri yok.') + '</td></tr>';
     ['vdSyncBtn', 'vdKevBtn'].forEach(id => { document.getElementById(id).disabled = !!job.running; });
+    const cb = document.getElementById('vdCancelBtn');
+    cb.classList.toggle('d-none', !(job.running && App.role() === 'admin'));
+    cb.disabled = !!job.cancel;
+    const auto = document.getElementById('vdAuto');
+    auto.checked = d.auto !== false;
+    auto.disabled = App.role() !== 'admin';
     clearTimeout(Settings._vdTimer);
     if (job.running) Settings._vdTimer = setTimeout(() => Settings.loadVuln(), 3000);
     else if (Settings._vdWasRunning) { Settings.loadSources(); Settings.loadUnverified(); Settings.loadBundleMark(); }
@@ -568,6 +575,23 @@ const Settings = {
     const el = document.getElementById('vdMsg');
     el.className = 'small mt-2 ' + (ok ? 'text-success' : 'text-danger');
     el.textContent = text;
+  },
+
+  /** Stop the running job at its next check point (phase 174). */
+  async vdCancel() {
+    const btn = document.getElementById('vdCancelBtn');
+    btn.disabled = true;
+    try { await App.api('/api/vulns/cancel', {method: 'POST', body: {}}); }
+    catch (e) { btn.disabled = false; return; }
+    Settings.vdMsg(true, t('vd2.cancelling', 'Durduruluyor - indirme / işlem bir sonraki adımda kesilir.'));
+    Settings.loadVuln();
+  },
+
+  async vdAuto(el) {
+    try {
+      await App.api('/api/vulns/auto', {method: 'PUT', body: {enabled: el.checked}});
+      App.toast(el.checked ? t('vd2.autoOn', 'Otomatik indirme açık.') : t('vd2.autoOff', 'Otomatik indirme kapalı - yalnızca elle indirme / yükleme.'));
+    } catch (e) { el.checked = !el.checked; }
   },
 
   async vdSync(kevOnly) {
