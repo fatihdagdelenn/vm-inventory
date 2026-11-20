@@ -311,7 +311,7 @@ const Settings = {
       row(t('vd2.vms', 'VM'), '<a href="/vms?q=zafiyet:var,yok">' + d.vms_evaluated + ' ' + t('vd2.evaluated', 'değerlendirildi') +
         '</a> · <a href="/vms?q=zafiyet:bilinmiyor">' + d.vms_unknown + ' ' + t('vd2.unknown', 'değerlendirilemedi') +
         '</a> · <a href="/vms?q=zafiyet:kapsamdisi">' + d.vms_skipped + ' ' + t('vd2.skipped', 'kapsam dışı') + '</a>');
-    const ecoNames = [...new Set(Object.keys(d.by_ecosystem || {}).map(e => e.split(':')[0]))].sort();
+    const ecoNames = [...new Set(Object.keys(d.by_ecosystem || {}).map(e => e.split(':')[0].replace(/^Windows Server$/, 'Windows')))].sort();
     document.getElementById('vdBundleInfo').innerHTML = ecoNames.length
       ? '<i class="bi bi-box-seam"></i> ' + t('vd2.bundleHas', 'Paket bu sunucudaki verinin tamamını içerir:') + ' <b>' +
         App.esc(ecoNames.concat(d.kev ? ['CISA KEV'] : []).join(', ')) + '</b>. ' +
@@ -328,7 +328,7 @@ const Settings = {
     ['vdSyncBtn', 'vdKevBtn'].forEach(id => { document.getElementById(id).disabled = !!job.running; });
     clearTimeout(Settings._vdTimer);
     if (job.running) Settings._vdTimer = setTimeout(() => Settings.loadVuln(), 3000);
-    else if (Settings._vdWasRunning) { Settings.loadSources(); Settings.loadUnverified(); }
+    else if (Settings._vdWasRunning) { Settings.loadSources(); Settings.loadUnverified(); Settings.loadBundleMark(); }
     Settings._vdWasRunning = !!job.running;
   },
 
@@ -344,6 +344,7 @@ const Settings = {
     }
     const nf = n => Number(n || 0).toLocaleString(window.I18N && I18N.lang === 'en' ? 'en' : 'tr');
     const lines = [];
+    let cls_gap = false;
     const typeTxt = {bundle: t('vd2.tBundle', 'Veri paketi'), 'osv-zip': 'OSV all.zip', 'osv-tar': 'OSV .tar.gz',
                      'osv-json': 'OSV JSON', kev: 'CISA KEV', msrc: t('vd2.tMsrc', 'Microsoft güncelleme verisi (CVRF)'),
                      'oracle-oval': 'Oracle OVAL', photon: 'Photon CVE'}[m.type] || m.type;
@@ -353,6 +354,12 @@ const Settings = {
         (parts.length ? App.esc(parts.join(' · ')) : t('vd2.empty', 'boş')));
     } else {
       lines.push('<b>' + App.esc(typeTxt) + '</b>');
+    }
+    if (m.partial) lines.push(t('vd2.partial', 'Yalnızca değişenler paketi ({d} sonrası)').replace('{d}', m.since ? App.fmtDate(m.since) : '-'));
+    if (m.gap) {
+      cls_gap = true;
+      lines.push('⚠ ' + t('vd2.gap', 'Bu paket {d} tarihli bir paketin devamı, ama o paket bu sunucuya yüklenmemiş (en son yüklenen: {a}) - aradaki değişiklikler eksik. Tam paket yükleyin.')
+        .replace('{d}', m.since ? App.fmtDate(m.since) : '-').replace('{a}', m.gap === '-' ? '-' : App.fmtDate(m.gap)));
     }
     if (m.records != null) lines.push(t('vd2.newRecords', 'Yeni / güncellenen kayıt') + ': ' + nf(m.records) +
       (m.kept ? ' · ' + t('vd2.keptRecords', 'zaten yüklü (değişmedi)') + ': ' + nf(m.kept) : ''));
@@ -366,6 +373,7 @@ const Settings = {
     } else if (m.records === 0 && m.kept) {
       lines.push(t('vd2.sameData', 'Paketteki veri zaten yüklüydü; yeni bir şey yok.'));
     }
+    if (cls_gap) cls = 'alert-warning';
     if ((m.missing || []).length) {
       cls = 'alert-warning';
       lines.push(t('vd2.stillMissing', 'Bu sunucuda VM\'i olup hâlâ verisi olmayan dağıtımlar:') + ' <b>' + m.missing.map(App.esc).join(', ') + '</b>');
@@ -382,7 +390,11 @@ const Settings = {
       (m.kept ? ' · =' + m.kept : ''));
     if (m.kev && m.kev.kev != null) parts.push('KEV ' + (m.kev.kept ? '=' : m.kev.kev) +
       (m.kev.source ? ' (' + m.kev.source + ')' : ''));
-    if (m.osv) parts.push('OSV ' + Object.keys(m.osv).filter(k => !m.osv[k].error).length + '/' + Object.keys(m.osv).length);
+    if (m.osv) {
+      const changed = Object.values(m.osv).reduce((a, x) => a + (x.mode === 'incremental' ? (x.changed || 0) : 0), 0);
+      parts.push('OSV ' + Object.keys(m.osv).filter(k => !m.osv[k].error).length + '/' + Object.keys(m.osv).length +
+        (changed ? ' (' + changed.toLocaleString() + ' ' + t('vd2.incr', 'değişen kayıt') + ')' : ''));
+    }
     if (m.match) parts.push(t('vd2.new', 'yeni bulgu') + ' ' + m.match.new + ' · ' + t('vd2.closed', 'kapanan') + ' ' + m.match.closed);
     const unk = (m.unrecognized || []).concat(...Object.values(m.osv || {}).map(x => x.unrecognized || []));
     if (unk.length) parts.push('⚠ ' + t('vd2.unrecognized', 'tanınmayan kayıtlar') + ': ' + unk.slice(0, 4).join(', '));
@@ -463,6 +475,25 @@ const Settings = {
   },
 
   vdModeChanged() { Settings.renderSources(); },
+
+  /** Last package taken here / imported here (phase 173). */
+  async loadBundleMark() {
+    let d;
+    try { d = await App.api('/api/vulns/bundle-info'); } catch (e) { return; }
+    const el = document.getElementById('vdBundleMark');
+    if (!el) return;
+    const dt = iso => App.fmtDate(iso.length > 19 ? iso : iso + 'Z');
+    const parts = [];
+    if (d.last_package) {
+      parts.push(t('vd2.lastPkg', 'Son paket: {d}').replace('{d}', dt(d.last_package)) +
+        (d.changed_records != null ? ' · ' + t('vd2.changedSince', 'o tarihten beri değişen kayıt: {n}')
+          .replace('{n}', Number(d.changed_records).toLocaleString()) : ''));
+    } else {
+      parts.push(t('vd2.noPkg', 'Bu sunucuda henüz paket alınmadı - ilk paket her zaman tam olur.'));
+    }
+    if (d.last_applied) parts.push(t('vd2.lastApplied', 'Bu sunucuya en son yüklenen paket: {d}').replace('{d}', dt(d.last_applied)));
+    el.innerHTML = parts.map(App.esc).join('<br>');
+  },
 
   /** Not-verifiable VMs grouped by reason (phase 170). */
   async loadUnverified() {
@@ -596,6 +627,7 @@ Settings.loadLifecycle();
 Settings.loadVuln();
 Settings.loadSources();
 Settings.loadUnverified();
+Settings.loadBundleMark();
 Settings.loadCa();
 document.getElementById('auditSearch').addEventListener('input', App.debounce(() => Settings.loadAudit(), 300));
 document.getElementById('auditAction').addEventListener('change', () => Settings.loadAudit());

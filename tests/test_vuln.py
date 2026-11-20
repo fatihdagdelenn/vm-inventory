@@ -25,6 +25,7 @@ import os
 import sys
 import tempfile
 import zipfile
+from sqlalchemy import func
 from datetime import datetime
 sys.path.insert(0, "tests")
 
@@ -318,7 +319,9 @@ def _offline(*a, **k):
     raise requests.ConnectionError("no route to host")
 
 
+_orig_sget = requests.Session.get
 requests.get = _offline
+requests.Session.get = lambda self, url, **k: _offline(url, **k)   # outbound: keep-alive session (phase 173)
 try:
     vs.job_sync(db, osv=True)
     raise AssertionError("offline sync must raise")
@@ -326,6 +329,7 @@ except RuntimeError as exc:
     assert "Ağ erişimi yok" in str(exc), str(exc)
 finally:
     requests.get = _orig
+    requests.Session.get = _orig_sget
 m = vs.meta(db)
 assert "Ağ erişimi yok" in m["last_error"] and m["rows"] > 0 and m["kev"] == 2
 
@@ -353,10 +357,12 @@ def _kev_only(url, *a, **k):        # KEV mirror reachable, OSV storage blocked
 
 
 requests.get = _kev_only
+requests.Session.get = lambda self, url, **k: _kev_only(url, **k)
 try:
     res = vs.job_sync(db, osv=True)
 finally:
     requests.get = _orig
+    requests.Session.get = _orig_sget
 assert res["kev"]["kev"] == 3 and "OSV" in res["errors"][0] and "match" in res
 db.expire_all()
 assert finding(a124, "CVE-2026-43040").kev is True and a124.vuln_kev == 1   # recomputed
@@ -416,7 +422,7 @@ class _File:
 _seen = []
 
 
-def _github_only(url, stream=False, timeout=None, headers=None):
+def _github_only(url, stream=False, timeout=None, headers=None, **_k):
     _seen.append(url)
     if url.startswith("https://github.com/cisagov/kev-data/archive/"):
         return _File(kev_tar)
@@ -568,7 +574,8 @@ try:
         vs.sync_osv(db)
     except RuntimeError:
         pass
-    assert [u for u in _urls if "storage.googleapis" in u] == [vs.OSV_URL.format("Ubuntu")], _urls
+    # (phase 173: the change list is read first; unreachable -> the storage counts as down)
+    assert [u for u in _urls if "storage.googleapis" in u] == [vs.OSV_IDS_URL.format("Ubuntu")], _urls
     _urls.clear()
     vs.set_selection(db, "manual", ["SUSE", "Red Hat"])
     assert vs.selected_sources(db) == ["Red Hat", "SUSE"]       # catalogue order
@@ -576,7 +583,7 @@ try:
         vs.sync_osv(db)
     except RuntimeError:
         pass
-    assert _urls[0] == vs.OSV_URL.format("Red%20Hat") and not any("AlmaLinux" in u for u in _urls), _urls
+    assert _urls[0] == vs.OSV_IDS_URL.format("Red%20Hat") and not any("AlmaLinux" in u for u in _urls), _urls
     vs.set_selection(db, "manual", [])
     try:
         vs.sync_osv(db)
@@ -1026,5 +1033,149 @@ g = groups["Windows güncelleme numarası (UBR) bilinmiyor"]
 assert g["count"] >= 2 and "win-px" in g["examples"] and "Proxmox" in g["hint"], g
 assert "Proxmox VE çekirdeği (-pve)" in groups and groups["Çekirdek sürümü bilinmiyor"]["count"] >= 2
 print("16) not-verified cases ok")
+
+# ------------------------------------------------------------ 17) daily changes-only sync (phase 173)
+def _deb(rid, fixed, modified, pkg="linux"):
+    return {"id": rid, "modified": modified, "upstream": [rid.replace("DEBIAN-", "")],
+            "affected": [{"package": {"ecosystem": "Debian:12", "name": pkg},
+                          "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": fixed}]}]}]}
+
+
+OSV = {"DEBIAN-CVE-2026-9001": _deb("DEBIAN-CVE-2026-9001", "6.1.158-1", "2026-11-01T10:00:00Z"),
+       "DEBIAN-CVE-2026-9002": _deb("DEBIAN-CVE-2026-9002", "2.0-1", "2026-11-01T11:00:00Z", pkg="openssl")}
+CSV = ["2026-11-01T11:00:00Z,DEBIAN-CVE-2026-9002", "2026-11-01T10:00:00Z,DEBIAN-CVE-2026-9001"]
+calls = []
+
+
+class _Body:
+    def __init__(self, data, status=200, headers=None):
+        self.data, self.status_code, self.headers = data, status, headers or {}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        pass
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise requests.HTTPError(f"{self.status_code} Client Error")
+
+    def iter_content(self, n):
+        for i in range(0, len(self.data), n):
+            yield self.data[i:i + n]
+
+    @property
+    def content(self):
+        return self.data
+
+    @property
+    def text(self):
+        return self.data.decode()
+
+
+def _osv_get(url, headers=None, **k):
+    calls.append((url, dict(headers or {})))
+    if url.endswith("/Debian/modified_id.csv"):
+        return _Body(("\n".join(CSV) + "\n").encode())
+    if url.endswith("/Debian/all.zip"):
+        if (headers or {}).get("If-None-Match") == '"zip-1"':
+            return _Body(b"", 304)
+        zp = os.path.join(tmp, "deb.zip")
+        with zipfile.ZipFile(zp, "w") as z:
+            for rid, rec in OSV.items():
+                z.writestr(rid + ".json", json.dumps(rec))
+        return _Body(open(zp, "rb").read(), headers={"ETag": '"zip-1"'})
+    m = re.search(r"/Debian/(.+)\.json$", url)
+    if m:
+        rec = OSV.get(requests.utils.unquote(m.group(1)))
+        return _Body(json.dumps(rec).encode()) if rec else _Body(b"", 404)
+    if "linux-signed-amd64" in url:
+        return _Body(b"")
+    raise requests.ConnectionError("blocked")
+
+
+import re  # noqa: E402
+db4, _ = make_env("_vuln4")
+ss.SessionLocal = _main_session
+vs._get = _osv_get
+try:
+    r1 = vs.sync_osv(db4, ["Debian"])                      # first time: the dump
+    assert r1["Debian"]["mode"] == "full" and r1["Debian"]["records"] == 1, r1
+    assert vs._cursors(db4)["Debian"] == "2026-11-01T11:00:00", vs._cursors(db4)
+    calls.clear()
+    r2 = vs.sync_osv(db4, ["Debian"])                      # nothing new: one short read of the list
+    assert {k: v for k, v in r2["Debian"].items() if k != "abi"} == \
+        {"records": 0, "replaced": 0, "kept": 0, "rows": 0, "mode": "incremental", "changed": 0, "failed": 0}, r2
+    assert not any("all.zip" in u for u, _ in calls) and not any(u.endswith(".json") for u, _ in calls)
+    # a day later: one kernel record revised, one new non-kernel record
+    OSV["DEBIAN-CVE-2026-9001"] = _deb("DEBIAN-CVE-2026-9001", "6.1.159-1", "2026-11-02T08:00:00Z")
+    OSV["DEBIAN-CVE-2026-9003"] = _deb("DEBIAN-CVE-2026-9003", "1.0-1", "2026-11-02T09:00:00Z", pkg="curl")
+    CSV[:0] = ["2026-11-02T09:00:00Z,DEBIAN-CVE-2026-9003", "2026-11-02T08:00:00Z,DEBIAN-CVE-2026-9001"]
+    calls.clear()
+    r3 = vs.sync_osv(db4, ["Debian"])
+    assert r3["Debian"]["mode"] == "incremental" and r3["Debian"]["changed"] == 2 and r3["Debian"]["replaced"] == 1, r3
+    assert sorted(u.rsplit("/", 1)[1] for u, _ in calls if u.endswith(".json")) == \
+        ["DEBIAN-CVE-2026-9001.json", "DEBIAN-CVE-2026-9003.json"]
+    assert db4.query(VulnAdvisory).filter_by(cve="CVE-2026-9001").one().fixed == "6.1.159-1"
+    assert vs._cursors(db4)["Debian"] == "2026-11-02T09:00:00"
+    # too many changes (a kernel update day) -> the dump again, answered 304 when unchanged
+    CSV[:0] = ["2026-11-03T09:00:00Z,DEBIAN-CVE-2026-9002"]
+    _lim = vs.OSV_MAX_CHANGED
+    vs.OSV_MAX_CHANGED = 0
+    calls.clear()
+    r4 = vs.sync_osv(db4, ["Debian"])
+    vs.OSV_MAX_CHANGED = _lim
+    zipcall = [h for u, h in calls if u.endswith("all.zip")]
+    assert zipcall and zipcall[0].get("If-None-Match") == '"zip-1"', calls
+    assert r4["Debian"]["mode"] == "full" and r4["Debian"].get("unchanged"), r4
+finally:
+    vs._get = _orig_get
+print("17a) incremental OSV ok")
+
+# changes-only package for the offline server, with gap detection
+full = json.loads(gzip.decompress(vs.export_bundle(db4)))
+assert not full.get("partial") and vs.bundle_info(db4)["changed_records"] == 0
+vs._store(db4, vs._osv_records([_deb("DEBIAN-CVE-2026-9004", "6.1.160-1", "2026-11-04T08:00:00Z")]), "osv")
+assert vs.bundle_info(db4)["changed_records"] == 1
+part = json.loads(gzip.decompress(vs.export_bundle(db4, delta=True)))
+assert part["partial"] and part["since"] == full["generated_at"], part
+assert [r["id"] for r in part["records"]] == ["DEBIAN-CVE-2026-9004"] and [c[0] for c in part["cves"]] == ["CVE-2026-9004"]
+db5, _ = make_env("_vuln5")
+ss.SessionLocal = _main_session
+r = vs.import_bundle(db5, part)                          # the full one was never imported here
+assert r["partial"] and r["gap"] == "-", r
+db6, _ = make_env("_vuln6")
+ss.SessionLocal = _main_session
+assert "gap" not in vs.import_bundle(db6, full)
+r = vs.import_bundle(db6, part)
+assert r["partial"] and "gap" not in r and r["records"] == 1, r
+assert vs.bundle_info(db6)["last_applied"] == part["generated_at"]
+print("17b) changes-only package ok")
+
+# vendor files are fetched only when changed (ETag -> 304), Photon not re-imported
+ph_bytes = open(FX + "cve_data_photon5.0.json", "rb").read()
+pcalls = []
+
+
+def _ph_get(url, headers=None, **k):
+    pcalls.append(dict(headers or {}))
+    if (headers or {}).get("If-None-Match") == '"ph-1"':
+        return _Body(b"", 304)
+    return _Body(ph_bytes, headers={"ETag": '"ph-1"'})
+
+
+vs._get = _ph_get
+try:
+    a1 = vs.sync_vendor(db4, "Photon OS")
+    n_rows = db4.query(VulnAdvisory).filter(VulnAdvisory.ecosystem.like("Photon OS:%")).count()
+    max_id = db4.query(func.max(VulnAdvisory.id)).scalar()
+    a2 = vs.sync_vendor(db4, "Photon OS")
+finally:
+    vs._get = _orig_get
+assert all(v != "same" for v in a1["versions"].values()) and set(a2["versions"].values()) == {"same"}, (a1, a2)
+assert pcalls[-1].get("If-None-Match") == '"ph-1"' and n_rows > 0
+assert db4.query(func.max(VulnAdvisory.id)).scalar() == max_id      # nothing re-inserted -> no recompute
+print("17c) conditional vendor download ok")
 
 print("ALL VULN TESTS PASSED")

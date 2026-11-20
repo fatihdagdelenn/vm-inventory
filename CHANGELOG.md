@@ -28,7 +28,40 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-Nothing yet (phase 173 →; internal v1.9.1 →).
+Phases after v1.9.0 (phase 173 →; internal v1.9.1 →).
+
+### 🔁 Daily vulnerability data, downloading only what changed (phase 173)
+- Asked: the full download took long; CVEs come out every day. Before, OSV
+  dumps (Ubuntu / Debian: hundreds of MB) were downloaded **weekly in full**,
+  vendor files on every run, and an offline server got the **whole** package
+  each time.
+- **OSV, changes only:** each ecosystem's `modified_id.csv` (newest first,
+  documented by osv.dev) is read down to the last run's timestamp and only
+  those records are fetched (`<id>.json`, 8 at a time on keep-alive
+  connections). The dump is used the first time, when the cursor is older
+  than 30 days, or when more than 3,000 records changed (a kernel-update day
+  rewrites thousands at once). A record that fails is fetched again next time
+  (the cursor does not move past it).
+- **Vendor files / dumps / GitHub archive:** downloaded with the ETag /
+  Last-Modified of the last import; `304 Not Modified` = skipped. Photon is
+  no longer re-inserted when unchanged (it used to force a full re-evaluation
+  of every VM).
+- **Schedule:** everything daily at 03:41, an extra KEV check at 17:23 (was:
+  KEV daily, the rest weekly); the boot-time catch-up runs when the last
+  download is older than 20 hours.
+- **Resilience:** all data downloads go through a keep-alive session with
+  retries (3 tries, backoff 1.5 / 3 / 6 s on connection errors, 429, 5xx;
+  `Retry-After` honoured). The reachability probe stays single-attempt.
+- **Offline servers:** **Changes only** next to **Download data package**
+  gives a small package with the records stored or replaced since the last
+  package (KEV and the ABI table always complete). The card shows when the
+  last package was taken and how many records changed since; the offline
+  server shows the last package it imported and **warns when a changes-only
+  package continues one it never got** (then import a full package).
+- Honest limits: a changes-only package does not carry deletions (a CVE
+  removed from a feed stays on the offline server until a full package);
+  `modified_id.csv` lists every package of an ecosystem, so a busy day can
+  still mean a few thousand small requests - above 3,000 the dump is used.
 
 ---
 

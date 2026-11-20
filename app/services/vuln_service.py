@@ -67,6 +67,16 @@ from ..models import (ChangeHistory, VirtualMachine, VmVuln, VulnAdvisory, VulnC
 logger = logging.getLogger("vuln")
 
 OSV_URL = "https://osv-vulnerabilities.storage.googleapis.com/{}/all.zip"
+# Daily updates without the dump (phase 173): every ecosystem folder has
+# modified_id.csv - "<iso modified>,<id>" lines, newest first (osv.dev data
+# docs) - and each record as <id>.json. Only records changed since the last
+# run are fetched; the dump is used for the first download, after OSV_FULL_DAYS
+# or when more than OSV_MAX_CHANGED records changed (a kernel update day).
+OSV_IDS_URL = "https://osv-vulnerabilities.storage.googleapis.com/{}/modified_id.csv"
+OSV_REC_URL = "https://osv-vulnerabilities.storage.googleapis.com/{}/{}.json"
+OSV_MAX_CHANGED = 3000
+OSV_FULL_DAYS = 30
+OSV_CURSOR_KEY = "vuln_osv_cursor"
 OSV_ECOSYSTEMS = ("Ubuntu", "Debian", "AlmaLinux", "Rocky Linux", "Red Hat", "SUSE", "openSUSE")
 # Selectable data sources (Administration -> Vulnerability Data). `distros` are
 # os_identity ids whose VMs are matched with the source - "auto" mode downloads
@@ -918,25 +928,68 @@ def _iso(v):
     return v.isoformat(timespec="seconds") + "Z" if v else None
 
 
-def export_bundle(db) -> bytes:
-    """Compact gzip JSON of every stored kernel row + CVE descriptions + KEV,
-    for servers without internet."""
+BUNDLE_MARK_KEY = "vuln_bundle_mark"          # "<max advisory id>|<generated_at>" of the last package
+BUNDLE_APPLIED_KEY = "vuln_bundle_applied"    # generated_at of the last package imported here
+
+
+def _bundle_mark(db):
+    raw = (_setting(db, BUNDLE_MARK_KEY) or "").split("|")
+    try:
+        return int(raw[0]), (raw[1] if len(raw) > 1 else None)
+    except ValueError:
+        return None, None
+
+
+def bundle_info(db) -> dict:
+    """Administration: when the last package was taken and how many records
+    changed since (= the size of a 'changes only' package)."""
+    mark, at = _bundle_mark(db)
+    changed = None
+    if mark is not None:
+        changed = db.query(func.count(func.distinct(VulnAdvisory.osv_id))) \
+            .filter(VulnAdvisory.id > mark).scalar() or 0
+    return {"last_package": at, "changed_records": changed,
+            "last_applied": _setting(db, BUNDLE_APPLIED_KEY)}
+
+
+def export_bundle(db, delta: bool = False) -> bytes:
+    """Compact gzip JSON of the stored kernel / Windows rows + CVE descriptions
+    + KEV + the Debian ABI table, for servers without internet.
+    delta=True: only the records stored or replaced since the last package
+    (a replaced record is re-inserted whole, so new row ids = changed records);
+    KEV and the ABI table are always complete (small)."""
+    mark, mark_at = _bundle_mark(db)
+    delta = delta and mark is not None
+    q = db.query(VulnAdvisory)
+    if delta:
+        q = q.filter(VulnAdvisory.id > mark)
+    top = db.query(func.max(VulnAdvisory.id)).scalar() or 0
     recs = {}
-    for a in db.query(VulnAdvisory).order_by(VulnAdvisory.osv_id, VulnAdvisory.id).yield_per(5000):
+    for a in q.order_by(VulnAdvisory.osv_id, VulnAdvisory.id).yield_per(5000):
         r = recs.get(a.osv_id)
         if r is None:
             r = recs[a.osv_id] = {"id": a.osv_id, "modified": _iso(a.modified),
                                   "severity": a.severity, "score": a.score, "rows": []}
         r["rows"].append([a.cve, a.ecosystem, a.package, a.introduced, a.fixed])
-    doc = {"kind": BUNDLE_KIND, "schema": 1, "generated_at": _iso(datetime.utcnow()),
+    cve_q = db.query(VulnCve)
+    if delta:
+        wanted = {row[0] for r in recs.values() for row in r["rows"]}
+        cve_q = [c for c in cve_q.all() if c.cve in wanted]
+    now = _iso(datetime.utcnow())
+    doc = {"kind": BUNDLE_KIND, "schema": 1, "generated_at": now,
            "records": list(recs.values()),
            "cves": [[c.cve, c.summary, c.severity, bool(c.specific), c.score, _iso(c.modified)]
-                    for c in db.query(VulnCve).all()],
+                    for c in (cve_q if delta else cve_q.all())],
            "kev_version": _setting(db, "vuln_kev_version"),
            "kev": [[k.cve, k.date_added.isoformat() if k.date_added else None,
                     k.due_date.isoformat() if k.due_date else None, k.ransomware, k.name]
                    for k in db.query(VulnKev).all()],
            "abi": [[a.release, a.abi, a.version] for a in db.query(VulnKernelAbi).all()]}
+    if delta:
+        doc["partial"] = True
+        doc["since"] = mark_at                     # generated_at of the package this one follows
+    _meta_set(db, BUNDLE_MARK_KEY, f"{top}|{now}")
+    db.commit()
     return gzip.compress(json.dumps(doc, separators=(",", ":")).encode())
 
 
@@ -963,8 +1016,8 @@ def import_bundle(db, doc: dict) -> dict:
     if doc.get("schema") != 1:
         raise ValueError(f"desteklenmeyen paket sürümü: {doc.get('schema')}")
     contents = bundle_contents(doc)
-    if any("/OL" in str(r.get("id") or "") for r in doc.get("records") or []):
-        _drop_legacy_oracle(db)              # the package brings per-release Oracle records
+    if not doc.get("partial") and any("/OL" in str(r.get("id") or "") for r in doc.get("records") or []):
+        _drop_legacy_oracle(db)              # a FULL package brings every per-release Oracle record
     keys = ("cve", "ecosystem", "package", "introduced", "fixed")
     res = _store(db, ({"id": r.get("id"), "modified": _ts(r.get("modified")),
                        "severity": r.get("severity") or "unknown", "score": r.get("score"),
@@ -991,6 +1044,19 @@ def import_bundle(db, doc: dict) -> dict:
                                          for c, a, du, rw, n in doc["kev"]]})
     if doc.get("abi"):
         res["abi"] = add_abi_rows(db, [tuple(x) for x in doc["abi"] if len(x) == 3], "bundle")
+    if doc.get("partial"):
+        # a "changes only" package follows a package dated `since`; if that one
+        # was not imported here, the changes in between are missing
+        applied = _setting(db, BUNDLE_APPLIED_KEY)
+        res["partial"] = True
+        res["since"] = doc.get("since")
+        if doc.get("since") and (not applied or applied < doc["since"]):
+            res["gap"] = applied or "-"
+    if doc.get("generated_at"):
+        prev = _setting(db, BUNDLE_APPLIED_KEY)
+        if not prev or doc["generated_at"] > prev:
+            _meta_set(db, BUNDLE_APPLIED_KEY, doc["generated_at"])
+            db.commit()
     res["contents"] = contents
     res["generated_at"] = doc.get("generated_at")
     return res
@@ -1050,9 +1116,9 @@ def _meta_set(db, key, value):
 
 
 # ================================================================ online sync
-def _get(url, stream=False, timeout=(8, 60), headers=None):
-    """Single place for outbound HTTP (tests replace it). Extra company CAs
-    and VULN_PROXY come from core/outbound."""
+def _get(url, stream=False, timeout=(8, 60), headers=None, retries=True):
+    """Single place for outbound HTTP (tests replace it). Extra company CAs,
+    VULN_PROXY and retries come from core/outbound."""
     from ..core import outbound
     h = dict(_UA)
     if "api.github.com" in url:
@@ -1060,7 +1126,7 @@ def _get(url, stream=False, timeout=(8, 60), headers=None):
     elif "api.msrc.microsoft.com" in url:      # index = JSON, monthly documents = XML
         h["Accept"] = "application/json" if url.rstrip("/").endswith("/updates") else "application/xml"
     h.update(headers or {})
-    return outbound.get(url, stream=stream, timeout=timeout, headers=h)
+    return outbound.get(url, retries=retries, stream=stream, timeout=timeout, headers=h)
 
 
 def _download(url, suffix, timeout=(8, 300)) -> str:
@@ -1233,6 +1299,129 @@ def sources_overview(db) -> dict:
     return {"mode": sel["mode"], "manual": sel["manual"], "rows": rows, "missing": missing}
 
 
+# ------------------------------------------------------------ change-only downloads
+def _validator_key(url: str) -> str:
+    return "vuln_http_" + hashlib.sha1(url.encode()).hexdigest()[:16]
+
+
+def _download_if_changed(db, url, suffix, have_data: bool, timeout=(8, 300)):
+    """(path, validators); path None = the server answered 304 Not Modified to
+    the ETag / Last-Modified of the last import. Only asked when the data of
+    that source is stored (an emptied database downloads in full)."""
+    old = {}
+    if have_data:
+        try:
+            old = json.loads(_setting(db, _validator_key(url)) or "{}")
+        except ValueError:
+            old = {}
+    headers = {}
+    if old.get("etag"):
+        headers["If-None-Match"] = old["etag"]
+    if old.get("lm"):
+        headers["If-Modified-Since"] = old["lm"]
+    tmp = tempfile.NamedTemporaryFile(prefix="vuln-", suffix=suffix, delete=False)
+    try:
+        with _get(url, stream=True, timeout=timeout, headers=headers or None) as r:
+            if getattr(r, "status_code", 200) == 304:
+                tmp.close()
+                os.unlink(tmp.name)
+                return None, old
+            r.raise_for_status()
+            for chunk in r.iter_content(1 << 20):
+                tmp.write(chunk)
+            h = getattr(r, "headers", None) or {}
+            val = {"etag": h.get("ETag"), "lm": h.get("Last-Modified")}
+        tmp.close()
+        return tmp.name, val
+    except BaseException:
+        tmp.close()
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
+        raise
+
+
+def _remember(db, url, val) -> None:
+    """Store the validators AFTER a successful import."""
+    val = {k: v for k, v in (val or {}).items() if v}
+    if val:
+        _meta_set(db, _validator_key(url), json.dumps(val))
+
+
+def _has_rows(db, prefix: str) -> bool:
+    return db.query(VulnAdvisory.id).filter(VulnAdvisory.ecosystem.like(prefix + "%")).first() is not None
+
+
+def _lines(resp):
+    """Text lines of a streamed response (works for any iter_content)."""
+    buf = b""
+    for chunk in resp.iter_content(64 * 1024):
+        buf += chunk
+        *done, buf = buf.split(b"\n")
+        for ln in done:
+            yield ln.decode("utf-8", "replace").strip()
+    if buf.strip():
+        yield buf.decode("utf-8", "replace").strip()
+
+
+def osv_changed(eco: str, since: Optional[datetime], limit: Optional[int] = None):
+    """(newest timestamp, [ids changed after `since`]) from modified_id.csv,
+    read only down to `since`; ids = None when more than `limit` changed.
+    since=None reads only the newest line (the cursor for a full download)."""
+    limit = OSV_MAX_CHANGED if limit is None else limit
+    newest, ids = None, []
+    with _get(OSV_IDS_URL.format(quote(eco)), stream=True, timeout=(8, 120)) as r:
+        r.raise_for_status()
+        for line in _lines(r):
+            ts_s, _, rid = line.partition(",")
+            ts = _ts(ts_s.strip())
+            if ts is None or not rid.strip():
+                continue
+            if newest is None:
+                newest = ts
+            if since is None or ts <= since:
+                break
+            ids.append(rid.strip())
+            if len(ids) > limit:
+                return newest, None
+    return newest, ids
+
+
+def _osv_fetch(eco: str, ids) -> tuple:
+    """Changed records, 8 at a time on keep-alive connections ->
+    (kernel records, fetched, failed). 404 = record withdrawn from the bucket."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def one(rid):
+        try:
+            r = _get(OSV_REC_URL.format(quote(eco), quote(rid)), timeout=(8, 90))
+            if getattr(r, "status_code", 200) == 404:
+                return None, True
+            r.raise_for_status()
+            return _kernel_json(r.content), True
+        except Exception as exc:
+            logger.debug("OSV record %s/%s failed: %s", eco, rid, exc)
+            return None, False
+    recs, ok, failed = [], 0, 0
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        for rec, good in ex.map(one, ids):
+            if good:
+                ok += 1
+                if rec:
+                    recs.append(rec)
+            else:
+                failed += 1
+    return recs, ok, failed
+
+
+def _cursors(db) -> dict:
+    try:
+        return json.loads(_setting(db, OSV_CURSOR_KEY) or "{}")
+    except ValueError:
+        return {}
+
+
 def sync_osv(db, ecosystems=None) -> dict:
     """osv.dev dumps per SELECTED ecosystem; when the storage host is
     unreachable the rest are skipped at once (one short failure, not five) and
@@ -1252,17 +1441,41 @@ def sync_osv(db, ecosystems=None) -> dict:
             logger.warning("%s download failed (%s)", name, done[name]["error"])
     ecosystems = [e for e in ecosystems if e in OSV_ECOSYSTEMS]
     storage_down = None
+    cursors = _cursors(db)
+    now = datetime.utcnow()
     for eco in ecosystems:
         if storage_down:
             done[eco] = {"error": f"osv.dev erişilemedi ({storage_down})"}
             continue
+        have = _has_rows(db, SOURCES[eco]["prefix"])
+        cur = _ts(cursors.get(eco))
+        fresh = have and cur is not None and (now - cur).days < OSV_FULL_DAYS
         path = None
         try:
-            path = _download(OSV_URL.format(quote(eco)), ".zip")
-            done[eco] = import_osv_zip(db, path, "osv")
+            newest, ids = osv_changed(eco, cur if fresh else None)
+            if fresh and ids is not None:          # daily path: only what changed
+                recs, ok, failed = _osv_fetch(eco, ids)
+                stats = Counter()
+                res = _with_stats(_store(db, _osv_records(recs, stats), "osv"), stats)
+                done[eco] = {**res, "mode": "incremental", "changed": len(ids), "failed": failed}
+                sources[eco] = "osv.dev"
+                if not failed and newest:          # a failed record is fetched again next time
+                    cursors[eco] = newest.isoformat(timespec="seconds")
+                if failed and not ok:
+                    raise RuntimeError(f"{failed} kayıt indirilemedi")
+                continue
+            url = OSV_URL.format(quote(eco))
+            path, val = _download_if_changed(db, url, ".zip", have)
+            if path is None:
+                done[eco] = {"records": 0, "kept": 0, "rows": 0, "mode": "full", "unchanged": True}
+            else:
+                done[eco] = {**import_osv_zip(db, path, "osv"), "mode": "full"}
+                _remember(db, url, val)
             sources[eco] = "osv.dev"
+            if newest:
+                cursors[eco] = newest.isoformat(timespec="seconds")
         except Exception as exc:
-            msg = _err(exc)
+            msg = str(exc) if isinstance(exc, RuntimeError) else _err(exc)
             done[eco] = {"error": msg}
             if not sources:                   # nothing came from the storage yet
                 storage_down = msg
@@ -1273,13 +1486,18 @@ def sync_osv(db, ecosystems=None) -> dict:
                     os.unlink(path)
                 except OSError:
                     pass
+    _meta_set(db, OSV_CURSOR_KEY, json.dumps(cursors))
     for eco, url in OSV_GITHUB.items():
         if eco not in done or "error" not in done[eco] or eco not in ecosystems:
             continue
         path = None
         try:
-            path = _download(url, ".tar.gz")
-            done[eco] = {**import_osv_tar(db, path, "github"), "source": "github.com"}
+            path, val = _download_if_changed(db, url, ".tar.gz", _has_rows(db, SOURCES[eco]["prefix"]))
+            if path is None:
+                done[eco] = {"records": 0, "kept": 0, "rows": 0, "unchanged": True, "source": "github.com"}
+            else:
+                done[eco] = {**import_osv_tar(db, path, "github"), "source": "github.com"}
+                _remember(db, url, val)
             sources[eco] = "github.com"
         except Exception as exc:
             done[eco]["error"] += f"; GitHub: {_err(exc)}"
@@ -1335,12 +1553,20 @@ def sync_vendor(db, name: str) -> dict:
             url = tpl.format(v=v)
             path = None
             try:
-                path = _download(url, ".bz2" if conf["kind"] == "oval" else ".json")
+                path, val = _download_if_changed(db, url, ".bz2" if conf["kind"] == "oval" else ".json",
+                                                 _has_rows(db, f"{SOURCES[name]['prefix']}{v}"))
+                if path is None:                       # 304: same file as last time
+                    res = {"records": 0, "rows": 0}
+                    out["versions"][v] = "same"
+                    out["source"] = re.sub(r"^https?://([^/]+).*", r"\1", url)
+                    got = True
+                    break
                 if conf["kind"] == "oval":
                     res = import_oracle_oval(db, path, "oracle", versions=[v])
                 else:
                     with open(path, "rb") as f:
                         res = import_photon(db, json.loads(f.read()), v, "photon")
+                _remember(db, url, val)
                 out["versions"][v] = res.get("records", 0)
                 out["records"] += res.get("records", 0)
                 out["rows"] += res.get("rows", 0)
@@ -1472,7 +1698,7 @@ def probe() -> list:
         group, name, url = t
         t0 = time.monotonic()
         try:
-            with _get(url, stream=True, timeout=(6, 10)) as r:
+            with _get(url, stream=True, timeout=(6, 10), retries=False) as r:
                 next(r.iter_content(1024), b"")
                 ok = r.status_code < 400
                 why = f"HTTP {r.status_code}"
@@ -2215,8 +2441,8 @@ def scheduled_osv():
 
 
 def scheduled_boot():
-    """Shortly after start: KEV always, OSV too when there is no data yet or
-    the last full download is older than a week."""
+    """Shortly after start: KEV always, the rest too when there is no data
+    yet or the last download is older than a day (changes only)."""
     from ..database import SessionLocal
     db = SessionLocal()
     try:
@@ -2224,7 +2450,7 @@ def scheduled_boot():
         empty = not db.query(VulnAdvisory.id).first()
     finally:
         db.close()
-    stale = not last or (datetime.utcnow() - datetime.fromisoformat(last)).days >= 7
+    stale = not last or (datetime.utcnow() - datetime.fromisoformat(last)).total_seconds() >= 20 * 3600
     run_background("boot", lambda d: job_sync(d, osv=empty or stale))
 
 

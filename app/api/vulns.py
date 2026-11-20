@@ -46,6 +46,12 @@ def vuln_status(db: Session = Depends(get_db), user: User = Depends(get_current_
     return {**vs.meta(db), **vs.summary(db)}
 
 
+@router.get("/bundle-info")
+def vuln_bundle_info(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Last package and how much changed since (offline card)."""
+    return vs.bundle_info(db)
+
+
 @router.get("/unverified")
 def vuln_unverified(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """VMs that could not be checked, grouped by reason, with what to do."""
@@ -269,12 +275,16 @@ def upload_finish(upload_id: str, request: Request, payload: dict = Body(default
 
 
 @router.get("/bundle")
-def vuln_bundle(request: Request, db: Session = Depends(get_db),
+def vuln_bundle(request: Request, mode: str = "full", db: Session = Depends(get_db),
                 user: User = Depends(require_role("admin"))):
-    """Compact kernel-only data package for servers without internet."""
-    blob = vs.export_bundle(db)
-    stamp = datetime.utcnow().strftime("%Y%m%d")
-    log_audit(db, user, "vuln_bundle", target=f"{len(blob)} bytes", request=request)
+    """Data package for servers without internet; mode=delta = only what
+    changed since the last package (phase 173)."""
+    delta = mode == "delta"
+    blob = vs.export_bundle(db, delta=delta)
+    stamp = datetime.utcnow().strftime("%Y%m%d-%H%M")
+    log_audit(db, user, "vuln_bundle", target=f"{'delta' if delta else 'full'} {len(blob)} bytes",
+              request=request)
     db.commit()
+    name = f"vm-inventory-vuln-{'changes-' if delta else ''}{stamp}.json.gz"
     return Response(blob, media_type="application/gzip", headers={
-        "Content-Disposition": f'attachment; filename="vm-inventory-vuln-{stamp}.json.gz"'})
+        "Content-Disposition": f'attachment; filename="{name}"'})

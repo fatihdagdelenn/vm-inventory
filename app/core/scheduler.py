@@ -103,12 +103,13 @@ def start_scheduler():
     scheduler.add_job(_lifecycle_sync, trigger="date",
                       run_date=now_local() + timedelta(seconds=90),
                       id="lifecycle_sync_boot", replace_existing=True)
-    # Kernel vulnerability data: KEV daily, OSV dumps weekly (large). Offline
-    # servers fail fast and keep the stored / uploaded data.
+    # Vulnerability data: everything daily (only what changed is downloaded,
+    # phase 173) + a second KEV check in the afternoon (CISA adds entries
+    # during the US day). Offline servers fail fast and keep their data.
     from ..services.vuln_service import scheduled_kev as _vuln_kev, scheduled_osv as _vuln_osv
-    scheduler.add_job(_vuln_kev, trigger="cron", hour=5, minute=23, id="vuln_kev_sync",
+    scheduler.add_job(_vuln_kev, trigger="cron", hour=17, minute=23, id="vuln_kev_sync",
                       max_instances=1, coalesce=True, replace_existing=True)
-    scheduler.add_job(_vuln_osv, trigger="cron", day_of_week="sun", hour=3, minute=41,
+    scheduler.add_job(_vuln_osv, trigger="cron", hour=3, minute=41,
                       id="vuln_osv_sync", max_instances=1, coalesce=True,
                       replace_existing=True)
     from ..services.vuln_service import scheduled_boot as _vuln_boot

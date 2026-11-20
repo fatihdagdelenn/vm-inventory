@@ -119,11 +119,38 @@ def proxies() -> Optional[dict]:
     return {"http": p, "https": p} if p else None
 
 
-def get(url, **kw):
-    import requests
+_local = threading.local()
+
+
+def _session():
+    """One keep-alive session per thread (the incremental OSV sync fetches
+    hundreds of small records), with retries for the transient failures a
+    corporate network produces: connection resets, 429 / 5xx answers -
+    3 tries with backoff (1.5 s, 3 s, 6 s), GET only."""
+    s = getattr(_local, "session", None)
+    if s is None:
+        import requests
+        from requests.adapters import HTTPAdapter
+        from urllib3.util.retry import Retry
+        retry = Retry(total=3, connect=3, read=2, backoff_factor=1.5,
+                      status_forcelist=(429, 500, 502, 503, 504), allowed_methods=frozenset({"GET"}),
+                      raise_on_status=False, respect_retry_after_header=True)
+        s = requests.Session()
+        adapter = HTTPAdapter(max_retries=retry, pool_connections=8, pool_maxsize=8)
+        s.mount("https://", adapter)
+        s.mount("http://", adapter)
+        _local.session = s
+    return s
+
+
+def get(url, retries=True, **kw):
+    """retries=False: one attempt (reachability probe - must answer fast)."""
     kw.setdefault("verify", verify())
     kw.setdefault("proxies", proxies())
-    return requests.get(url, **kw)
+    if not retries:
+        import requests
+        return requests.get(url, **kw)
+    return _session().get(url, **kw)
 
 
 # ------------------------------------------------------------- certificates

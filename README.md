@@ -401,7 +401,7 @@ A kernel a few months old easily matches thousands of CVEs: since 2024 the Linux
 
 **Administration → Vulnerability Data**
 
-- **Download now (OSV + KEV)** / **KEV only** — a server with internet also does this by itself (KEV daily, the rest weekly).
+- **Download now (OSV + KEV)** / **KEV only** — a server with internet also does this by itself every day, downloading **only what changed** (OSV's change list, `If-None-Match` for vendor files; a full dump the first time, after 30 days or on a big kernel-update day). KEV is checked twice a day; failed downloads are retried with backoff.
 - **Test sources** — which download hosts the server reaches, and who signed the certificate when TLS is inspected.
 - **Distributions to download** — *Automatic* picks the sources the inventory needs; *Choose* ticks them by hand.
 - **Company certificate (TLS inspection)** — a corporate root CA, added for these downloads only (verification stays on).
@@ -410,7 +410,7 @@ A kernel a few months old easily matches thousands of CVEs: since 2024 the Linux
 **Servers without internet**
 
 1. On a server with internet: **Distributions to download → Choose**, tick the offline server's distributions (and Windows), **Save**, **Download now**.
-2. **Download data package** (gzip JSON, a few MB — kernel / Windows rows, CVE texts, CISA KEV, the Debian ABI table).
+2. **Download data package** (gzip JSON, a few MB — kernel / Windows rows, CVE texts, CISA KEV, the Debian ABI table). Next time, **Changes only** gives a small package with what changed since the last package; the offline server warns if a package in between was skipped.
 3. On the offline server: **Upload file**. The file goes up in 900 KB pieces, so reverse proxies with a 1 MB request limit are fine. The result box shows what the package contained and which distributions still have no data.
 
 If cisa.gov or osv.dev is blocked but GitHub is open, KEV and the AlmaLinux data come from GitHub automatically. `.env` options: `VULN_PROXY` (proxy for these downloads only), `VULN_KEV_URLS` (internal KEV mirror), `OUTBOUND_CA_BUNDLE` (CA file / folder instead of the upload).

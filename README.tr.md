@@ -418,7 +418,7 @@ Birkaç aylık bir çekirdek kolayca binlerce CVE ile eşleşir: 2024'ten beri L
 
 **Yönetim → Zafiyet Verisi**
 
-- **Şimdi indir (OSV + KEV)** / **Yalnız KEV** — internetli sunucu bunu kendiliğinden de yapar (KEV her gün, diğerleri haftalık).
+- **Şimdi indir (OSV + KEV)** / **Yalnız KEV** — internetli sunucu bunu her gün kendiliğinden de yapar ve **yalnızca değişenleri** indirir (OSV'nin değişiklik listesi, üretici dosyalarında `If-None-Match`; ilk seferde, 30 günde bir ya da büyük bir çekirdek güncellemesi gününde tam döküm). KEV günde iki kez denetlenir; başarısız indirmeler artan aralıklarla yeniden denenir.
 - **Kaynakları test et** — sunucunun hangi indirme adreslerine eriştiği; SSL denetiminde sertifikayı kimin imzaladığı.
 - **İndirilecek dağıtımlar** — *Otomatik* envanterin ihtiyaç duyduğu kaynakları seçer; *Elle seç* ile işaretlenir.
 - **Kurum sertifikası (SSL denetimi)** — kurumun kök sertifikası, yalnızca bu indirmeler için eklenir (doğrulama açık kalır).
@@ -427,7 +427,7 @@ Birkaç aylık bir çekirdek kolayca binlerce CVE ile eşleşir: 2024'ten beri L
 **İnternetsiz sunucular**
 
 1. İnternetli sunucuda: **İndirilecek dağıtımlar → Elle seç**, internetsiz sunucunun dağıtımlarını (ve Windows'u) işaretleyin, **Kaydet**, **Şimdi indir**.
-2. **Veri paketini indir** (gzip JSON, birkaç MB — çekirdek / Windows kayıtları, CVE açıklamaları, CISA KEV, Debian ABI tablosu).
+2. **Veri paketini indir** (gzip JSON, birkaç MB — çekirdek / Windows kayıtları, CVE açıklamaları, CISA KEV, Debian ABI tablosu). Sonraki seferlerde **Yalnızca değişenler** son paketten beri değişenleri içeren küçük bir paket verir; aradaki bir paket atlanmışsa internetsiz sunucu uyarır.
 3. İnternetsiz sunucuda: **Dosya yükle**. Dosya 900 KB'lık parçalarla gider; 1 MB istek sınırı olan ters vekil sunucular sorun olmaz. Sonuç kutusu paketin içeriğini ve hâlâ verisi olmayan dağıtımları gösterir.
 
 cisa.gov veya osv.dev kapalı ama GitHub açıksa KEV ve AlmaLinux verisi otomatik olarak GitHub'dan alınır. `.env` seçenekleri: `VULN_PROXY` (yalnızca bu indirmeler için vekil sunucu), `VULN_KEV_URLS` (kurum içi KEV aynası), `OUTBOUND_CA_BUNDLE` (yükleme yerine CA dosyası / klasörü).

@@ -149,7 +149,7 @@
       <div class="card panel h-100">
         <div class="card-header"><i class="bi bi-shield-check"></i> <span data-i18n="vd2.data">Zafiyet verisi (Linux çekirdeği + Windows)</span></div>
         <div class="card-body">
-          <p class="text-muted small" data-i18n="vd2.desc">Kaynaklar: OSV.dev (Ubuntu, Debian, Red Hat, AlmaLinux, Rocky Linux, SUSE, openSUSE), Oracle OVAL (Oracle Linux), Broadcom Photon CVE verisi (yalnızca çekirdek paketleri saklanır), Windows için Microsoft MSRC güncelleme verisi (son 24 ay) ve CISA KEV. İnterneti olan sunucu KEV'i her gün, OSV'yi haftada bir indirir. cisa.gov kapalıysa KEV, CISA'nın GitHub deposundan; osv.dev kapalıysa AlmaLinux verisi (RHEL / Rocky için de kullanılır) GitHub'dan alınır. Her kayıt için en yeni sürüm geçerlidir.</p>
+          <p class="text-muted small" data-i18n="vd2.desc">Kaynaklar: OSV.dev (Ubuntu, Debian, Red Hat, AlmaLinux, Rocky Linux, SUSE, openSUSE), Oracle OVAL (Oracle Linux), Broadcom Photon CVE verisi (yalnızca çekirdek paketleri saklanır), Windows için Microsoft MSRC güncelleme verisi (son 24 ay) ve CISA KEV. İnterneti olan sunucu her gün yalnızca değişen kayıtları indirir (ilk indirme ve ayda bir tam döküm); KEV günde iki kez denetlenir. cisa.gov kapalıysa KEV, CISA'nın GitHub deposundan; osv.dev kapalıysa AlmaLinux verisi (RHEL / Rocky için de kullanılır) GitHub'dan alınır. Her kayıt için en yeni sürüm geçerlidir.</p>
           <dl class="row small mb-3" id="vdMeta"></dl>
           <div class="d-flex flex-wrap gap-2 mb-2">
             <button class="btn btn-sm btn-outline-primary" id="vdSyncBtn" onclick="Settings.vdSync(false)">
@@ -170,17 +170,22 @@
         <div class="card-body">
           <ol class="small text-muted ps-3 mb-3">
             <li data-i18n="vd2.step1">İnterneti olan kurulumda (ör. test sunucusu) verinin indirildiğini görün.</li>
-            <li data-i18n="vd2.step2">Oradan "Veri paketini indir" ile sıkıştırılmış paketi alın (yalnızca çekirdek ve Windows kayıtları, birkaç MB).</li>
+            <li data-i18n="vd2.step2">Oradan "Veri paketini indir" ile sıkıştırılmış paketi alın (yalnızca çekirdek ve Windows kayıtları, birkaç MB). Sonraki seferlerde "Yalnızca değişenler" son paketten beri değişenleri içeren küçük bir paket verir.</li>
             <li data-i18n="vd2.step3">Bu sunucuda "Dosya yükle" ile paketi verin. OSV all.zip, tek OSV JSON ve CISA KEV JSON da kabul edilir.</li>
           </ol>
           <div class="d-flex flex-wrap gap-2">
-            <a class="btn btn-sm btn-outline-success" href="/api/vulns/bundle" id="vdBundle">
+            <a class="btn btn-sm btn-outline-success" href="/api/vulns/bundle" id="vdBundle"
+               onclick="setTimeout(() => Settings.loadBundleMark(), 3000)">
               <i class="bi bi-box-arrow-down"></i> <span data-i18n="vd2.bundle">Veri paketini indir</span></a>
+            <a class="btn btn-sm btn-outline-success" href="/api/vulns/bundle?mode=delta" id="vdBundleDelta"
+               onclick="setTimeout(() => Settings.loadBundleMark(), 3000)">
+              <i class="bi bi-file-earmark-diff"></i> <span data-i18n="vd2.bundleDelta">Yalnızca değişenler</span></a>
             <label class="btn btn-sm btn-outline-secondary mb-0">
               <i class="bi bi-upload"></i> <span data-i18n="vd2.upload">Dosya yükle</span>
               <input type="file" accept=".gz,.zip,.json,application/json,application/zip,application/gzip" id="vdFile"
                      class="d-none" onchange="Settings.vdImport(this)"></label>
           </div>
+          <div class="small text-muted mt-2" id="vdBundleMark"></div>
           <div class="small mt-2" id="vdBundleInfo"></div>
           <div class="small mt-2 d-none" id="vdImportResult"></div>
           <div class="small text-muted mt-2" data-i18n="vd2.uploadHint">Yükleme ve eşleştirme arka planda çalışır; büyük bir all.zip birkaç dakika sürebilir.</div>

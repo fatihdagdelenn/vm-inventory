@@ -204,7 +204,9 @@ def offline(url, **kw):
 
 
 _orig = requests.get
+_orig_sget = requests.Session.get           # outbound uses a keep-alive session (phase 173)
 requests.get = offline
+requests.Session.get = lambda self, url, **kw: offline(url, **kw)
 res = ls.sync_from_api(db)
 assert res["ok"] is False and len(calls) == 1, (res, calls)     # stops at the first failure
 m = ls.meta(db)
@@ -226,8 +228,10 @@ class Resp:
 
 
 requests.get = lambda url, **kw: Resp(url)
+requests.Session.get = lambda self, url, **kw: Resp(url)
 res = ls.sync_from_api(db)
 requests.get = _orig
+requests.Session.get = _orig_sget
 assert res["ok"] and "photon" not in res["products"] and len(res["products"]) == len(ls.PRODUCTS) - 1
 assert ls.meta(db)["last_error"] is None and ls.meta(db)["last_sync"]
 assert db.query(OsLifecycle).filter_by(distro="debian", version="1").one().source == "endoflife.date"
